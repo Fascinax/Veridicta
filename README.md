@@ -1,1 +1,1 @@
-# LexRAG
+# Veridicta
