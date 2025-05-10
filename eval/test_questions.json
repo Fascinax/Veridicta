@@ -1,0 +1,62 @@
+[
+  {
+    "id": "droit-travail-001",
+    "question": "Quels sont les délais de préavis pour un licenciement économique ?",
+    "reference_answer": "Le délai de préavis pour un licenciement économique varie selon l'ancienneté: 1 mois pour une ancienneté de 6 mois à 2 ans, 2 mois pour une ancienneté de 2 ans ou plus.",
+    "reference_sources": ["code_travail_L1234-1", "code_travail_L1234-2"]
+  },
+  {
+    "id": "droit-travail-002",
+    "question": "Quelles sont les conditions pour bénéficier du congé parental ?",
+    "reference_answer": "Pour bénéficier du congé parental, le salarié doit avoir au moins un an d'ancienneté dans l'entreprise à la date de naissance de l'enfant ou de l'adoption.",
+    "reference_sources": ["code_travail_L1225-47", "code_travail_L1225-48"]
+  },
+  {
+    "id": "droit-travail-003",
+    "question": "Quel est le montant de l'indemnité légale de licenciement ?",
+    "reference_answer": "L'indemnité légale de licenciement est égale à 1/4 de mois de salaire par année d'ancienneté pour les 10 premières années, puis 1/3 de mois par année d'ancienneté au-delà de 10 ans.",
+    "reference_sources": ["code_travail_R1234-2"]
+  },
+  {
+    "id": "droit-travail-004",
+    "question": "Quelles sont les durées maximales de la période d'essai ?",
+    "reference_answer": "Pour les CDI, la période d'essai ne peut dépasser 2 mois pour les ouvriers et employés, 3 mois pour les agents de maîtrise et techniciens, et 4 mois pour les cadres.",
+    "reference_sources": ["code_travail_L1221-19"]
+  },
+  {
+    "id": "droit-civil-001",
+    "question": "Quels sont les délais de prescription en matière civile ?",
+    "reference_answer": "Le délai de prescription de droit commun est de 5 ans. Les actions personnelles ou mobilières se prescrivent par 5 ans à compter du jour où le titulaire d'un droit a connu ou aurait dû connaître les faits lui permettant de l'exercer.",
+    "reference_sources": ["code_civil_2224"]
+  },
+  {
+    "id": "droit-civil-002",
+    "question": "Quelle est la définition légale du contrat de vente ?",
+    "reference_answer": "La vente est une convention par laquelle l'un s'oblige à livrer une chose, et l'autre à la payer. Elle peut être faite par acte authentique ou sous seing privé.",
+    "reference_sources": ["code_civil_1582", "code_civil_1583"]
+  },
+  {
+    "id": "droit-civil-003",
+    "question": "Quels sont les droits et obligations du locataire ?",
+    "reference_answer": "Le locataire est obligé d'user de la chose louée en bon père de famille, de payer le prix du bail aux termes convenus, et d'effectuer les menues réparations locatives.",
+    "reference_sources": ["code_civil_1728", "code_civil_1754"]
+  },
+  {
+    "id": "jurisprudence-001",
+    "question": "Quelle est la jurisprudence sur le harcèlement moral au travail ?",
+    "reference_answer": "Le harcèlement moral est caractérisé par des agissements répétés ayant pour objet ou pour effet une dégradation des conditions de travail susceptible de porter atteinte à ses droits et à sa dignité, d'altérer sa santé physique ou mentale ou de compromettre son avenir professionnel.",
+    "reference_sources": ["cassation_sociale_20091125", "cassation_sociale_20140611"]
+  },
+  {
+    "id": "jurisprudence-002",
+    "question": "Quels sont les critères jurisprudentiels du licenciement abusif ?",
+    "reference_answer": "Un licenciement est considéré comme abusif lorsqu'il ne repose pas sur une cause réelle et sérieuse, ou lorsque la procédure de licenciement n'a pas été respectée.",
+    "reference_sources": ["cassation_sociale_20130320", "cassation_sociale_20150708"]
+  },
+  {
+    "id": "jurisprudence-003",
+    "question": "Comment est définie la faute grave en droit du travail selon la jurisprudence ?",
+    "reference_answer": "La faute grave est celle qui rend impossible le maintien du salarié dans l'entreprise, même pendant la durée limitée du préavis. Elle justifie le licenciement immédiat sans préavis ni indemnités.",
+    "reference_sources": ["cassation_sociale_20110126", "cassation_sociale_20120314"]
+  }
+]
