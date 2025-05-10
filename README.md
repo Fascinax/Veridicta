@@ -1,6 +1,6 @@
 # Veridicta
 
-> **Tagline**: Retrieval‑Augmented Generative AI for reliable, explainable French legal answers.
+> **Tagline**: Retrieval‑Augmented Generative AI for reliable, explainable *Dernière mise à jour : 2025-05-10*rench legal answers.
 
 ---
 

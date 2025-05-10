@@ -36,6 +36,20 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Fichiers de données du projet Veridicta
+data/raw/*
+data/processed/*
+data/embeddings/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/embeddings/.gitkeep
+
+# Modèles et checkpoints spécifiques
+models/*.safetensors
+models/*.bin
+models/*.onnx
+models/*.pt
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
