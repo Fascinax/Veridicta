@@ -44,6 +44,8 @@ grafana-client>=2.2.0
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 playwright>=1.40.0
+pdfminer.six>=20221105
+pymupdf>=1.23.0   # Pour extraction texte PDF
 
 # Outils utilitaires
 jsonlines>=3.1.0
