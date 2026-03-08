@@ -48,9 +48,14 @@ CHUNKS_PATH = Path("data/processed/chunks.jsonl")
 
 SYSTEM_PROMPT = (
     "Tu es Veridicta, un assistant juridique expert en droit du travail monegasque.\n"
-    "Tu reponds en francais, avec precision, en citant tes sources (titre, date, type).\n"
-    "Si les sources fournies sont insuffisantes, indique-le honnetement.\n"
-    "Ne fabrique jamais d'information absente des sources."
+    "Tu reponds en francais, avec precision.\n\n"
+    "REGLES STRICTES :\n"
+    "- Reponds UNIQUEMENT a partir des sources fournies ci-dessous.\n"
+    "- Chaque affirmation DOIT etre suivie de sa reference [Source N].\n"
+    "- Si plusieurs sources appuient une meme affirmation, cite-les toutes : [Source 1][Source 3].\n"
+    "- N'invente JAMAIS de loi, d'article, de numero, ou de date absents des sources.\n"
+    "- Si les sources sont insuffisantes, dis-le explicitement.\n"
+    "- Ne cite JAMAIS un numero de source qui n'existe pas dans le contexte fourni.\n"
 )
 
 
@@ -161,7 +166,10 @@ def _format_context(chunks: list[dict]) -> str:
     parts: list[str] = []
     total_chars = 0
     for i, chunk in enumerate(chunks, 1):
-        header = f"[Source {i}] {chunk['titre']} ({chunk['type']}, {chunk['date']})"
+        titre = chunk.get('titre', 'Source inconnue')
+        doc_type = chunk.get('type', '')
+        date = chunk.get('date', '')
+        header = f"[Source {i}] {titre} ({doc_type}, {date})"
         entry = f"{header}\n{chunk['text']}"
         if total_chars + len(entry) > MAX_CONTEXT_CHARS:
             break
@@ -177,7 +185,14 @@ def answer(query: str, context_chunks: list[dict], model: str | None = None) -> 
         raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
 
     context = _format_context(context_chunks)
-    user_message = f"Sources:\n\n{context}\n\nQuestion: {query}"
+    n_sources = min(len(context_chunks), MAX_CONTEXT_CHARS // 500)  # approx
+    user_message = (
+        f"Voici {n_sources} sources numerotees :\n\n"
+        f"{context}\n\n"
+        f"---\n\n"
+        f"Question : {query}\n\n"
+        f"Reponds en citant [Source N] apres chaque affirmation."
+    )
 
     client = Cerebras(api_key=api_key)
     payload = dict(

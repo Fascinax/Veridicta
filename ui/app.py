@@ -6,6 +6,7 @@ Run:
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 from pathlib import Path
@@ -153,9 +154,9 @@ def _render_sidebar() -> int:
         st.divider()
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
-            "Corpus : 149 textes législatifs · 762 décisions<br>"
-            "Index : 16 097 chunks · MiniLM-L12<br>"
-            "LLM : Llama 3.3 70B via Groq"
+            "Corpus : 2 867 documents (3 sources)<br>"
+            "Index : 26 517 chunks MiniLM-L12<br>"
+            "LLM : Cerebras (gpt-oss-120b)"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -165,6 +166,22 @@ def _render_sidebar() -> int:
             st.rerun()
 
     return k, show_sources
+
+
+# ── Citation formatting ───────────────────────────────────────────────────────
+
+
+def _format_answer_with_citations(text: str) -> str:
+    """Replace [Source N] with styled HTML badges."""
+    def _badge(match: re.Match) -> str:
+        n = match.group(1)
+        return (
+            f'<span style="display:inline-block;background:#2a2f47;color:#e8d5a3;'
+            f'font-size:0.72rem;padding:1px 7px;border-radius:10px;'
+            f'margin:0 2px;font-weight:500;cursor:default" '
+            f'title="Voir source {n}">[Source {n}]</span>'
+        )
+    return re.sub(r"\[Source\s+(\d+)\]", _badge, text)
 
 
 # ── Source cards ──────────────────────────────────────────────────────────────
@@ -228,7 +245,13 @@ def main() -> None:
     # Replay history
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            if msg["role"] == "assistant":
+                st.markdown(
+                    _format_answer_with_citations(msg["content"]),
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(msg["content"])
             if msg["role"] == "assistant" and show_sources and msg.get("sources"):
                 with st.expander(f"📄 {len(msg['sources'])} source(s) utilisée(s)"):
                     _render_sources(msg["sources"])
@@ -257,7 +280,10 @@ def main() -> None:
                     response_text = f"⚠️ Erreur : {exc}"
 
             elapsed = time.perf_counter() - t0
-            response_placeholder.markdown(response_text)
+            response_placeholder.markdown(
+                _format_answer_with_citations(response_text),
+                unsafe_allow_html=True,
+            )
             st.caption(f"_{len(retrieved)} source(s) · {elapsed:.1f}s_")
 
             if show_sources and retrieved:

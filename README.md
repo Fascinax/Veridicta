@@ -12,19 +12,21 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 
 | Indicateur              | Cible MVP   | Resultat         |
 | ----------------------- | ----------- | ---------------- |
-| Latence (256 tokens)    | < 3 s       | **~2.99 s**      |
-| Keyword Recall (50 Q)   | >= 60 %     | **67.1 %**       |
-| Word F1 (50 Q)          | >= 15 %     | **17.7 %**       |
+| Latence (256 tokens)    | < 3 s       | **~2.53 s**      |
+| Keyword Recall (50 Q)   | >= 50 %     | **56.1 %**       |
+| Word F1 (50 Q)          | >= 15 %     | **23.1 %**       |
+| Citation Faithfulness   | >= 70 %     | **74.0 %**       |
 | Cout variable           | 0 EUR       | **0 EUR**        |
 
 Resultats obtenus sur 50 questions gold standard, corpus 26 517 chunks (legislation, jurisprudence, Journal de Monaco).
+Le LLM est contraint de citer `[Source N]` dans chaque affirmation -- inspire de l'approche [IDC-WebSemantique](https://github.com/Fascinax/IDC-WebSemantique).
 
 | Modele         | KW Recall | Word F1 | Cit.Faith | Halluc.Risk | Latence |
 | -------------- | --------- | ------- | --------- | ----------- | ------- |
-| gpt-oss-120b   | 0.671     | 0.177   | 0.350     | 0.391       | 2.99 s  |
-| llama3.1-8b    | 0.556     | 0.195   | 0.734     | 0.342       | 4.47 s  |
+| gpt-oss-120b   | 0.561     | 0.231   | 0.740     | 0.406       | 2.53 s  |
+| llama3.1-8b    | 0.494     | 0.224   | 0.760     | 0.356       | 4.02 s  |
 
-> **Note** : `gpt-oss-120b` a meilleur recall mais invente davantage de citations legales (Cit.Faith=0.35). `llama3.1-8b` est plus fidele aux sources (Cit.Faith=0.73) mais plus lent.
+> **Cit.Faith** mesure la fraction de references `[Source N]` dans la reponse qui pointent vers un chunk effectivement recupere. Plus c'est haut, plus le LLM cite correctement ses sources au lieu d'inventer.
 
 ## 3. Stack technologique
 

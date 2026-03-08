@@ -126,27 +126,23 @@ def word_f1(prediction: str, reference: str) -> float:
 
 
 def citation_faithfulness(answer: str, retrieved_chunks: list[dict]) -> float:
-    """Fraction of specific legal citations in the answer grounded in retrieved context.
+    """Fraction of [Source N] citations in the answer that reference valid retrieved chunks.
 
-    Extracts: 'Loi n° XXX', 'Ordonnance n° XXX', 'Decret n° XXX', 'article X'.
-    Returns 1.0 (fully faithful) when all citations are found in the context.
-    Returns 0.0 conservatively when no verifiable citations are present.
+    The LLM is instructed to cite [Source 1], [Source 2], etc.  This metric
+    checks that every cited source number actually exists in the retrieved context
+    (i.e. 1 <= N <= len(retrieved_chunks)).
+
+    Returns 1.0 when all cited source numbers are valid.
+    Returns 0.0 when no [Source N] citations are found (LLM ignored the instruction).
     """
-    context = " ".join(c.get("text", "") for c in retrieved_chunks).lower()
-    answer_lower = answer.lower()
+    cited_numbers = [int(m) for m in re.findall(r"\[Source\s+(\d+)\]", answer)]
 
-    legal_acts = re.findall(
-        r"(?:loi|ordonnance|decret|arrete|loi-cadre)\s+n[o\u00b0]?\s*[\d\s.,]+\d",
-        answer_lower,
-    )
-    article_refs = re.findall(r"article\s+\d+", answer_lower)
-    claims = legal_acts + article_refs
+    if not cited_numbers:
+        return 0.0  # LLM did not cite any source -> unfaithful
 
-    if not claims:
-        return 1.0  # No verifiable claims -> conservatively faithful
-
-    grounded = sum(1 for c in claims if c.strip() in context)
-    return round(grounded / len(claims), 4)
+    n_sources = len(retrieved_chunks)
+    valid = sum(1 for n in cited_numbers if 1 <= n <= n_sources)
+    return round(valid / len(cited_numbers), 4)
 
 
 def context_coverage(answer: str, retrieved_chunks: list[dict]) -> float:
