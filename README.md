@@ -1,4 +1,4 @@
-﻿# Veridicta
+# Veridicta
 
 > **RAG-powered AI assistant for reliable, explainable Monegasque labour law answers.**
 
@@ -6,39 +6,43 @@
 
 ## 1. Vision
 
-Assistant conversationnel juridique specialise en **droit du travail monegasque**, combinant **RAG (FAISS)**, **prompt engineering avance** et un **LLM multi-backend** (Cerebras Cloud ou GitHub Copilot) pour delivrer des reponses precises, sourcees et tracables a destination de **juristes et avocats professionnels**.
+Assistant conversationnel juridique specialise en **droit du travail monegasque**, combinant **Hybrid RAG (BM25 + FAISS)**, **prompt engineering avance** et un **LLM multi-backend** (Cerebras Cloud ou GitHub Copilot) pour delivrer des reponses precises, sourcees et tracables a destination de **juristes et avocats professionnels**.
 
-## 2. Resultats MVP
+## 2. Resultats
 
-| Indicateur              | Cible MVP   | Resultat         |
-| ----------------------- | ----------- | ---------------- |
-| Latence (256 tokens)    | < 3 s       | **~2.53 s**      |
-| Keyword Recall (50 Q)   | >= 50 %     | **56.1 %**       |
-| Word F1 (50 Q)          | >= 15 %     | **23.1 %**       |
-| Citation Faithfulness   | >= 70 %     | **74.0 %**       |
-| Cout variable           | 0 EUR       | **0 EUR**        |
+| Indicateur              | Cible MVP   | Resultat             |
+| ----------------------- | ----------- | -------------------- |
+| Latence (256 tokens)    | < 3 s       | **4.98 s** (hybrid)  |
+| Keyword Recall (50 Q)   | >= 60 %     | **64.6 %**           |
+| Word F1 (50 Q)          | >= 15 %     | **22.3 %**           |
+| Citation Faithfulness   | >= 90 %     | **94.0 %**           |
+| Context Coverage        | >= 65 %     | **68.7 %**           |
+| Cout variable           | 0 EUR       | **0 EUR**            |
 
-Resultats obtenus sur 50 questions gold standard, corpus 26 517 chunks (legislation, jurisprudence, Journal de Monaco).
-Le LLM est contraint de citer `[Source N]` dans chaque affirmation -- inspire de l'approche [IDC-WebSemantique](https://github.com/Fascinax/IDC-WebSemantique).
+Resultats obtenus sur 50 questions gold standard, corpus 26 517 chunks (legislation, jurisprudence, Journal de Monaco), retriever hybrid BM25+FAISS.
+Le LLM est contraint de citer `[Source N]` dans chaque affirmation.
 
-| Modele         | KW Recall | Word F1 | Cit.Faith | Halluc.Risk | Latence |
-| -------------- | --------- | ------- | --------- | ----------- | ------- |
-| gpt-oss-120b   | 0.561     | 0.231   | 0.740     | 0.406       | 2.53 s  |
-| llama3.1-8b    | 0.494     | 0.224   | 0.760     | 0.356       | 4.02 s  |
+| Modele / Retriever    | KW Recall | Word F1 | Cit.Faith | Halluc.Risk | Latence |
+| --------------------- | --------- | ------- | --------- | ----------- | ------- |
+| gpt-oss-120b / FAISS  | 0.648     | 0.225   | 0.900     | 0.308       | 2.60 s  |
+| gpt-oss-120b / Hybrid | **0.646** | **0.223** | **0.940** | 0.313     | 4.98 s  |
+| gpt-4.1 / Hybrid      | 0.342     | 0.115   | **1.000** | 0.000       | --      |
 
-> **Cit.Faith** mesure la fraction de references `[Source N]` dans la reponse qui pointent vers un chunk effectivement recupere. Plus c'est haut, plus le LLM cite correctement ses sources au lieu d'inventer.
+> **Cit.Faith** mesure la fraction de references `[Source N]` qui pointent vers un chunk effectivement recupere. **Hybrid** apporte +4% CitFaith par rapport a FAISS seul.
 
 ## 3. Stack technologique
 
-| Composant       | Choix MVP                                                     |
+| Composant       | Choix                                                         |
 | --------------- | ------------------------------------------------------------- |
 | **Langage**     | Python 3.11 + Node.js 18+ (bridge Copilot)                   |
 | **Embeddings**  | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384)     |
-| **Retrieval**   | FAISS IndexFlatIP (26 517 vecteurs)                           |
-| **LLM**         | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`, `claude-sonnet-4`, etc.) |
-| **UI**          | Streamlit (chat conversationnel, sources cliquables, backend selector) |
-| **Evaluation**  | 50 questions gold standard, KW recall, F1, citation faithfulness, hallucination risk |
-| **Scraping**    | API Elasticsearch LegiMonaco + Playwright Journal de Monaco   |
+| **Retrieval**   | **Hybrid BM25+FAISS** (RRF, k=60) -- FAISS 0.4 / BM25 0.6  |
+| **LLM**         | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) |
+| **Artifacts**   | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+BM25+chunks auto-telecharges (180 MB) |
+| **UI**          | Streamlit (chat, sources cliquables, toggle FAISS/Hybrid)    |
+| **Evaluation**  | 50 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk |
+| **Scraping**    | API Elasticsearch LegiMonaco + Playwright Journal de Monaco  |
+| **Deploy**      | Streamlit Cloud (artifacts depuis HF Hub au boot, ~2 min)    |
 
 ### Hors scope MVP (v2)
 
@@ -46,7 +50,6 @@ Le LLM est contraint de citer `[Source N]` dans chaque affirmation -- inspire de
 * QLoRA fine-tuning
 * Guardrails (LlamaGuard)
 * Monitoring (Prometheus, wandb)
-* Deploiement cloud
 
 ## 4. Arborescence du depot
 
@@ -58,20 +61,21 @@ Veridicta/
 |   +-- data_processor.py       # Chunking 1800 chars + overlap -> JSONL
 +-- retrievers/
 |   +-- baseline_rag.py         # FAISS retrieval + LLM generation (Cerebras ou Copilot)
+|   +-- hybrid_rag.py           # BM25 + FAISS + RRF fusion (tokenizer francais accent-aware)
+|   +-- artifacts.py            # Download/upload auto FAISS+BM25+chunks depuis HF Hub
 |   +-- neo4j_setup.py          # [v2] Graphe de connaissances
-+-- tools/
-|   +-- copilot_client.py       # Wrapper Python du bridge @github/copilot-sdk
 +-- eval/
-|   +-- evaluate.py             # Metriques multi-modeles (KW recall, F1, citation faithfulness, halluc. risk)
+|   +-- evaluate.py             # Metriques multi-modeles (--retriever faiss|hybrid)
 |   +-- test_questions.json     # 50 questions gold standard droit du travail MCO
+|   +-- results/                # Resultats eval par backend/retriever
 +-- ui/
-|   +-- app.py                  # Interface Streamlit (chat + sources)
+|   +-- app.py                  # Interface Streamlit (chat + sources + toggle retriever)
 +-- data/
 |   +-- raw/                    # JSONL bruts (legislation, jurisprudence, journal_monaco)
 |   +-- processed/              # chunks.jsonl (corpus normalise)
-|   +-- index/                  # veridicta.faiss + chunks_map.jsonl
-+-- copilot-bridge.mjs          # Bridge Node.js @github/copilot-sdk -> stdin/stdout
-+-- package.json                # Dependance npm : @github/copilot-sdk
+|   +-- index/                  # veridicta.faiss + bm25_corpus.pkl
++-- .streamlit/
+|   +-- config.toml             # Config Streamlit Cloud
 +-- requirements.txt
 +-- README.md
 +-- ROADMAP.md
@@ -81,19 +85,19 @@ Veridicta/
 
 | Source | Records | Contenu | Scraper |
 | --- | --- | --- | --- |
-| **[LegiMonaco](https://legimonaco.mc/)** | 149 textes + 762 decisions | Legislation et jurisprudence du travail (API ES) | `legimonaco_scraper.py` |
-| **[Journal de Monaco](https://journaldemonaco.gouv.mc/)** | 1 956 articles | Lois, ordonnances, arretes (bulletin officiel, 1947-2026) | `monaco_scraper.py` |
+| **LegiMonaco** | 149 textes + 762 decisions | Legislation et jurisprudence du travail (API ES) | `legimonaco_scraper.py` |
+| **Journal de Monaco** | 1 956 articles | Lois, ordonnances, arretes (bulletin officiel, 1947-2026) | `monaco_scraper.py` |
 
-**Corpus total** : 2 867 documents -> **26 517 chunks** indexes dans FAISS.
+**Corpus total** : 2 867 documents -> **26 517 chunks** indexes (FAISS + BM25).
 
 ## 6. Pipeline
 
 ```
 LegiMonaco (API ES)  ---+
-                        +-> data_processor.py -> chunks.jsonl -> MiniLM embeddings -> FAISS index
-Journal de Monaco ------+                                                                 |
-                                                                                          v
-                              User query -> embed -> FAISS top-k -> LLM (Cerebras ou Copilot) -> Reponse + [Source N]
+                        +-> data_processor.py -> chunks.jsonl -> MiniLM -> FAISS + BM25
+Journal de Monaco ------+                                                       |
+                                                                                v
+              User query -> embed -> [FAISS top-k + BM25 top-k] -> RRF -> LLM -> Reponse + [Source N]
 ```
 
 ## 7. Installation
@@ -109,64 +113,53 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
-playwright install chromium
 
-# --- Backend Cerebras (par defaut, gratuit) ---
+# Backend Cerebras (par defaut, gratuit)
 echo "CEREBRAS_API_KEY=votre_cle_ici" > .env
+echo "HF_API_TOKEN=votre_token_hf" >> .env   # pour les artifacts HF Hub
 
-# --- Backend GitHub Copilot (optionnel) ---
-npm install                              # installe @github/copilot-sdk
-echo "LLM_BACKEND=copilot" >> .env       # active le backend Copilot
-echo "GITHUB_PAT=ghp_xxx" >> .env        # PAT avec scope copilot
-# ou : gh auth login                     # authentification via gh CLI
+# Backend GitHub Copilot (optionnel)
+npm install
+echo "LLM_BACKEND=copilot" >> .env
+echo "GITHUB_PAT=ghp_xxx" >> .env
 ```
+
+> **Note** : les artifacts FAISS, BM25 et chunks (180 MB) sont telecharges automatiquement depuis
+> `Fascinax/veridicta-index` sur Hugging Face au premier demarrage.
+> Pas besoin de relancer le scraping ou l'indexation.
 
 ## 8. Utilisation
 
 ```bash
-# 1. Collecter les donnees LegiMonaco
-python -m data_ingest.legimonaco_scraper --out data/raw
+# Demarrer l'UI (artifacts telecharges automatiquement au boot)
+streamlit run ui/app.py
 
-# 2. Scraper le Journal de Monaco
-python -m data_ingest.monaco_scraper --out data/raw
-
-# 3. Chunker le corpus
-python -m data_ingest.data_processor --raw data/raw --out data/processed
-
-# 4. Construire l'index FAISS
-python -m retrievers.baseline_rag --build
-
-# 5. Requete en ligne de commande
+# Requete en ligne de commande
 python -m retrievers.baseline_rag --query "Quel est le preavis de licenciement a Monaco ?" --k 5
 
-# 6. Lancer l'interface Streamlit
-streamlit run ui/app.py
+# Reconstruire l'index manuellement (scraping + chunking + indexation)
+python -m data_ingest.legimonaco_scraper --out data/raw
+python -m data_ingest.monaco_scraper --out data/raw
+python -m data_ingest.data_processor --raw data/raw --out data/processed
+python -m retrievers.baseline_rag --build
 ```
 
 ## 9. Evaluation
 
 ```bash
-# Evaluer un modele (Cerebras par defaut)
-python -m eval.evaluate --k 5 --model gpt-oss-120b
+# Hybrid retriever (recommande)
+python -m eval.evaluate --backend cerebras --model gpt-oss-120b --k 5 --retriever hybrid --workers 1
 
-# Comparer tous les modeles Cerebras
-python -m eval.evaluate --k 5 --all-models
+# FAISS seul
+python -m eval.evaluate --backend cerebras --model gpt-oss-120b --k 5 --retriever faiss --workers 1
 
-# Evaluer avec GitHub Copilot
-python -m eval.evaluate --k 5 --backend copilot --model gpt-4.1
-
-# Comparer tous les modeles Copilot
-python -m eval.evaluate --k 5 --backend copilot --all-models
-
-# Retrieval only (sans LLM, plus rapide)
-python -m eval.evaluate --retrieval-only
+# Avec GitHub Copilot
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid --workers 2
 ```
 
-Produit un rapport avec keyword recall, F1, et latence par question.
+Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk et latence.
 
 ## 10. Questions demo
-
-Voici 5 questions representatives pour tester Veridicta :
 
 1. **Licenciement** : *Quelles sont les indemnites de licenciement prevues par le droit monegasque ?*
 2. **CDD** : *Quelle est la duree maximale d'un contrat a duree determinee a Monaco ?*
