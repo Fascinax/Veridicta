@@ -31,6 +31,7 @@
 | **8. Polish & demo** | README final, ROADMAP a jour, questions demo percutantes | Done | 5 questions demo couvrant legislation, jurisprudence et cas complexes |
 | **9. Hybrid BM25+FAISS** | `hybrid_rag.py` : BM25Okapi + FAISS dense + RRF fusion, tokenizer francais accent-aware | Done | FAISS_WEIGHT=0.4, BM25_WEIGHT=0.6, RRF_K=60 ; CitFaith 0.900->0.940 (+4%) |
 | **10. HF Hub + Streamlit Cloud prep** | `artifacts.py` : upload/download auto FAISS+BM25+chunks (180 MB), secrets template | Done | Dataset `Fascinax/veridicta-index` public ; `.streamlit/config.toml` pret au deploy |
+| **11. Graph RAG (Neo4j)** | `neo4j_setup.py` : 2 789 Doc nodes, 26 517 Chunk nodes, 1 693 aretes CITE loi←→jurisprudence ; `graph_rag.py` : FAISS seed + CITE expansion ; UI + eval integres | Done | KW=0.569 CitFaith=0.860 CtxCov=0.590 Halluc=0.411 Latence=2.88s (100 Q) — plus rapide que hybrid mais precision inferieure ; CITE_BOOST=0.12 a tuner |
 
 ---
 
@@ -38,7 +39,7 @@
 
 | Feature | Raison du report |
 | --- | --- |
-| Neo4j / LightRAG / PathRAG | Corpus petit (~500-2k articles), FAISS suffit |
+| LightRAG / PathRAG | Approche communautes de graphe, plus complexe que CITE simple |
 | QLoRA fine-tuning | Pas de GPU, prompt engineering + RAG d'abord |
 | LlamaGuard / Aporia guardrails | Prompt-level guardrails suffisent pour demo |
 | Prometheus / Grafana / wandb | Logs fichier suffisent, pas de prod |
@@ -52,11 +53,11 @@
 
 | Indicateur | Cible MVP | Resultat actuel | Phase de controle |
 | --- | --- | --- | --- |
-| Latence p95 (256 tokens) | < 3 s | 4.98 s hybrid (corpus enrichi) | Phase 9 |
-| Keyword Recall (test 50 Q) | >= 60 % | 64.6 % (hybrid v2) | Phase 9 |
-| Word F1 (test set) | >= 15 % | 22.3 % (hybrid v2) | Phase 9 |
-| Citation Faithfulness | >= 90 % | 94.0 % (hybrid v2) | Phase 9 |
-| Context Coverage | >= 65 % | 68.7 % (hybrid v2) | Phase 9 |
+| Latence p95 (256 tokens) | < 3 s | 4.98 s hybrid / **2.88 s graph** ✅ | Phase 9/11 |
+| Keyword Recall (test Q) | >= 60 % | 64.6 % hybrid (50 Q) / 56.9 % graph (100 Q) | Phase 9/11 |
+| Word F1 (test set) | >= 15 % | 22.3 % hybrid / 24.6 % graph | Phase 9/11 |
+| Citation Faithfulness | >= 90 % | 94.0 % hybrid / 86.0 % graph | Phase 9/11 |
+| Context Coverage | >= 65 % | 68.7 % hybrid / 59.0 % graph | Phase 9/11 |
 | Cout variable | 0 EUR (APIs gratuites) | 0 EUR | Toutes phases |
 
 ---
@@ -72,7 +73,7 @@
 | Vector store | FAISS IndexFlatIP | Corpus petit (<20k chunks), pas besoin de BDD vectorielle |
 | Retrieval | Hybrid BM25+FAISS (RRF) | BM25 pour termes juridiques exacts, FAISS pour semantique ; FAISS 0.4 / BM25 0.6 |
 | Artifacts | HF Hub dataset `Fascinax/veridicta-index` | FAISS+BM25+chunks (180 MB) telecharges au demarrage ; zero dépendance locale |
-| Knowledge Graph | Non (v2) | Overhead Neo4j injustifie pour < 2k docs |
+| Knowledge Graph | Neo4j 5 (Docker local) + `graph_rag.py` | 2789 Doc / 26517 Chunk / 1693 CITE edges ; CITE_BOOST=0.12 ; fallback FAISS si Neo4j down |
 | Fine-tuning | Non (v2) | Pas de GPU, prompt engineering d'abord |
 | Deploiement | Streamlit Cloud + HF Hub | Secrets via Streamlit Cloud ; artifacts depuis HF Hub au 1er boot (~2 min) |
 
