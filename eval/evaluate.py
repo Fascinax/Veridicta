@@ -46,6 +46,12 @@ from retrievers.baseline_rag import (
     retrieve,
 )
 
+try:
+    from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
+    _HYBRID_AVAILABLE = True
+except ImportError:
+    _HYBRID_AVAILABLE = False
+
 CEREBRAS_MODELS = [
     "llama3.1-8b",
     "gpt-oss-120b",
@@ -204,16 +210,25 @@ def run_eval(
     model: str | None = None,
     backend: str | None = None,
     workers: int = 4,
+    bm25=None,
 ) -> list[EvalResult]:
     active_backend = backend or LLM_BACKEND
     n = len(questions)
+    use_hybrid = bm25 is not None
 
     # Phase 1 — retrieval (sequential: SentenceTransformer is not thread-safe)
-    print(f"  Retrieving context for {n} questions ...", flush=True)
-    retrieved_all: list[list[dict]] = [
-        retrieve(q.question, index, chunks, embedder, k=k)
-        for q in questions
-    ]
+    retriever_label = "hybrid BM25+FAISS" if use_hybrid else "FAISS"
+    print(f"  Retrieving context for {n} questions  [{retriever_label}] ...", flush=True)
+    if use_hybrid:
+        retrieved_all: list[list[dict]] = [
+            hybrid_retrieve(q.question, index, bm25, chunks, embedder, k=k)
+            for q in questions
+        ]
+    else:
+        retrieved_all = [
+            retrieve(q.question, index, chunks, embedder, k=k)
+            for q in questions
+        ]
 
     if retrieval_only:
         results: list[EvalResult] = []
@@ -425,6 +440,12 @@ def _parse_args() -> argparse.Namespace:
         metavar="N",
         help="Parallel LLM workers for generation phase  (default: 4)",
     )
+    parser.add_argument(
+        "--retriever",
+        default="faiss",
+        choices=["faiss", "hybrid"],
+        help="Retriever to use: faiss (dense only) or hybrid (BM25+FAISS, default: faiss)",
+    )
     return parser.parse_args()
 
 
@@ -446,23 +467,35 @@ def main() -> None:
     index, chunks = load_index(index_dir)
     print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
 
+    bm25 = None
+    if args.retriever == "hybrid":
+        if not _HYBRID_AVAILABLE:
+            sys.exit("ERROR: rank_bm25 not installed. Run: pip install rank-bm25")
+        print("Loading BM25 index ...")
+        try:
+            bm25 = load_bm25_index(index_dir)
+        except FileNotFoundError as exc:
+            sys.exit(f"ERROR: {exc}")
+
     print("Loading embedder ...")
     embedder = _load_embedder()
 
     out_dir = Path(args.out)
+
+    retriever_label = f"hybrid ({args.retriever})" if args.retriever == "hybrid" else "faiss"
 
     if args.all_models:
         models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
         all_results: dict[str, list[EvalResult]] = {}
         for model_name in models:
             print(f"\n{'='*60}")
-            print(f"  Backend: {active_backend} | Model: {model_name}")
+            print(f"  Backend: {active_backend} | Model: {model_name} | Retriever: {retriever_label}")
             print(f"{'='*60}")
             results = run_eval(
                 questions, index, chunks, embedder,
                 k=args.k, retrieval_only=args.retrieval_only,
                 model=model_name, backend=active_backend,
-                workers=args.workers,
+                workers=args.workers, bm25=bm25,
             )
             print_report(results)
             save_results(results, out_dir / model_name.replace("/", "_"))
@@ -472,12 +505,12 @@ def main() -> None:
         model = args.model
         default_model = COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
         mode = "retrieval-only" if args.retrieval_only else f"full RAG ({active_backend}/{model or default_model})"
-        print(f"\nRunning evaluation  [k={args.k}, mode={mode}]\n")
+        print(f"\nRunning evaluation  [k={args.k}, retriever={retriever_label}, mode={mode}]\n")
         results = run_eval(
             questions, index, chunks, embedder,
             k=args.k, retrieval_only=args.retrieval_only,
             model=model, backend=active_backend,
-            workers=args.workers,
+            workers=args.workers, bm25=bm25,
         )
         print_report(results)
         save_results(results, out_dir)

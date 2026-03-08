@@ -7,6 +7,7 @@ sentence-transformers>=2.2.2
 
 # RAG et vectorisation
 faiss-cpu>=1.7.4
+rank-bm25>=0.2.2
 
 # LLM (Cerebras Cloud API — inference ultra-rapide, gratuit)
 cerebras-cloud-sdk>=1.0.0
