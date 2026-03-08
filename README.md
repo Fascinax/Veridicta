@@ -12,17 +12,19 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 
 | Indicateur              | Cible MVP   | Resultat         |
 | ----------------------- | ----------- | ---------------- |
-| Latence (256 tokens)    | < 3 s       | **~2.80 s**      |
-| Keyword Recall (50 Q)   | >= 60 %     | **65.9 %**       |
-| Word F1 (50 Q)          | >= 15 %     | **17.6 %**       |
+| Latence (256 tokens)    | < 3 s       | **~2.99 s**      |
+| Keyword Recall (50 Q)   | >= 60 %     | **67.1 %**       |
+| Word F1 (50 Q)          | >= 15 %     | **17.7 %**       |
 | Cout variable           | 0 EUR       | **0 EUR**        |
 
-Resultats obtenus avec `gpt-oss-120b` via Cerebras Cloud sur 50 questions gold standard et un corpus de 26 517 chunks (legislation, jurisprudence, Journal de Monaco).
+Resultats obtenus sur 50 questions gold standard, corpus 26 517 chunks (legislation, jurisprudence, Journal de Monaco).
 
-| Modele         | KW Recall | Word F1 | Latence |
-| -------------- | --------- | ------- | ------- |
-| gpt-oss-120b   | 0.659     | 0.176   | 2.80 s  |
-| llama3.1-8b    | 0.548     | 0.193   | 3.27 s  |
+| Modele         | KW Recall | Word F1 | Cit.Faith | Halluc.Risk | Latence |
+| -------------- | --------- | ------- | --------- | ----------- | ------- |
+| gpt-oss-120b   | 0.671     | 0.177   | 0.350     | 0.391       | 2.99 s  |
+| llama3.1-8b    | 0.556     | 0.195   | 0.734     | 0.342       | 4.47 s  |
+
+> **Note** : `gpt-oss-120b` a meilleur recall mais invente davantage de citations legales (Cit.Faith=0.35). `llama3.1-8b` est plus fidele aux sources (Cit.Faith=0.73) mais plus lent.
 
 ## 3. Stack technologique
 
@@ -33,7 +35,7 @@ Resultats obtenus avec `gpt-oss-120b` via Cerebras Cloud sur 50 questions gold s
 | **Retrieval**   | FAISS IndexFlatIP (26 517 vecteurs)                           |
 | **LLM**         | Cerebras Cloud (`gpt-oss-120b`, `llama3.1-8b`) -- gratuit     |
 | **UI**          | Streamlit (chat conversationnel, sources cliquables)          |
-| **Evaluation**  | 50 questions gold standard, keyword recall, F1, latence       |
+| **Evaluation**  | 50 questions gold standard, KW recall, F1, citation faithfulness, hallucination risk |
 | **Scraping**    | API Elasticsearch LegiMonaco + Playwright Journal de Monaco   |
 
 ### Hors scope MVP (v2)
@@ -56,7 +58,7 @@ Veridicta/
 |   +-- baseline_rag.py         # FAISS retrieval + Cerebras LLM generation
 |   +-- neo4j_setup.py          # [v2] Graphe de connaissances
 +-- eval/
-|   +-- evaluate.py             # Metriques multi-modeles (KW recall, F1, latence)
+|   +-- evaluate.py             # Metriques multi-modeles (KW recall, F1, citation faithfulness, halluc. risk)
 |   +-- test_questions.json     # 50 questions gold standard droit du travail MCO
 +-- ui/
 |   +-- app.py                  # Interface Streamlit (chat + sources)
