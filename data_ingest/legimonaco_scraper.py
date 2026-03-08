@@ -1,4 +1,4 @@
-"""LegiMonaco scraper -- collects Monegasque labour law corpus via Elasticsearch API.
+﻿"""LegiMonaco scraper -- collects Monegasque labour law corpus via Elasticsearch API.
 
 Two document types are collected:
 - legislation: laws, ordinances, decrees with full body text

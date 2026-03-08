@@ -1,179 +1,205 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Traitement et normalisation des données juridiques brutes
+"""Chunk and normalise the raw LegiMonaco corpus for embedding.
+
+Reads:
+  data/raw/legislation.jsonl
+  data/raw/jurisprudence.jsonl
+
+Writes:
+  data/processed/chunks.jsonl
+
+Each chunk record: chunk_id, doc_id, chunk_index, total_chunks,
+titre, text, date, source, type, metadata.
+
+Usage:
+    python -m data_ingest.data_processor
+    python -m data_ingest.data_processor --raw data/raw --out data/processed
 """
 
-import os
-import json
-import jsonlines
+from __future__ import annotations
+
+import argparse
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+from typing import Iterator
 
-import pandas as pd
+import jsonlines
 from tqdm import tqdm
 
-# Configuration du logger
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger('data_processor')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
-# Chemins des fichiers
-DATA_DIR = Path(__file__).parent.parent / "data"
-RAW_DIR = DATA_DIR / "raw"
-PROCESSED_DIR = DATA_DIR / "processed"
-os.makedirs(PROCESSED_DIR, exist_ok=True)
+CHUNK_SIZE = 1800
+CHUNK_OVERLAP = 200
+MIN_CHUNK_SIZE = 100
+HARD_MAX_CHUNK = 2200  # absolute ceiling — splits on spaces when no structure exists
 
-def read_jsonl(file_path: Path) -> List[Dict[str, Any]]:
-    """
-    Lit un fichier JSONL et retourne une liste de dictionnaires.
-    
-    Args:
-        file_path: Chemin vers le fichier JSONL
-        
-    Returns:
-        Une liste de dictionnaires contenus dans le fichier
-    """
-    data = []
-    try:
-        with jsonlines.open(file_path) as reader:
-            for item in reader:
-                data.append(item)
-        logger.info(f"Lu {len(data)} éléments depuis {file_path}")
-        return data
-    except Exception as e:
-        logger.error(f"Erreur lors de la lecture du fichier {file_path}: {e}")
-        return []
+RAW_FILES = ["legislation.jsonl", "jurisprudence.jsonl"]
+OUTPUT_FILE = "chunks.jsonl"
 
-def clean_text(text: str) -> str:
-    """
-    Nettoie et normalise un texte.
-    
-    Args:
-        text: Le texte à nettoyer
-        
-    Returns:
-        Le texte nettoyé
-    """
-    if not text:
-        return ""
-    
-    # Supprimer les caractères de contrôle et les espaces multiples
-    text = re.sub(r'[\x00-\x1F\x7F]', '', text)
-    text = re.sub(r'\s+', ' ', text)
-    
-    # Normaliser les apostrophes et les guillemets
-    text = text.replace("'", "'").replace('"', '"').replace('"', '"')
-    
+
+def _clean_text(text: str) -> str:
+    text = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    text = re.sub(r"\r\n|\r", "\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
-def standardize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Normalise un document juridique au format standard du projet.
-    
-    Args:
-        doc: Le document source
-        
-    Returns:
-        Le document normalisé
-    """
-    # Structure standard pour tous les documents
-    standardized = {
-        "id": doc.get("id", ""),
-        "titre": clean_text(doc.get("titre", "")),
-        "text": clean_text(doc.get("text", "")),
-        "date": doc.get("date", ""),
-        "source": doc.get("source", ""),
-        "metadata": {}
-    }
-    
-    # Ajouter des métadonnées spécifiques selon la source
-    if doc.get("source") == "legifrance":
-        standardized["metadata"]["code"] = doc.get("code", "")
-        standardized["metadata"]["article_id"] = doc.get("article_id", "")
-    elif doc.get("source") == "jurica":
-        standardized["metadata"]["juridiction"] = doc.get("juridiction", "")
-        standardized["metadata"]["type_decision"] = doc.get("type_decision", "")
-    
-    # Vérifier et corriger le format de date si nécessaire
-    if standardized["date"]:
-        try:
-            # Convertir toutes les dates au format ISO
-            date_obj = datetime.strptime(standardized["date"], "%Y-%m-%d")
-            standardized["date"] = date_obj.strftime("%Y-%m-%d")
-        except ValueError:
-            try:
-                # Essayer un autre format courant
-                date_obj = datetime.strptime(standardized["date"], "%d/%m/%Y")
-                standardized["date"] = date_obj.strftime("%Y-%m-%d")
-            except ValueError:
-                logger.warning(f"Format de date invalide pour le document {standardized['id']}: {standardized['date']}")
-                standardized["date"] = ""
-    
-    return standardized
 
-def process_documents(input_files: List[Path], output_file: Path) -> None:
-    """
-    Traite plusieurs fichiers JSONL et les combine dans un seul fichier normalisé.
-    
-    Args:
-        input_files: Liste des chemins vers les fichiers d'entrée
-        output_file: Chemin du fichier de sortie
-    """
-    all_documents = []
-    
-    # Lire tous les documents d'entrée
-    for file_path in input_files:
-        if not file_path.exists():
-            logger.warning(f"Le fichier {file_path} n'existe pas.")
-            continue
-        
-        documents = read_jsonl(file_path)
-        logger.info(f"Traitement de {len(documents)} documents depuis {file_path}")
-        
-        # Standardiser chaque document
-        standardized_docs = []
-        for doc in tqdm(documents, desc=f"Traitement {file_path.name}"):
-            std_doc = standardize_document(doc)
-            standardized_docs.append(std_doc)
-        
-        all_documents.extend(standardized_docs)
-    
-    # Supprimer les doublons en se basant sur l'ID
-    unique_docs = {}
-    for doc in all_documents:
-        unique_docs[doc["id"]] = doc
-    
-    all_documents = list(unique_docs.values())
-    logger.info(f"Total après déduplication: {len(all_documents)} documents")
-    
-    # Enregistrer les documents normalisés
-    with jsonlines.open(output_file, mode='w') as writer:
-        for doc in all_documents:
-            writer.write(doc)
-    
-    logger.info(f"Documents normalisés enregistrés dans {output_file}")
+def _split_into_paragraphs(text: str) -> list[str]:
+    parts = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
+    if len(parts) <= 1:
+        parts = [p.strip() for p in text.split("\n") if p.strip()]
+    # Hard-cap: break any paragraph that still exceeds HARD_MAX_CHUNK on word boundaries
+    result = []
+    for part in parts:
+        if len(part) <= HARD_MAX_CHUNK:
+            result.append(part)
+        else:
+            words = part.split(" ")
+            current = []
+            current_len = 0
+            for word in words:
+                if current_len + len(word) + 1 > HARD_MAX_CHUNK and current:
+                    result.append(" ".join(current))
+                    current = []
+                    current_len = 0
+                current.append(word)
+                current_len += len(word) + 1
+            if current:
+                result.append(" ".join(current))
+    return result
 
-def main():
-    """Point d'entrée principal du script."""
-    logger.info("Démarrage du traitement des données juridiques")
-    
-    # Fichiers à traiter
-    input_files = [
-        RAW_DIR / "code_travail.jsonl",
-        RAW_DIR / "jurica_travail.jsonl",
-        RAW_DIR / "jurica_civil.jsonl"
+
+def _build_chunks(paragraphs: list[str]) -> list[str]:
+    chunks: list[str] = []
+    current_parts: list[str] = []
+    current_len = 0
+    for para in paragraphs:
+        if current_len + len(para) > CHUNK_SIZE and current_parts:
+            chunk_text = " ".join(current_parts).strip()
+            if len(chunk_text) >= MIN_CHUNK_SIZE:
+                chunks.append(chunk_text)
+            overlap = chunk_text[-CHUNK_OVERLAP:]
+            current_parts = [overlap]
+            current_len = len(overlap)
+        current_parts.append(para)
+        current_len += len(para)
+    if current_parts:
+        final = " ".join(current_parts).strip()
+        if len(final) >= MIN_CHUNK_SIZE:
+            chunks.append(final)
+    return chunks
+
+
+def chunk_document(text: str) -> list[str]:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return []
+    return _build_chunks(_split_into_paragraphs(cleaned))
+
+
+@dataclass
+class ChunkRecord:
+    chunk_id: str
+    doc_id: str
+    chunk_index: int
+    total_chunks: int
+    titre: str
+    text: str
+    date: str
+    source: str
+    type: str
+    metadata: dict
+
+    def to_dict(self) -> dict:
+        return {
+            "chunk_id": self.chunk_id,
+            "doc_id": self.doc_id,
+            "chunk_index": self.chunk_index,
+            "total_chunks": self.total_chunks,
+            "titre": self.titre,
+            "text": self.text,
+            "date": self.date,
+            "source": self.source,
+            "type": self.type,
+            "metadata": self.metadata,
+        }
+
+
+def _document_to_chunks(doc: dict) -> list[ChunkRecord]:
+    chunks = chunk_document(doc.get("text", ""))
+    if not chunks:
+        return []
+    doc_id = doc.get("id", "")
+    total = len(chunks)
+    return [
+        ChunkRecord(
+            chunk_id=f"{doc_id}-{i}",
+            doc_id=doc_id,
+            chunk_index=i,
+            total_chunks=total,
+            titre=doc.get("titre", ""),
+            text=chunk,
+            date=doc.get("date", ""),
+            source=doc.get("source", ""),
+            type=doc.get("type", ""),
+            metadata=doc.get("metadata", {}),
+        )
+        for i, chunk in enumerate(chunks)
     ]
-    
-    # Traitement et fusion des documents
-    process_documents(input_files, PROCESSED_DIR / "corpus_juridique.jsonl")
-    
-    logger.info("Traitement terminé avec succès")
+
+
+def _iter_raw_documents(raw_dir: Path) -> Iterator[dict]:
+    for filename in RAW_FILES:
+        path = raw_dir / filename
+        if not path.exists():
+            logger.warning("Raw file not found, skipping: %s", path)
+            continue
+        with jsonlines.open(path) as reader:
+            for doc in reader:
+                yield doc
+
+
+def process(raw_dir: Path, output_path: Path) -> int:
+    """Chunk all raw documents and write to output_path. Returns chunk count."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    total_docs = 0
+    total_chunks = 0
+    skipped = 0
+    with jsonlines.open(output_path, mode="w") as writer:
+        for doc in tqdm(_iter_raw_documents(raw_dir), desc="Processing docs"):
+            total_docs += 1
+            chunk_records = _document_to_chunks(doc)
+            if not chunk_records:
+                skipped += 1
+                continue
+            writer.write_all(r.to_dict() for r in chunk_records)
+            total_chunks += len(chunk_records)
+    logger.info(
+        "Processed %d docs -> %d chunks (%d skipped empty) -> %s",
+        total_docs, total_chunks, skipped, output_path,
+    )
+    return total_chunks
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Chunk and normalise raw LegiMonaco corpus for embedding."
+    )
+    parser.add_argument("--raw", default="data/raw", metavar="DIR",
+                        help="Directory containing raw JSONL files.")
+    parser.add_argument("--out", default="data/processed", metavar="DIR",
+                        help="Output directory (default: data/processed).")
+    return parser
+
+
+def main() -> None:
+    args = _build_parser().parse_args()
+    n = process(Path(args.raw), Path(args.out) / OUTPUT_FILE)
+    logger.info("Done. Total chunks: %d", n)
+
 
 if __name__ == "__main__":
     main()
