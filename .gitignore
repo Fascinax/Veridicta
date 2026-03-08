@@ -40,9 +40,11 @@ pip-delete-this-directory.txt
 data/raw/*
 data/processed/*
 data/embeddings/*
+data/index/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/embeddings/.gitkeep
+!data/index/.gitkeep
 
 # Modèles et checkpoints spécifiques
 models/*.safetensors

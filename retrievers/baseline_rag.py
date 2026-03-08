@@ -1,280 +1,265 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Prototype de base pour le système RAG (Retrieval Augmented Generation)
+"""Baseline RAG retriever for Veridicta — Monegasque labour law assistant.
+
+Pipeline:
+    chunks.jsonl -> multilingual-e5 embeddings -> FAISS IndexFlatIP
+    Query -> embed -> FAISS search -> top-k chunks -> Groq Llama 3.1 -> answer
+
+Build index:
+    python -m retrievers.baseline_rag --build
+
+Query:
+    python -m retrievers.baseline_rag --query "..." [--k 5]
 """
 
-import os
-import json
-import jsonlines
+from __future__ import annotations
+
+import argparse
 import logging
+import os
+import sys
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
 
-import numpy as np
-import pandas as pd
 import faiss
-from tqdm import tqdm
+import jsonlines
+import numpy as np
+from dotenv import load_dotenv
+from groq import Groq
 from sentence_transformers import SentenceTransformer
-from langchain.prompts import PromptTemplate
-from langchain.output_parsers import StrOutputParser
 
-# Configuration du logger
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+# --- Constants ---
+
+EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+EMBED_BATCH_SIZE = 64
+GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_TOP_K = 5
+MAX_CONTEXT_CHARS = 12_000
+
+INDEX_DIR = Path("data/index")
+FAISS_FILENAME = "veridicta.faiss"
+CHUNKS_MAP_FILENAME = "chunks_map.jsonl"
+CHUNKS_PATH = Path("data/processed/chunks.jsonl")
+
+SYSTEM_PROMPT = (
+    "Tu es Veridicta, un assistant juridique expert en droit du travail monegasque.\n"
+    "Tu reponds en francais, avec precision, en citant tes sources (titre, date, type).\n"
+    "Si les sources fournies sont insuffisantes, indique-le honnetement.\n"
+    "Ne fabrique jamais d'information absente des sources."
 )
-logger = logging.getLogger('baseline_rag')
 
-# Chemins des fichiers
-DATA_DIR = Path(__file__).parent.parent / "data"
-PROCESSED_DIR = DATA_DIR / "processed"
-EMBEDDINGS_DIR = DATA_DIR / "embeddings"
-os.makedirs(EMBEDDINGS_DIR, exist_ok=True)
 
-# Configuration du modèle d'embeddings
-MODEL_NAME = "distiluse-base-multilingual-cased-v1"  # À remplacer par MiniLM-FR plus tard
+# --- Embedding ---
 
-class BaselineRAG:
-    """Implémentation de base du système RAG pour le droit français"""
-    
-    def __init__(self, corpus_path: Path = PROCESSED_DIR / "corpus_juridique.jsonl",
-                 embeddings_path: Path = EMBEDDINGS_DIR / "faiss_index",
-                 model_name: str = MODEL_NAME):
-        """
-        Initialise le système RAG.
-        
-        Args:
-            corpus_path: Chemin vers le corpus juridique
-            embeddings_path: Chemin pour sauvegarder/charger les embeddings
-            model_name: Nom du modèle SentenceTransformer à utiliser
-        """
-        self.corpus_path = corpus_path
-        self.embeddings_path = embeddings_path
-        self.model_name = model_name
-        
-        # Chargement du modèle d'embeddings
-        self.embedding_model = SentenceTransformer(model_name)
-        self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
-        
-        # Index FAISS et documents
-        self.index = None
-        self.documents = []
-        self.doc_ids = []
-        
-        # Template de prompt RAG
-        self.rag_template = """
-        Tâche: En tant qu'assistant juridique spécialisé dans le droit français, réponds à la question de l'utilisateur en utilisant uniquement les informations des articles et décisions fournis ci-dessous. 
-        Ne fais pas de supposition et ne cite pas de textes juridiques qui ne seraient pas inclus dans les sources.
 
-        Sources:
-        {sources}
-        
-        Question: {query}
-        
-        Réponds de manière claire, concise et précise en te basant uniquement sur les sources fournies. 
-        Cite les références exactes (numéros d'articles, décisions) entre parenthèses pour justifier ta réponse.
-        Si les sources ne contiennent pas suffisamment d'informations pour répondre, indique-le honnêtement.
-        
-        Réponse:
-        """
-        self.rag_prompt = PromptTemplate.from_template(self.rag_template)
-    
-    def load_documents(self) -> None:
-        """Charge les documents du corpus"""
-        if not self.corpus_path.exists():
-            logger.error(f"Le corpus n'existe pas: {self.corpus_path}")
-            return
-        
-        try:
-            with jsonlines.open(self.corpus_path) as reader:
-                self.documents = []
-                self.doc_ids = []
-                
-                for doc in reader:
-                    # Nous devons créer des chunks pour que le retrieval soit plus précis
-                    chunks = self._split_document(doc)
-                    self.documents.extend(chunks)
-                    self.doc_ids.extend([doc["id"]] * len(chunks))
-            
-            logger.info(f"Chargé {len(self.documents)} chunks depuis {self.corpus_path}")
-        except Exception as e:
-            logger.error(f"Erreur lors du chargement du corpus: {e}")
-    
-    def _split_document(self, doc: Dict[str, Any]) -> List[str]:
-        """
-        Divise un document en chunks pour un meilleur retrieval.
-        
-        Args:
-            doc: Document à diviser
-            
-        Returns:
-            Liste des chunks de texte
-        """
-        # Méthode simple pour diviser en paragraphes
-        text = doc["text"]
-        title = doc["titre"]
-        
-        # Ajouter le titre comme premier chunk
-        chunks = [title]
-        
-        # Diviser en paragraphes (approximatif)
-        paragraphs = text.split('\n\n')
-        chunks.extend([p.strip() for p in paragraphs if p.strip()])
-        
-        # Si le texte est court, le considérer comme un seul chunk
-        if len(chunks) <= 1:
-            return [text]
-        
-        return chunks
-    
-    def build_index(self) -> None:
-        """Construit l'index FAISS à partir des documents chargés"""
-        if not self.documents:
-            logger.warning("Aucun document chargé. Veuillez d'abord charger le corpus.")
-            return
-        
-        logger.info("Calcul des embeddings...")
-        embeddings = []
-        
-        # Calculer les embeddings par batch pour optimiser
-        batch_size = 32
-        for i in tqdm(range(0, len(self.documents), batch_size)):
-            batch = self.documents[i:i+batch_size]
-            batch_embeddings = self.embedding_model.encode(batch)
-            embeddings.extend(batch_embeddings)
-        
-        # Convertir en numpy array
-        embeddings_array = np.array(embeddings).astype('float32')
-        
-        # Créer l'index FAISS
-        logger.info("Création de l'index FAISS...")
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
-        self.index.add(embeddings_array)
-        
-        # Sauvegarder l'index et les métadonnées
-        logger.info(f"Sauvegarde de l'index dans {self.embeddings_path}...")
-        os.makedirs(self.embeddings_path.parent, exist_ok=True)
-        faiss.write_index(self.index, str(self.embeddings_path) + ".index")
-        
-        # Sauvegarder les documents et IDs
-        with open(str(self.embeddings_path) + ".json", "w") as f:
-            json.dump({
-                "documents": self.documents,
-                "doc_ids": self.doc_ids
-            }, f)
-        
-        logger.info("Index FAISS construit et sauvegardé avec succès.")
-    
-    def load_index(self) -> bool:
-        """
-        Charge l'index FAISS et les documents associés.
-        
-        Returns:
-            True si le chargement a réussi, False sinon
-        """
-        index_path = str(self.embeddings_path) + ".index"
-        docs_path = str(self.embeddings_path) + ".json"
-        
-        if not os.path.exists(index_path) or not os.path.exists(docs_path):
-            logger.warning(f"L'index ou les documents n'existent pas: {self.embeddings_path}")
-            return False
-        
-        try:
-            # Charger l'index
-            self.index = faiss.read_index(index_path)
-            
-            # Charger les documents
-            with open(docs_path, "r") as f:
-                data = json.load(f)
-                self.documents = data["documents"]
-                self.doc_ids = data["doc_ids"]
-            
-            logger.info(f"Index chargé avec {self.index.ntotal} vecteurs et {len(self.documents)} documents")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur lors du chargement de l'index: {e}")
-            return False
-    
-    def retrieve(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
-        """
-        Récupère les documents les plus pertinents pour une requête.
-        
-        Args:
-            query: La question ou requête
-            k: Nombre de documents à récupérer
-            
-        Returns:
-            Liste des documents les plus pertinents
-        """
-        if self.index is None:
-            logger.error("L'index n'est pas chargé")
-            return []
-        
-        # Calculer l'embedding de la requête
-        query_embedding = self.embedding_model.encode([query])[0].reshape(1, -1).astype('float32')
-        
-        # Rechercher les plus proches voisins
-        distances, indices = self.index.search(query_embedding, k)
-        
-        # Récupérer les documents correspondants
-        results = []
-        for i, idx in enumerate(indices[0]):
-            if idx < len(self.documents):
-                results.append({
-                    "text": self.documents[idx],
-                    "doc_id": self.doc_ids[idx],
-                    "score": float(distances[0][i])
-                })
-        
-        return results
-    
-    def generate_response(self, query: str, k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
-        """
-        Génère une réponse à une question en utilisant le RAG.
-        
-        Args:
-            query: La question posée
-            k: Nombre de documents à récupérer
-            
-        Returns:
-            Tuple contenant la réponse générée et les sources utilisées
-        """
-        # TODO: Dans la phase suivante, cette fonction sera complétée avec LLM
-        sources = self.retrieve(query, k)
-        
-        if not sources:
-            return "Je n'ai pas pu accéder aux sources juridiques nécessaires pour répondre à cette question.", []
-        
-        # Format des sources pour le prompt
-        formatted_sources = "\n\n".join([f"Source {i+1}: {source['text']}" for i, source in enumerate(sources)])
-        
-        # TODO: Intégrer un LLM ici pour générer la réponse finale
-        # Pour l'instant, retourne un message de placeholder
-        response = f"À implémenter dans la phase 2: intégration du LLM pour générer une réponse basée sur les sources suivantes: {', '.join([s['doc_id'] for s in sources])}"
-        
-        return response, sources
+def _load_embedder() -> SentenceTransformer:
+    logger.info("Loading embedder: %s", EMBED_MODEL)
+    return SentenceTransformer(EMBED_MODEL)
 
-def main():
-    """Point d'entrée principal du script."""
-    logger.info("Initialisation du système RAG de base")
-    
-    rag = BaselineRAG()
-    
-    # Vérifier si l'index existe
-    if not rag.load_index():
-        logger.info("Construction d'un nouvel index...")
-        rag.load_documents()
-        rag.build_index()
-    
-    # Test simple avec une requête
-    query = "Quelles sont les indemnités légales de licenciement?"
-    logger.info(f"Test avec la requête: '{query}'")
-    
-    response, sources = rag.generate_response(query)
-    
-    logger.info(f"Réponse: {response}")
-    logger.info(f"Sources: {len(sources)} documents récupérés")
+
+def _embed_passages(texts: list[str], embedder: SentenceTransformer) -> np.ndarray:
+    """Embed a list of passages with L2 normalisation for cosine similarity."""
+    vectors = embedder.encode(
+        texts,
+        batch_size=EMBED_BATCH_SIZE,
+        show_progress_bar=True,
+        normalize_embeddings=True,
+    )
+    return np.array(vectors, dtype="float32")
+
+
+def _embed_query(query: str, embedder: SentenceTransformer) -> np.ndarray:
+    """Embed a single query with L2 normalisation."""
+    vector = embedder.encode(query, normalize_embeddings=True)
+    return np.array(vector, dtype="float32").reshape(1, -1)
+
+
+# --- Index build ---
+
+
+def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) -> None:
+    """Embed all chunks and write FAISS index + chunk map to index_dir."""
+    index_dir.mkdir(parents=True, exist_ok=True)
+    faiss_path = index_dir / FAISS_FILENAME
+    map_path = index_dir / CHUNKS_MAP_FILENAME
+
+    logger.info("Loading chunks from %s", chunks_path)
+    chunks: list[dict] = []
+    with jsonlines.open(chunks_path) as reader:
+        for doc in reader:
+            chunks.append(doc)
+    logger.info("Loaded %d chunks", len(chunks))
+
+    texts = [c["text"] for c in chunks]
+    embedder = _load_embedder()
+
+    logger.info("Embedding %d passages in batches of %d ...", len(texts), EMBED_BATCH_SIZE)
+    vectors = _embed_passages(texts, embedder)
+
+    dim = vectors.shape[1]
+    index = faiss.IndexFlatIP(dim)
+    index.add(vectors)
+
+    faiss.write_index(index, str(faiss_path))
+    logger.info("FAISS index saved: %s (%d vectors, dim=%d)", faiss_path, index.ntotal, dim)
+
+    with jsonlines.open(map_path, mode="w") as writer:
+        writer.write_all(chunks)
+    logger.info("Chunk map saved: %s", map_path)
+
+
+# --- Index load ---
+
+
+def load_index(index_dir: Path = INDEX_DIR) -> tuple[faiss.Index, list[dict]]:
+    """Load FAISS index and chunk map. Raises FileNotFoundError if not yet built."""
+    faiss_path = index_dir / FAISS_FILENAME
+    map_path = index_dir / CHUNKS_MAP_FILENAME
+
+    if not faiss_path.exists() or not map_path.exists():
+        raise FileNotFoundError(f"Index not found in {index_dir}. Run --build first.")
+
+    index = faiss.read_index(str(faiss_path))
+    chunks: list[dict] = []
+    with jsonlines.open(map_path) as reader:
+        chunks = list(reader)
+
+    logger.info("Index loaded: %d vectors, %d chunks", index.ntotal, len(chunks))
+    return index, chunks
+
+
+# --- Retrieval ---
+
+
+def retrieve(
+    query: str,
+    index: faiss.Index,
+    chunks: list[dict],
+    embedder: SentenceTransformer,
+    k: int = DEFAULT_TOP_K,
+) -> list[dict]:
+    """Return the top-k chunks most relevant to query with cosine similarity scores."""
+    query_vec = _embed_query(query, embedder)
+    scores, indices = index.search(query_vec, k)
+    results = []
+    for score, idx in zip(scores[0], indices[0]):
+        if 0 <= idx < len(chunks):
+            results.append({**chunks[idx], "score": float(score)})
+    return results
+
+
+# --- Generation ---
+
+
+def _format_context(chunks: list[dict]) -> str:
+    """Format retrieved chunks into a numbered context block capped at MAX_CONTEXT_CHARS."""
+    parts: list[str] = []
+    total_chars = 0
+    for i, chunk in enumerate(chunks, 1):
+        header = f"[Source {i}] {chunk['titre']} ({chunk['type']}, {chunk['date']})"
+        entry = f"{header}\n{chunk['text']}"
+        if total_chars + len(entry) > MAX_CONTEXT_CHARS:
+            break
+        parts.append(entry)
+        total_chars += len(entry)
+    return "\n\n---\n\n".join(parts)
+
+
+def answer(query: str, context_chunks: list[dict]) -> str:
+    """Generate a grounded answer via Groq Llama 3.1 from retrieved context chunks."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise EnvironmentError("GROQ_API_KEY not set. Add it to your .env file.")
+
+    context = _format_context(context_chunks)
+    user_message = f"Sources:\n\n{context}\n\nQuestion: {query}"
+
+    client = Groq(api_key=api_key)
+    completion = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=0.1,
+        max_tokens=1024,
+    )
+    return completion.choices[0].message.content
+
+
+# --- CLI ---
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Veridicta baseline RAG: embed, index, and query Monegasque labour law."
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--build", action="store_true",
+        help="Build FAISS index from chunks.jsonl",
+    )
+    group.add_argument(
+        "--query", metavar="QUESTION",
+        help="Ask a question in French",
+    )
+    parser.add_argument(
+        "--k", type=int, default=DEFAULT_TOP_K, metavar="K",
+        help=f"Number of chunks to retrieve (default: {DEFAULT_TOP_K})",
+    )
+    parser.add_argument(
+        "--chunks", default=str(CHUNKS_PATH), metavar="PATH",
+        help="Path to chunks.jsonl used during --build",
+    )
+    parser.add_argument(
+        "--index-dir", default=str(INDEX_DIR), metavar="DIR",
+        help="Directory for FAISS index files (default: data/index)",
+    )
+    return parser
+
+
+def main() -> None:
+    args = _build_parser().parse_args()
+    index_dir = Path(args.index_dir)
+
+    if args.build:
+        build_index(Path(args.chunks), index_dir)
+        return
+
+    try:
+        index, chunks = load_index(index_dir)
+    except FileNotFoundError as exc:
+        logger.error(str(exc))
+        sys.exit(1)
+
+    embedder = _load_embedder()
+    results = retrieve(args.query, index, chunks, embedder, args.k)
+
+    if not results:
+        print("No relevant sources found.")
+        return
+
+    separator = "=" * 60
+    print(f"\n{separator}")
+    print(f"Query: {args.query}")
+    print(f"{separator}\n")
+
+    print(f"Top {len(results)} sources retrieved:")
+    for i, r in enumerate(results, 1):
+        print(f"  {i}. [score={r['score']:.3f}] {r['titre'][:70]} ({r['type']}, {r['date']})")
+
+    print("\nGenerating answer ...")
+    try:
+        response_text = answer(args.query, results)
+    except EnvironmentError as exc:
+        logger.error(str(exc))
+        sys.exit(1)
+
+    print(f"\n{response_text}\n")
+
 
 if __name__ == "__main__":
     main()
