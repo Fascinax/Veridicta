@@ -233,7 +233,7 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
         retriever_label = "Hybrid BM25+FAISS" if retriever == "Hybrid (BM25+FAISS)" else "FAISS"
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
-            "Corpus : 2 867 documents (3 sources)<br>"
+            "Corpus : législation · jurisprudence · JOM<br>"
             "Index : 26 517 chunks MiniLM-L12<br>"
             f"Backend : {backend} ({model})<br>"
             f"Retriever : {retriever_label}"
@@ -278,7 +278,12 @@ def _render_sources(chunks: list[dict]) -> None:
         if len(c["text"]) > 220:
             snippet += "…"
 
-        type_label = "Loi" if doc_type == "legislation" else "Jurisprudence"
+        type_label_map = {
+            "legislation": "Loi",
+            "jurisprudence": "Jurisprudence",
+            "journal_monaco": "Journal de Monaco",
+        }
+        type_label = type_label_map.get(doc_type, doc_type.capitalize() if doc_type else "Source")
 
         st.markdown(
             f"""<div class="source-card">
@@ -330,6 +335,29 @@ def main() -> None:
     # Chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    # Empty state — welcome message
+    if not st.session_state.messages:
+        st.markdown(
+            """
+            <div style="text-align:center;padding:3rem 1rem 2rem;color:#6b7694">
+              <div style="font-size:2.5rem;margin-bottom:0.5rem">⚖️</div>
+              <div style="font-size:1.1rem;color:#a0a9c0;font-weight:500;margin-bottom:0.5rem">
+                Bienvenue sur Veridicta
+              </div>
+              <div style="font-size:0.85rem;max-width:520px;margin:0 auto;line-height:1.6">
+                Posez une question sur le <strong style="color:#e8d5a3">droit du travail monégasque</strong> :
+                licenciement, congés, contrats, salaires, conventions collectives…
+              </div>
+              <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center">
+                <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Quelles sont les indemnités de licenciement ?</span>
+                <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Durée du préavis pour un CDI ?</span>
+                <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Congés payés en droit monégasque ?</span>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # Replay history
     for msg in st.session_state.messages:
