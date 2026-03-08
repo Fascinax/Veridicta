@@ -6,6 +6,7 @@ Run:
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 import time
@@ -16,8 +17,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Inject Streamlit Cloud secrets into os.environ (no-op locally) ────────────
+# Must happen before any module reads os.getenv() for API keys.
+_SECRET_KEYS = [
+    "CEREBRAS_API_KEY", "GITHUB_PAT", "HF_API_TOKEN",
+    "HUGGINGFACE_TOKEN", "LLM_BACKEND", "LLM_MODEL",
+]
+try:
+    for _k in _SECRET_KEYS:
+        _v = st.secrets.get(_k)
+        if _v and not os.getenv(_k):
+            os.environ[_k] = str(_v)
+except Exception:
+    pass  # Running locally without secrets.toml — fine
+
 # Make project root importable when launched as `streamlit run ui/app.py`
-sys.path.insert(0, str(Path(__file__).parent.parent))
+_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(_ROOT))
+
+# ── Download index artifacts from HuggingFace Hub if missing (Streamlit Cloud) ─
+try:
+    from retrievers.artifacts import ensure_artifacts  # noqa: E402
+    ensure_artifacts(root=_ROOT)
+except Exception as _artifact_err:
+    st.warning(f"Artifact check failed: {_artifact_err}")
 
 from retrievers.baseline_rag import (
     DEFAULT_TOP_K,
