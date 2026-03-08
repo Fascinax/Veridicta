@@ -35,10 +35,27 @@
 
 ---
 
-## Hors scope MVP (v2)
+## Phases v1.x — Optimisations stack (post-MVP)
+
+> Objectif : remplacer les composants les moins efficaces par des alternatives verifiees, sans changer l'architecture globale.
+
+| Phase | Livrables cles | Priorite | Effort | Impact attendu |
+| --- | --- | --- | --- | --- |
+| **12. bm25s** | Remplacer `rank-bm25` par `bm25s` dans `hybrid_rag.py` ; stemmer francais natif via PyStemmer (`stemmer="french"`) ; `.save()` / `.load()` natif (fin du pickle maison) | P0 | Faible (drop-in) | Indexation ~42x plus rapide (573 vs 13 QPS sur benchmark arguana) ; stemming FR ameliore sans code custom |
+| **12bis. Prompt Engineering v2/v3** | Iterer sur `SYSTEM_PROMPT` dans `baseline_rag.py` ; tester structures (bullet points thematiques, citation obligatoire de numeros de loi) ; `--prompt-version` flag dans `evaluate.py` deja implemente | P0 | Faible | **+16.5% KW Recall** mesure (0.363 -> 0.423) sans cout infra ; trade-off a gerer : F1 baisse (-33%) car reponses plus longues divergent du format reference |
+| **13. FlashRank** | Remplacer `cross-encoder` (sentence-transformers + PyTorch) par `FlashRank` dans `reranker.py` ; modele `ms-marco-MultiBERT-L-12` (ONNX, 100+ langues, 150 MB) | P2 | Faible | Suppression de PyTorch comme dependance (-~2 GB) ; reranking CPU-only natif ; modele multilingue (vs ms-marco-MiniLM anglais-only actuel) — **NB : reranker cross-encoder actuel degrade KW Recall de -1.5% sur notre corpus FR ; a re-evaluer apres Phase 16 (Solon)** |
+
+| **15. Ragas (eval complementaire)** | Ajouter `Faithfulness` + `ContextPrecision` ragas en parallele des metriques custom existantes dans `evaluate.py` ; adaptation langue via `prompt.adapt(target_language="french", llm=llm)` | P1 | Moyen | Metriques LLM-as-judge (claim-level) plus fines que citation_faithfulness par regex ; garder keyword_recall + word_f1 (gratuits, deterministes) |
+| **16. Solon embeddings** | Remplacer `paraphrase-multilingual-MiniLM-L12-v2` (384d) par `OrdalieTech/Solon-embeddings-large-0.1` (1024d) ; re-encoder tous les chunks ; reconstruire index FAISS + BM25 | P2 | Eleve | Score MTEB FR 0.749 vs ~0.598 (+25%) ; mMARCO-fr nDCG@10=35.8 Recall@100=82.7 ; **prerequis** : prefix `"query: "` sur les requetes, re-upload HF Hub (~500 MB) |
+
+---
+
+## Hors scope (v2+)
 
 | Feature | Raison du report |
 | --- | --- |
+| LanceDB | Refactoring massif (3 retrievers) pour un gain negligeable a notre echelle ; SDK Python encore en beta (v0.30.0-beta) ; FAISS + jsonl suffisent |
+| LiteLLM | ROI trop faible : ~20 lignes de confort sur Cerebras, bridge `@github/copilot-sdk` reste necessaire de toute facon ; aucun gain perf/qualite mesurable |
 | LightRAG / PathRAG | Approche communautes de graphe, plus complexe que CITE simple |
 | QLoRA fine-tuning | Pas de GPU, prompt engineering + RAG d'abord |
 | LlamaGuard / Aporia guardrails | Prompt-level guardrails suffisent pour demo |
@@ -49,46 +66,70 @@
 
 ---
 
-## KPIs a valider
+## KPIs
 
-| Indicateur | Cible MVP | Resultat actuel | Phase de controle |
-| --- | --- | --- | --- |
-| Latence p95 (256 tokens) | < 3 s | 4.98 s hybrid / **2.88 s graph** ✅ | Phase 9/11 |
-| Keyword Recall (test Q) | >= 60 % | 64.6 % hybrid (50 Q) / 56.9 % graph (100 Q) | Phase 9/11 |
-| Word F1 (test set) | >= 15 % | 22.3 % hybrid / 24.6 % graph | Phase 9/11 |
-| Citation Faithfulness | >= 90 % | 94.0 % hybrid / 86.0 % graph | Phase 9/11 |
-| Context Coverage | >= 65 % | 68.7 % hybrid / 59.0 % graph | Phase 9/11 |
-| Cout variable | 0 EUR (APIs gratuites) | 0 EUR | Toutes phases |
+| Indicateur | Cible MVP | Resultat actuel (copilot/gpt-4.1, 100Q) | Cible v1.x | Phase de controle |
+| --- | --- | --- | --- | --- |
+| Latence p95 (256 tokens) | < 3 s | 8.98 s hybrid k=5 / 9.68 s hybrid k=8 | < 5 s (Solon embeddings + bm25s) | Phase 12/16 |
+| Keyword Recall (test Q) | >= 60 % | 36.3 % hybrid k=5 / **42.3 % hybrid+promptv2** ✅ | >= 55 % (bm25s FR stemming + Solon) | Phase 12/12bis/16 |
+| Word F1 (test set) | >= 15 % | 26.7 % hybrid k=5 / 17.8 % hybrid+promptv2 ✅ | >= 28 % (Solon embeddings) | Phase 16 |
+| Citation Faithfulness | >= 90 % | 99.0 % hybrid / 98.0 % hybrid+promptv2 ✅ | >= 99 % | Phase 12bis |
+| Context Coverage | >= 65 % | 51.7 % hybrid k=5 / 54.5 % hybrid k=10 | >= 60 % (Solon + bm25s) | Phase 12/16 |
+| Taille venv deploiement | — | ~2.5 GB (PyTorch inclus) | < 500 MB (FlashRank ONNX) | Phase 13 |
+| Cout variable | 0 EUR | 0 EUR | 0 EUR | Toutes phases |
+
+---
+
+## Resultats quick wins (copilot/gpt-4.1, 100 questions, 2026-03-09)
+
+> Configurations testees sur la base hybrid k=5. Fichiers dans `eval/results/`, charts dans `eval/charts/quickwins/`.
+
+| Config | KW Recall | Word F1 | Cit. Faith | Ctx Cov | Latence | Delta KW |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Hybrid k=5 (baseline)** | 0.363 | 0.267 | 0.990 | 0.517 | 8.98s | — |
+| Hybrid k=8 | 0.372 | 0.269 | 0.990 | 0.532 | 9.68s | +2.3% |
+| Hybrid k=10 | 0.368 | 0.265 | 0.970 | 0.545 | 9.65s | +1.2% |
+| Hybrid + Reranker (cross-encoder) | 0.358 | 0.269 | 0.980 | 0.518 | 9.00s | **-1.5%** |
+| **Hybrid + Prompt v2** | **0.423** | 0.178 | 0.980 | 0.482 | 9.67s | **+16.5%** |
+| Hybrid + Reranker + Prompt v2 | **0.428** | 0.174 | 0.990 | 0.450 | 22.38s | **+17.9%** |
+
+**Conclusions** :
+- Le **prompt v2** (structure bullet points + citation explicite des numeros de loi) est la modification la plus impactante, zero cout infra.
+- Le **reranker cross-encoder** degrade legèrement le KW Recall (-1.5%) seul, probablement car `ms-marco-MiniLM` est entraine sur de l'anglais. A re-evaluer avec FlashRank multilingue (Phase 13) apres changement d'embeddings (Phase 16).
+- **k=8** est le meilleur compromis k-variation : +2.3% KW, meilleur CtxCov, CitFaith stable.
+- Le combo Reranker+Promptv2 est inutile (latence x2.5, +0.5% vs promptv2 seul).
 
 ---
 
 ## Decisions architecturales
 
-| Decision | Choix | Justification |
-| --- | --- | --- |
-| Perimetre geo | Monaco uniquement | Focus, corpus maitrisable, originalite |
-| Domaine | Droit du travail | Scope serre, evaluable, utile aux praticiens |
-| LLM | Cerebras Cloud (gpt-oss-120b + llama3.1-8b) | Gratuit, ultra-rapide (~1.7s), bon en francais |
-| Embeddings | sentence-transformers local (paraphrase-multilingual-MiniLM-L12-v2) | Dim 384, multilingue, CPU only, zero API |
-| Vector store | FAISS IndexFlatIP | Corpus petit (<20k chunks), pas besoin de BDD vectorielle |
-| Retrieval | Hybrid BM25+FAISS (RRF) | BM25 pour termes juridiques exacts, FAISS pour semantique ; FAISS 0.4 / BM25 0.6 |
-| Artifacts | HF Hub dataset `Fascinax/veridicta-index` | FAISS+BM25+chunks (180 MB) telecharges au demarrage ; zero dépendance locale |
-| Knowledge Graph | Neo4j 5 (Docker local) + `graph_rag.py` | 2789 Doc / 26517 Chunk / 1693 CITE edges ; CITE_BOOST=0.12 ; fallback FAISS si Neo4j down |
-| Fine-tuning | Non (v2) | Pas de GPU, prompt engineering d'abord |
-| Deploiement | Streamlit Cloud + HF Hub | Secrets via Streamlit Cloud ; artifacts depuis HF Hub au 1er boot (~2 min) |
+| Decision | Choix actuel | Evolution v1.x | Justification |
+| --- | --- | --- | --- |
+| Perimetre geo | Monaco uniquement | idem | Focus, corpus maitrisable, originalite |
+| Domaine | Droit du travail | idem | Scope serre, evaluable, utile aux praticiens |
+| LLM routing | if/else cerebras vs copilot (`baseline_rag.py`) | idem (LiteLLM hors scope) | `@github/copilot-sdk` utilise `CopilotClient.createSession()` — endpoint proprietaire ; LiteLLM ne couvre pas le bridge Copilot et n'apporte que ~20 lignes de confort sur Cerebras |
+| Embeddings | paraphrase-multilingual-MiniLM-L12-v2 (384d) | **Solon-embeddings-large-0.1** (1024d) en phase 16 | SOTA FR : MTEB score 0.749 vs 0.598 ; intermedaire : Solon-base (137M, plus leger) |
+| BM25 | rank-bm25 + pickle maison | **bm25s** en phase 12 | ~42x plus rapide, stemming FR natif, `.save()` natif |
+| Reranker | cross-encoder/ms-marco-MiniLM (PyTorch) | **FlashRank MultiBERT** (ONNX) en phase 13 | CPU-only, no PyTorch, 100+ langues |
+| Eval | metriques custom (keyword_recall, word_f1, citation_faithfulness) | + **ragas** Faithfulness/ContextPrecision en phase 15 | LLM-as-judge complementaire ; garder metriques deterministes existantes |
+| Vector store | FAISS IndexFlatIP | idem (LanceDB reporte v2+) | Corpus <30k chunks, FAISS suffisant ; LanceDB overkill + SDK beta |
+| Artifacts | HF Hub dataset `Fascinax/veridicta-index` | idem (+ re-upload si phase 16) | FAISS+BM25+chunks telecharges au demarrage ; zero dependance locale |
+| Knowledge Graph | Neo4j 5 (Docker local) + `graph_rag.py` | idem | 2789 Doc / 26517 Chunk / 1693 CITE edges ; CITE_BOOST=0.12 ; fallback FAISS si Neo4j down |
+| Fine-tuning | Non | Non (v2+) | Pas de GPU, prompt engineering d'abord |
+| Deploiement | Streamlit Cloud + HF Hub | idem | Secrets via Streamlit Cloud ; artifacts depuis HF Hub au 1er boot (~2 min) |
 
 ---
 
-## Upgrade path (post-MVP)
+## Upgrade path (v2+)
 
-* **v2** : Neo4j pour modeliser les liens loi -> article -> decision (LightRAG)
+* **v2** : LanceDB pour unifier vector store + FTS (quand SDK stable)
+* **v2** : Neo4j LightRAG — communautes de graphe, relations loi -> article -> decision
 * **v2** : Fine-tuning via Mistral API si prompt engineering insuffisant
-* **v2** : Guardrails (LlamaGuard) si hallucinations > 10%
-* **v2** : Metrique de detection d'hallucinations dans evaluate.py
-* **v2** : Enrichir corpus avec sources supplementaires (Juricaf, conventions collectives)
+* **v2** : Guardrails (LlamaGuard) si hallucinations > 10 %
+* **v2** : Enrichir corpus (Juricaf, conventions collectives Monaco)
 * **v3** : Elargir au droit civil monegasque, puis droit francais
-* **v3** : Deploiement cloud (Streamlit Cloud ou HuggingFace Spaces)
+* **v3** : Deploiement cloud full-prod (k8s, monitoring Prometheus/Grafana)
 
 ---
 
-*Derniere mise a jour : 2026-03-08*
+*Derniere mise a jour : 2026-03-09 — quick wins evalues, ROADMAP mis a jour avec resultats experimentaux*

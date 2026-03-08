@@ -64,6 +64,24 @@ SYSTEM_PROMPT = (
     "- Ne cite JAMAIS un numero de source qui n'existe pas dans le contexte fourni.\n"
 )
 
+SYSTEM_PROMPT_V2 = (
+    "Tu es Veridicta, un assistant juridique expert en droit du travail monegasque.\n"
+    "Tu reponds en francais, avec precision et exhaustivite.\n\n"
+    "REGLES STRICTES :\n"
+    "1. Reponds UNIQUEMENT a partir des sources fournies ci-dessous.\n"
+    "2. Chaque affirmation DOIT etre suivie de sa reference [Source N].\n"
+    "3. Si plusieurs sources appuient une meme affirmation, cite-les toutes.\n"
+    "4. N'invente JAMAIS de loi, d'article, de numero, ou de date absents des sources.\n"
+    "5. Si les sources sont insuffisantes, dis-le explicitement.\n"
+    "6. Ne cite JAMAIS un numero de source qui n'existe pas dans le contexte.\n\n"
+    "FORMAT DE REPONSE :\n"
+    "- Commence par un resume en 1-2 phrases.\n"
+    "- Puis developpe en bullet points thematiques.\n"
+    "- Pour chaque point, cite les textes de loi par leur nom exact (loi n°, ordonnance souveraine n°, article du code).\n"
+    "- Mentionne les dates et numeros present dans les sources.\n"
+    "- Termine par une note sur les limites de la reponse si les sources ne couvrent pas tout.\n"
+)
+
 
 # --- Embedding ---
 
@@ -252,6 +270,7 @@ def answer(
     context_chunks: list[dict],
     model: str | None = None,
     backend: str | None = None,
+    prompt_version: int = 1,
 ) -> str:
     """Generate a grounded answer from retrieved context chunks.
 
@@ -260,16 +279,18 @@ def answer(
         context_chunks: Retrieved chunks from FAISS.
         model: Override LLM model name. Defaults per backend.
         backend: "cerebras" or "copilot". Defaults to LLM_BACKEND env var.
+        prompt_version: 1 for original prompt, 2 for structured v2 prompt.
     """
     active_backend = backend or LLM_BACKEND
     user_message = _build_user_message(query, context_chunks)
+    system = SYSTEM_PROMPT_V2 if prompt_version == 2 else SYSTEM_PROMPT
 
     if active_backend == "copilot":
         resolved_model = model or COPILOT_DEFAULT_MODEL
-        return _answer_copilot(SYSTEM_PROMPT, user_message, resolved_model)
+        return _answer_copilot(system, user_message, resolved_model)
 
     resolved_model = model or CEREBRAS_DEFAULT_MODEL
-    return _answer_cerebras(SYSTEM_PROMPT, user_message, resolved_model)
+    return _answer_cerebras(system, user_message, resolved_model)
 
 
 # --- CLI ---

@@ -58,6 +58,12 @@ try:
 except ImportError:
     _GRAPH_AVAILABLE = False
 
+try:
+    from retrievers.reranker import rerank
+    _RERANKER_AVAILABLE = True
+except ImportError:
+    _RERANKER_AVAILABLE = False
+
 CEREBRAS_MODELS = [
     "llama3.1-8b",
     "gpt-oss-120b",
@@ -219,6 +225,8 @@ def run_eval(
     bm25=None,
     neo4j_mgr=None,
     stream_out: Path | None = None,
+    use_reranker: bool = False,
+    prompt_version: int = 1,
 ) -> list[EvalResult]:
     active_backend = backend or LLM_BACKEND
     n = len(questions)
@@ -233,20 +241,30 @@ def run_eval(
     else:
         retriever_label = "FAISS"
     print(f"  Retrieving context for {n} questions  [{retriever_label}] ...", flush=True)
+    reranker_k = k
+    retrieval_k = k * 4 if use_reranker else k
+
     if use_graph:
         retrieved_all: list[list[dict]] = [
-            graph_retrieve(q.question, index, chunks, embedder, neo4j_manager=neo4j_mgr, k=k)
+            graph_retrieve(q.question, index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
             for q in questions
         ]
     elif use_hybrid:
         retrieved_all = [
-            hybrid_retrieve(q.question, index, bm25, chunks, embedder, k=k)
+            hybrid_retrieve(q.question, index, bm25, chunks, embedder, k=retrieval_k)
             for q in questions
         ]
     else:
         retrieved_all = [
-            retrieve(q.question, index, chunks, embedder, k=k)
+            retrieve(q.question, index, chunks, embedder, k=retrieval_k)
             for q in questions
+        ]
+
+    if use_reranker and _RERANKER_AVAILABLE:
+        print(f"  Reranking {retrieval_k} -> {reranker_k} with cross-encoder ...", flush=True)
+        retrieved_all = [
+            rerank(q.question, r, k=reranker_k, candidate_k=retrieval_k)
+            for q, r in zip(questions, retrieved_all)
         ]
 
     if retrieval_only:
@@ -276,7 +294,7 @@ def run_eval(
     def _generate_one(task: tuple[int, EvalQuestion, list[dict]]) -> tuple[int, EvalResult]:
         idx, q, retrieved = task
         t0 = time.monotonic()
-        generated = answer(q.question, retrieved, model=model, backend=active_backend)
+        generated = answer(q.question, retrieved, model=model, backend=active_backend, prompt_version=prompt_version)
         latency = time.monotonic() - t0
         print(f"  [{idx:02d}/{n}] {q.id}  ({latency:.1f}s)", flush=True)
         cov = context_coverage(generated, retrieved)
@@ -480,6 +498,18 @@ def _parse_args() -> argparse.Namespace:
             "or graph (FAISS+Neo4j CITE expansion)  (default: faiss)"
         ),
     )
+    parser.add_argument(
+        "--reranker",
+        action="store_true",
+        help="Apply cross-encoder reranking after retrieval (over-retrieves 4x then reranks to k)",
+    )
+    parser.add_argument(
+        "--prompt-version",
+        type=int,
+        default=1,
+        choices=[1, 2],
+        help="System prompt version: 1 (original) or 2 (structured/exhaustive)  (default: 1)",
+    )
     return parser.parse_args()
 
 
@@ -537,6 +567,15 @@ def main() -> None:
     else:
         retriever_label = "faiss"
 
+    if args.reranker and not _RERANKER_AVAILABLE:
+        sys.exit("ERROR: cross-encoder reranker not available. Run: pip install sentence-transformers")
+
+    if args.reranker:
+        retriever_label += "+reranker"
+
+    if args.prompt_version == 2:
+        retriever_label += "+promptv2"
+
     if args.all_models:
         models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
         all_results: dict[str, list[EvalResult]] = {}
@@ -549,6 +588,7 @@ def main() -> None:
                 k=args.k, retrieval_only=args.retrieval_only,
                 model=model_name, backend=active_backend,
                 workers=args.workers, bm25=bm25, neo4j_mgr=neo4j_mgr,
+                use_reranker=args.reranker, prompt_version=args.prompt_version,
             )
             print_report(results)
             save_results(results, out_dir / model_name.replace("/", "_"))
@@ -568,6 +608,7 @@ def main() -> None:
             model=model, backend=active_backend,
             workers=args.workers, bm25=bm25, neo4j_mgr=neo4j_mgr,
             stream_out=stream_path,
+            use_reranker=args.reranker, prompt_version=args.prompt_version,
         )
         print_report(results)
         print(f"Results saved -> {stream_path}")
