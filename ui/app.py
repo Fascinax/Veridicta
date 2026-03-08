@@ -1,151 +1,273 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Interface utilisateur Streamlit pour Veridicta
+"""Streamlit UI for Veridicta — Monegasque labour law assistant.
+
+Run:
+    streamlit run ui/app.py
 """
 
-import os
+from __future__ import annotations
+
 import sys
-import logging
+import time
 from pathlib import Path
 
 import streamlit as st
-from streamlit.logger import get_logger
+from dotenv import load_dotenv
 
-# Ajouter le répertoire parent au PYTHONPATH
-parent_dir = Path(__file__).parent.parent
-sys.path.append(str(parent_dir))
+load_dotenv()
 
-# Configuration du logger
-logger = get_logger(__name__)
+# Make project root importable when launched as `streamlit run ui/app.py`
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Importer notre système RAG (à adapter selon l'avancement du projet)
-try:
-    from retrievers.baseline_rag import BaselineRAG
-    rag_system = BaselineRAG()
-    has_rag = True
-except ImportError:
-    logger.warning("Système RAG non disponible, mode démo activé")
-    has_rag = False
+from retrievers.baseline_rag import (
+    DEFAULT_TOP_K,
+    INDEX_DIR,
+    answer,
+    load_index,
+    retrieve,
+    _load_embedder,
+)
 
-# Configuration de la page Streamlit
+# ── Page config ──────────────────────────────────────────────────────────────
+
 st.set_page_config(
-    page_title="Veridicta - Assistant Juridique IA",
+    page_title="Veridicta · Droit du travail monégasque",
     page_icon="⚖️",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="expanded",
 )
 
-def format_sources(sources):
-    """Formate les sources pour l'affichage"""
-    if not sources:
-        return ""
-    
-    source_text = "**Sources:**\n\n"
-    for i, source in enumerate(sources):
-        doc_id = source.get("doc_id", "inconnu")
-        text = source.get("text", "...")
-        score = source.get("score", 0)
-        
-        source_text += f"{i+1}. **{doc_id}** (score: {score:.2f})\n"
-        source_text += f"   {text[:200]}{'...' if len(text) > 200 else ''}\n\n"
-    
-    return source_text
+# ── Custom CSS ────────────────────────────────────────────────────────────────
 
-def main():
-    """Fonction principale de l'application Streamlit"""
-    # Titre et description
-    st.title("⚖️ Veridicta")
-    st.subheader("Assistant juridique français basé sur l'IA")
-    
-    # Sidebar
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Inter:wght@400;500&display=swap');
+
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+    /* Dark sidebar */
+    [data-testid="stSidebar"] {
+        background: #0f1117;
+        border-right: 1px solid #1e2130;
+    }
+    [data-testid="stSidebar"] * { color: #c9d1e0 !important; }
+
+    /* Main title */
+    .veridicta-title {
+        font-family: 'Playfair Display', serif;
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #e8d5a3;
+        letter-spacing: -0.5px;
+        margin-bottom: 0;
+    }
+    .veridicta-tagline {
+        font-size: 0.85rem;
+        color: #6b7694;
+        margin-top: 2px;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Source card */
+    .source-card {
+        background: #1a1d2e;
+        border: 1px solid #2a2f47;
+        border-left: 3px solid #e8d5a3;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.6rem;
+        font-size: 0.82rem;
+        color: #a0a9c0;
+    }
+    .source-card .source-title {
+        font-weight: 500;
+        color: #c9d1e0;
+        margin-bottom: 4px;
+    }
+    .source-card .source-meta {
+        color: #6b7694;
+        font-size: 0.75rem;
+        margin-bottom: 6px;
+    }
+    .score-badge {
+        display: inline-block;
+        background: #2a2f47;
+        color: #e8d5a3;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 10px;
+        margin-left: 8px;
+    }
+
+    /* Chat bubbles tweak */
+    [data-testid="stChatMessage"] {
+        border-radius: 10px;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Input */
+    [data-testid="stChatInputTextArea"] {
+        background: #1a1d2e !important;
+        border: 1px solid #2a2f47 !important;
+        color: #e0e4f0 !important;
+        border-radius: 8px !important;
+    }
+
+    /* Divider */
+    hr { border-color: #1e2130; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ── Cached resources ──────────────────────────────────────────────────────────
+
+
+@st.cache_resource(show_spinner="Chargement de l'index vectoriel…")
+def _get_index():
+    return load_index(INDEX_DIR)
+
+
+@st.cache_resource(show_spinner="Chargement du modèle d'embedding…")
+def _get_embedder():
+    return _load_embedder()
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+
+
+def _render_sidebar() -> int:
     with st.sidebar:
-        st.image("https://cdn-icons-png.flaticon.com/512/2091/2091722.png", width=100)
-        st.markdown("### À propos")
-        st.info(
-            "Veridicta est un assistant juridique spécialisé dans le droit français. "
-            "Il utilise des technologies RAG (Retrieval-Augmented Generation) pour fournir "
-            "des réponses précises et traçables basées sur les textes juridiques et la jurisprudence."
+        st.markdown(
+            "<div style='font-family:Playfair Display,serif;font-size:1.3rem;"
+            "color:#e8d5a3;font-weight:700;margin-bottom:4px'>⚖️ Veridicta</div>"
+            "<div style='font-size:0.75rem;color:#6b7694;margin-bottom:1.5rem'>"
+            "Droit du travail · Principauté de Monaco</div>",
+            unsafe_allow_html=True,
         )
-        
-        st.markdown("### Paramètres")
-        retriever = st.selectbox(
-            "Système de recherche",
-            options=["BaselineRAG", "LightRAG", "PathRAG"],
-            index=0,
-            disabled=not has_rag,
+        st.divider()
+
+        k = st.slider("Nombre de sources", min_value=1, max_value=10, value=DEFAULT_TOP_K)
+        show_sources = st.toggle("Afficher les sources", value=True)
+
+        st.divider()
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#6b7694'>"
+            "Corpus : 149 textes législatifs · 762 décisions<br>"
+            "Index : 16 097 chunks · MiniLM-L12<br>"
+            "LLM : Llama 3.3 70B via Groq"
+            "</div>",
+            unsafe_allow_html=True,
         )
-        
-        model = st.selectbox(
-            "Modèle LLM",
-            options=["Mistral-7B", "Mistral-7B (QLoRA)", "Mixtral-8x7B"],
-            index=0,
-            disabled=True,  # Sera activé dans une phase ultérieure
+
+        if st.button("🗑 Effacer la conversation", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+
+    return k, show_sources
+
+
+# ── Source cards ──────────────────────────────────────────────────────────────
+
+
+def _render_sources(chunks: list[dict]) -> None:
+    for i, c in enumerate(chunks, 1):
+        score_pct = int(c["score"] * 100)
+        link = c.get("source", "#")
+        titre = c.get("titre", "Source inconnue")
+        doc_type = c.get("type", "")
+        date = c.get("date", "")
+        snippet = c["text"][:220].replace("\n", " ")
+        if len(c["text"]) > 220:
+            snippet += "…"
+
+        type_label = "Loi" if doc_type == "legislation" else "Jurisprudence"
+
+        st.markdown(
+            f"""<div class="source-card">
+              <div class="source-title">
+                {i}. {titre[:80]}
+                <span class="score-badge">{score_pct}%</span>
+              </div>
+              <div class="source-meta">{type_label} · {date}</div>
+              <div>{snippet}</div>
+            </div>""",
+            unsafe_allow_html=True,
         )
-        
-        show_sources = st.checkbox("Afficher les sources", value=True)
-        
-        st.markdown("### Métriques")
-        if has_rag:
-            st.metric("Temps de réponse moyen", "0.8s")
-            st.metric("Précision", "~50%")
-        else:
-            st.warning("Mode démo - Métriques non disponibles")
-    
-    # Zone de chat
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+
+def main() -> None:
+    # Header
+    st.markdown(
+        '<div class="veridicta-title">⚖️ Veridicta</div>'
+        '<div class="veridicta-tagline">Assistant juridique · Droit du travail de la Principauté de Monaco</div>',
+        unsafe_allow_html=True,
+    )
+
+    k, show_sources = _render_sidebar()
+
+    # Load index & embedder (cached after first load)
+    try:
+        index_data, chunks_map = _get_index()
+        embedder = _get_embedder()
+        ready = True
+    except FileNotFoundError:
+        st.error(
+            "Index non trouvé. Exécute d'abord : "
+            "`python -m retrievers.baseline_rag --build`"
+        )
+        ready = False
+
+    # Chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    
-    # Afficher les messages précédents
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if message["role"] == "assistant" and show_sources and "sources" in message:
-                with st.expander("Afficher les sources"):
-                    st.markdown(message["sources"])
-    
-    # Zone de saisie pour la question
-    if prompt := st.chat_input("Posez votre question juridique..."):
-        # Ajouter la question à l'historique
+
+    # Replay history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg["role"] == "assistant" and show_sources and msg.get("sources"):
+                with st.expander(f"📄 {len(msg['sources'])} source(s) utilisée(s)"):
+                    _render_sources(msg["sources"])
+
+    # Input
+    if not ready:
+        return
+
+    if prompt := st.chat_input("Posez votre question en droit du travail monégasque…"):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Afficher la question
         with st.chat_message("user"):
             st.markdown(prompt)
-        
-        # Préparer la réponse
+
         with st.chat_message("assistant"):
-            if has_rag:
-                with st.spinner("Recherche en cours..."):
-                    try:
-                        # Appeler le système RAG
-                        response, sources = rag_system.generate_response(prompt)
-                        formatted_sources = format_sources(sources)
-                    except Exception as e:
-                        response = f"Désolé, une erreur s'est produite: {str(e)}"
-                        formatted_sources = ""
-            else:
-                # Mode démo - réponse factice
-                response = (
-                    "Mode démo: Le système RAG n'est pas encore disponible. "
-                    "Cet assistant sera capable de répondre à vos questions juridiques "
-                    "en se basant sur les textes de loi et la jurisprudence française."
-                )
-                formatted_sources = ""
-            
-            # Afficher la réponse
-            st.markdown(response)
-            
-            if show_sources and formatted_sources:
-                with st.expander("Afficher les sources"):
-                    st.markdown(formatted_sources)
-            
-            # Ajouter la réponse à l'historique
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": response,
-                "sources": formatted_sources
-            })
+            with st.spinner("Recherche dans le corpus…"):
+                t0 = time.perf_counter()
+                retrieved = retrieve(prompt, index_data, chunks_map, embedder, k)
+
+            response_placeholder = st.empty()
+            with st.spinner("Génération de la réponse…"):
+                try:
+                    response_text = answer(prompt, retrieved)
+                except EnvironmentError as exc:
+                    response_text = f"⚠️ Clé API manquante : {exc}"
+                except Exception as exc:
+                    response_text = f"⚠️ Erreur : {exc}"
+
+            elapsed = time.perf_counter() - t0
+            response_placeholder.markdown(response_text)
+            st.caption(f"_{len(retrieved)} source(s) · {elapsed:.1f}s_")
+
+            if show_sources and retrieved:
+                with st.expander(f"📄 {len(retrieved)} source(s) utilisée(s)"):
+                    _render_sources(retrieved)
+
+        st.session_state.messages.append(
+            {"role": "assistant", "content": response_text, "sources": retrieved}
+        )
+
 
 if __name__ == "__main__":
     main()
