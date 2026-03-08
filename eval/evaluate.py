@@ -1,14 +1,14 @@
 """
-eval/evaluate.py — Veridicta RAG evaluation pipeline
+eval/evaluate.py -- Veridicta RAG evaluation pipeline
 
 Metrics per question:
-  - keyword_recall : fraction of reference_keywords found in the generated answer
-  - word_f1        : token-level F1 between generated answer and reference_answer
-  - latency_s      : wall-clock time for retrieve() + answer()
-  - n_retrieved    : number of chunks returned by retrieve()
-
-Retrieval-only mode: if GROQ_API_KEY is absent, answer() is skipped and
-word_f1 is set to None (keyword check still runs against top-1 chunk text).
+  - keyword_recall       : fraction of reference_keywords found in the answer
+  - word_f1              : token-level F1 vs. reference_answer
+  - citation_faithfulness: fraction of cited laws/articles grounded in context
+  - context_coverage     : fraction of answer tokens present in retrieved context
+  - hallucination_risk   : 1 - context_coverage (higher = riskier)
+  - latency_s            : wall-clock time for retrieve() + answer()
+  - n_retrieved          : number of chunks returned
 
 Usage:
     python -m eval.evaluate
@@ -71,6 +71,9 @@ class EvalResult:
     topic: str
     keyword_recall: float
     word_f1: float | None
+    citation_faithfulness: float
+    context_coverage: float
+    hallucination_risk: float
     latency_s: float
     n_retrieved: int
     answer: str
@@ -120,6 +123,48 @@ def word_f1(prediction: str, reference: str) -> float:
     precision = common / len(pred_tokens)
     recall = common / len(ref_tokens)
     return 2 * precision * recall / (precision + recall)
+
+
+def citation_faithfulness(answer: str, retrieved_chunks: list[dict]) -> float:
+    """Fraction of specific legal citations in the answer grounded in retrieved context.
+
+    Extracts: 'Loi n° XXX', 'Ordonnance n° XXX', 'Decret n° XXX', 'article X'.
+    Returns 1.0 (fully faithful) when all citations are found in the context.
+    Returns 0.0 conservatively when no verifiable citations are present.
+    """
+    context = " ".join(c.get("text", "") for c in retrieved_chunks).lower()
+    answer_lower = answer.lower()
+
+    legal_acts = re.findall(
+        r"(?:loi|ordonnance|decret|arrete|loi-cadre)\s+n[o\u00b0]?\s*[\d\s.,]+\d",
+        answer_lower,
+    )
+    article_refs = re.findall(r"article\s+\d+", answer_lower)
+    claims = legal_acts + article_refs
+
+    if not claims:
+        return 1.0  # No verifiable claims -> conservatively faithful
+
+    grounded = sum(1 for c in claims if c.strip() in context)
+    return round(grounded / len(claims), 4)
+
+
+def context_coverage(answer: str, retrieved_chunks: list[dict]) -> float:
+    """Fraction of significant answer tokens (len > 3) present in the retrieved context.
+
+    High coverage -> answer is grounded in retrieved text.
+    Low coverage  -> answer may contain hallucinated content.
+    """
+    context_tokens = set(
+        _tokenize(" ".join(c.get("text", "") for c in retrieved_chunks))
+    )
+    answer_tokens = _tokenize(answer)
+    # Only count tokens longer than 3 chars to skip stopwords
+    significant = [t for t in answer_tokens if len(t) > 3]
+    if not significant:
+        return 1.0
+    covered = sum(1 for t in significant if t in context_tokens)
+    return round(covered / len(significant), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +218,8 @@ def run_eval(
 
         latency = time.monotonic() - t0
         krecall = keyword_recall(generated, q.reference_keywords)
+        cit_faith = citation_faithfulness(generated, retrieved)
+        cov = context_coverage(generated, retrieved)
         titles = [c.get("title") or c.get("source_type", "?") for c in retrieved]
 
         results.append(
@@ -182,6 +229,9 @@ def run_eval(
                 topic=q.topic,
                 keyword_recall=krecall,
                 word_f1=wf1,
+                citation_faithfulness=cit_faith,
+                context_coverage=cov,
+                hallucination_risk=round(1.0 - cov, 4),
                 latency_s=round(latency, 2),
                 n_retrieved=len(retrieved),
                 answer=generated,
@@ -202,27 +252,35 @@ def _avg(values: list[float]) -> float:
 
 
 def print_report(results: list[EvalResult]) -> None:
-    print("\n" + "=" * 72)
+    print("\n" + "=" * 88)
     print("VERIDICTA EVALUATION REPORT")
-    print("=" * 72)
-    print(f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} {'Latency':>9} {'k':>4}")
-    print("-" * 72)
+    print("=" * 88)
+    print(
+        f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} "
+        f"{'Cit.Faith':>10} {'Ctx Cov':>8} {'Halluc.Risk':>11} {'Latency':>9} {'k':>4}"
+    )
+    print("-" * 88)
 
     for r in results:
-        wf1_str = f"{r.word_f1:.4f}" if r.word_f1 is not None else "  n/a  "
+        wf1_str = f"{r.word_f1:.4f}" if r.word_f1 is not None else "  n/a "
         print(
             f"{r.question_id:<15} {r.keyword_recall:>10.4f} {wf1_str:>9} "
-            f"{r.latency_s:>8.2f}s {r.n_retrieved:>4}"
+            f"{r.citation_faithfulness:>10.4f} {r.context_coverage:>8.4f} "
+            f"{r.hallucination_risk:>11.4f} {r.latency_s:>8.2f}s {r.n_retrieved:>4}"
         )
 
-    print("-" * 72)
+    print("-" * 88)
     kw_vals = [r.keyword_recall for r in results]
     wf1_vals = [r.word_f1 for r in results if r.word_f1 is not None]
+    cit_vals = [r.citation_faithfulness for r in results]
+    cov_vals = [r.context_coverage for r in results]
+    risk_vals = [r.hallucination_risk for r in results]
     lat_vals = [r.latency_s for r in results]
-    wf1_avg_str = f"{_avg(wf1_vals):.4f}" if wf1_vals else "  n/a  "
+    wf1_avg_str = f"{_avg(wf1_vals):.4f}" if wf1_vals else "  n/a "
     print(
         f"{'OVERALL AVG':<15} {_avg(kw_vals):>10.4f} {wf1_avg_str:>9} "
-        f"{_avg(lat_vals):>8.2f}s"
+        f"{_avg(cit_vals):>10.4f} {_avg(cov_vals):>8.4f} "
+        f"{_avg(risk_vals):>11.4f} {_avg(lat_vals):>8.2f}s"
     )
 
     # Per-topic breakdown
@@ -232,14 +290,15 @@ def print_report(results: list[EvalResult]) -> None:
 
     if len(topics) > 1:
         print("\nPer-topic averages:")
-        print(f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'n':>4}")
+        print(f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Halluc.Risk':>12} {'n':>4}")
         for topic, rows in sorted(topics.items()):
             kw = _avg([r.keyword_recall for r in rows])
             wf1_t = [r.word_f1 for r in rows if r.word_f1 is not None]
-            wf1_s = f"{_avg(wf1_t):.4f}" if wf1_t else "  n/a  "
-            print(f"  {topic:<25} {kw:>10.4f} {wf1_s:>9} {len(rows):>4}")
+            wf1_s = f"{_avg(wf1_t):.4f}" if wf1_t else "  n/a "
+            risk = _avg([r.hallucination_risk for r in rows])
+            print(f"  {topic:<25} {kw:>10.4f} {wf1_s:>9} {risk:>12.4f} {len(rows):>4}")
 
-    print("=" * 72 + "\n")
+    print("=" * 88 + "\n")
 
 
 def save_results(results: list[EvalResult], out_dir: Path) -> None:
@@ -254,21 +313,29 @@ def save_results(results: list[EvalResult], out_dir: Path) -> None:
 
 def print_comparison(all_results: dict[str, list[EvalResult]]) -> None:
     """Print a side-by-side comparison table across multiple models."""
-    print("\n" + "=" * 72)
+    print("\n" + "=" * 84)
     print("MODEL COMPARISON REPORT")
-    print("=" * 72)
-    print(f"  {'Model':<38} {'KW Recall':>10} {'Word F1':>9} {'Latency':>9}")
-    print("  " + "-" * 68)
+    print("=" * 84)
+    print(
+        f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} "
+        f"{'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}"
+    )
+    print("  " + "-" * 80)
 
     for model_name, results in all_results.items():
         kw = _avg([r.keyword_recall for r in results])
         wf1_vals = [r.word_f1 for r in results if r.word_f1 is not None]
-        wf1_s = f"{_avg(wf1_vals):.4f}" if wf1_vals else "  n/a  "
+        wf1_s = f"{_avg(wf1_vals):.4f}" if wf1_vals else "  n/a "
+        cit = _avg([r.citation_faithfulness for r in results])
+        risk = _avg([r.hallucination_risk for r in results])
         lat = _avg([r.latency_s for r in results])
-        short = model_name[:38]
-        print(f"  {short:<38} {kw:>10.4f} {wf1_s:>9} {lat:>8.2f}s")
+        short = model_name[:30]
+        print(
+            f"  {short:<30} {kw:>10.4f} {wf1_s:>9} "
+            f"{cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
+        )
 
-    print("=" * 72 + "\n")
+    print("=" * 84 + "\n")
 
 
 # ---------------------------------------------------------------------------
