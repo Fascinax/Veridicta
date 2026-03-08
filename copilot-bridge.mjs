@@ -10,7 +10,7 @@
  * Authentication: GITHUB_PAT env var, or `gh auth login` fallback.
  */
 
-import { CopilotClient } from "@github/copilot-sdk";
+import { CopilotClient, approveAll } from "@github/copilot-sdk";
 
 const model = process.argv[2] || "gpt-4.1";
 
@@ -27,8 +27,6 @@ const token =
   process.env.GITHUB_TOKEN;
 
 const client = new CopilotClient({
-  cliPath: "npx",
-  cliArgs: ["--yes", "@github/copilot"],
   githubToken: token || undefined,
   useLoggedInUser: !token,
 });
@@ -70,6 +68,7 @@ try {
     model,
     systemMessage: input.system ? { content: input.system } : undefined,
     tools: [],
+    onPermissionRequest: approveAll,
   });
 
   const response = await session.sendAndWait(

@@ -4,6 +4,9 @@
   "description": "Node.js bridge for Veridicta — routes LLM calls through GitHub Copilot SDK",
   "private": true,
   "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/patch-esm.mjs"
+  },
   "dependencies": {
     "@github/copilot-sdk": "^0.1.22"
   },
