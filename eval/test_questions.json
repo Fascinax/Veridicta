@@ -298,5 +298,306 @@
     "question": "Quelles sont les voies de recours disponibles pour un salarié qui conteste son licenciement à Monaco ?",
     "reference_answer": "Un salarié contestant son licenciement à Monaco peut saisir le Tribunal du travail de Monaco, juridiction spécialisée compétente en matière de conflits individuels de travail. La procédure débute généralement par une tentative de conciliation. En cas d'échec, l'affaire est plaidée devant la juridiction de jugement. Les décisions peuvent faire l'objet d'un appel devant la Cour d'appel de Monaco.",
     "reference_keywords": ["recours", "tribunal", "conciliation", "appel", "licenciement"]
+  },
+
+  {
+    "id": "monaco-051",
+    "question": "Quel est le statut juridique des fonctionnaires de l'État monégasque et quelles lois régissent la fonction publique ?",
+    "reference_answer": "Le statut des fonctionnaires de l'État monégasque est régi par la loi n° 975 du 12 juillet 1975 portant statut des fonctionnaires de l'État, modifiée à plusieurs reprises. Ce texte fixe les conditions de recrutement, d'avancement, de rémunération, de discipline et de cessation de fonctions des agents publics. Les fonctionnaires titulaires bénéficient de garanties d'emploi et de droits spécifiques liés à leur statut.",
+    "reference_keywords": ["fonctionnaire", "statut", "fonction publique", "loi n° 975", "recrutement"]
+  },
+  {
+    "id": "monaco-052",
+    "question": "Comment un fonctionnaire monégasque peut-il être licencié et quelle procédure disciplinaire s'applique ?",
+    "reference_answer": "Un fonctionnaire monégasque peut être licencié par ordonnance souveraine à la suite d'une procédure disciplinaire. Les sanctions disciplinaires sont graduées, allant de l'avertissement à la révocation. Le fonctionnaire a droit à la communication de son dossier et peut présenter sa défense. Le Conseil d'État peut être consulté pour les sanctions les plus graves.",
+    "reference_keywords": ["fonctionnaire", "licenciement", "ordonnance souveraine", "procédure disciplinaire", "révocation"]
+  },
+  {
+    "id": "monaco-053",
+    "question": "Quelles sont les conditions de nomination et d'avancement des fonctionnaires dans l'administration monégasque ?",
+    "reference_answer": "La nomination des fonctionnaires à Monaco est effectuée par ordonnance souveraine. L'avancement se fait à l'ancienneté et au choix, selon les règles fixées par le statut de la fonction publique. Certains postes sont pourvus par concours. La priorité d'emploi peut s'appliquer en faveur des nationaux monégasques pour les postes de la fonction publique.",
+    "reference_keywords": ["nomination", "avancement", "ancienneté", "ordonnance souveraine", "concours"]
+  },
+  {
+    "id": "monaco-054",
+    "question": "Quel est le régime de retraite des fonctionnaires de l'État à Monaco ?",
+    "reference_answer": "Les fonctionnaires titulaires des services publics de Monaco bénéficient d'un régime spécial de retraite régi par la loi n° 583. La pension de retraite est calculée en fonction de l'ancienneté de service et du dernier traitement d'activité. La mise à la retraite intervient à l'âge légal fixé par les textes. Les droits à pension sont acquis après un minimum d'années de service effectif.",
+    "reference_keywords": ["retraite", "fonctionnaire", "pension", "ancienneté", "traitement"]
+  },
+  {
+    "id": "monaco-055",
+    "question": "Quelles sont les conditions de recrutement dans la fonction publique communale à Monaco ?",
+    "reference_answer": "Le recrutement dans les services de la Commune de Monaco obéit à des règles spécifiques. Les postes vacants font l'objet d'avis de recrutement publiés au Journal de Monaco. Les candidats doivent remplir des conditions d'aptitude et de qualification. L'élection des délégués du personnel dans la commune est encadrée par des arrêtés municipaux définissant les modalités de désignation et la composition des collèges électoraux.",
+    "reference_keywords": ["commune", "recrutement", "avis", "Journal de Monaco", "délégués"]
+  },
+  {
+    "id": "monaco-056",
+    "question": "Comment fonctionne le système de sécurité sociale à Monaco et quels organismes le gèrent ?",
+    "reference_answer": "Le système de sécurité sociale à Monaco est géré par les Caisses Sociales de Monaco, qui comprennent notamment la Caisse de Compensation des Services Sociaux (CCSS). Ce système couvre les risques maladie, maternité, invalidité, vieillesse et décès pour les salariés et résidents. Les cotisations sont partagées entre employeurs et salariés. Les prestations sont versées selon les conditions fixées par la législation monégasque.",
+    "reference_keywords": ["sécurité sociale", "CCSS", "Caisses Sociales", "cotisations", "prestations"]
+  },
+  {
+    "id": "monaco-057",
+    "question": "Quelles prestations de l'assurance maladie sont prévues par la législation monégasque ?",
+    "reference_answer": "L'assurance maladie à Monaco couvre la prise en charge des frais médicaux, chirurgicaux, pharmaceutiques et d'hospitalisation. Les assurés bénéficient du remboursement de tout ou partie des dépenses de santé selon un barème de prestations fixé par les textes. La législation prévoit également des indemnités journalières en cas d'arrêt de travail pour maladie.",
+    "reference_keywords": ["assurance maladie", "remboursement", "prestations", "frais médicaux", "indemnités journalières"]
+  },
+  {
+    "id": "monaco-058",
+    "question": "Quelles sont les obligations de l'employeur en matière de cotisations sociales à Monaco ?",
+    "reference_answer": "L'employeur à Monaco est tenu de déclarer ses salariés auprès des Caisses Sociales et de verser les cotisations patronales et salariales dans les délais légaux. Les cotisations couvrent l'assurance maladie, les accidents du travail, la retraite et les allocations familiales. Le non-respect de ces obligations expose l'employeur à des majorations de retard et des sanctions.",
+    "reference_keywords": ["cotisations sociales", "employeur", "Caisses Sociales", "assurance", "déclaration"]
+  },
+  {
+    "id": "monaco-059",
+    "question": "Quelles sont les prestations en cas d'accident du travail à Monaco et comment sont calculées les rentes ?",
+    "reference_answer": "En cas d'accident du travail à Monaco, la victime a droit à la prise en charge intégrale des soins médicaux, à des indemnités journalières pendant l'arrêt de travail, et, en cas d'incapacité permanente, à une rente calculée en fonction du taux d'incapacité et du salaire de référence. Les rentes allouées aux victimes ou à leurs ayants droit sont régulièrement revalorisées par la loi, comme l'a prévu notamment la loi n° 463 du 6 août 1947.",
+    "reference_keywords": ["accident du travail", "rente", "incapacité", "indemnités", "victime"]
+  },
+  {
+    "id": "monaco-060",
+    "question": "Comment la législation monégasque encadre-t-elle la déclaration et la réparation des accidents du travail ?",
+    "reference_answer": "La déclaration et la réparation des accidents du travail à Monaco sont régies par la loi du 16 mai 1946, modifiée par la loi n° 462 du 6 août 1947. Tout accident survenu par le fait ou à l'occasion du travail doit être déclaré par l'employeur dans les délais prescrits. La réparation comprend la prise en charge des soins, les indemnités journalières et, le cas échéant, l'attribution d'une rente d'incapacité permanente.",
+    "reference_keywords": ["déclaration", "accident du travail", "réparation", "loi", "employeur"]
+  },
+  {
+    "id": "monaco-061",
+    "question": "Quelles majorations des rentes d'accidents du travail ont été prévues par la législation monégasque ?",
+    "reference_answer": "Plusieurs lois ont majoré les rentes allouées aux victimes d'accidents du travail à Monaco. La loi n° 463 du 6 août 1947 a majoré les rentes allouées aux victimes ou à leurs ayants droit. D'autres revalorisations successives ont été adoptées pour tenir compte de l'évolution du coût de la vie et maintenir le pouvoir d'achat des bénéficiaires.",
+    "reference_keywords": ["majoration", "rente", "accident du travail", "victime", "ayants droit"]
+  },
+  {
+    "id": "monaco-062",
+    "question": "Quelles sont les conditions d'ouverture du droit à l'assurance en cas d'accident du travail à Monaco ?",
+    "reference_answer": "L'assurance accidents du travail à Monaco couvre tout salarié victime d'un accident survenu par le fait ou à l'occasion du travail, y compris les accidents de trajet. Le bénéfice de l'assurance a été étendu à certains titulaires de rentes d'accidents du travail par la loi n° 600. L'employeur est tenu de souscrire à cette assurance et les cotisations patronales financent le régime.",
+    "reference_keywords": ["assurance", "accident du travail", "salarié", "couverture", "cotisation"]
+  },
+  {
+    "id": "monaco-063",
+    "question": "Comment est organisée la formation professionnelle continue à Monaco et quelles obligations incombent aux employeurs ?",
+    "reference_answer": "La formation professionnelle continue à Monaco est encadrée par la législation qui impose aux employeurs de contribuer au financement de la formation de leurs salariés. Les qualifications professionnelles du personnel sont réglementées par des arrêtés ministériels définissant les niveaux de qualification requis pour certaines professions. Des organismes de formation agréés délivrent les certifications nécessaires.",
+    "reference_keywords": ["formation professionnelle", "qualification", "employeur", "certification", "arrêté ministériel"]
+  },
+  {
+    "id": "monaco-064",
+    "question": "Quels congés pour formation syndicale ou éducation ouvrière sont prévus par le droit monégasque ?",
+    "reference_answer": "La loi n° 898 du 15 décembre 1970 institue des congés non rémunérés pour favoriser l'éducation ouvrière ou la formation syndicale des salariés à Monaco. Ces congés permettent aux salariés de s'absenter de leur travail pour participer à des sessions de formation organisées par les organisations syndicales. Les conditions d'exercice de ce droit sont précisées par ordonnance souveraine d'application.",
+    "reference_keywords": ["congé", "formation syndicale", "éducation ouvrière", "loi n° 898", "salarié"]
+  },
+  {
+    "id": "monaco-065",
+    "question": "Quelles sont les conditions de qualification du personnel de sécurité civile et de prévention des incendies à Monaco ?",
+    "reference_answer": "La qualification du personnel permanent des services de sécurité incendie à Monaco est réglementée par l'arrêté ministériel n° 2002-196. Les agents doivent justifier de formations spécifiques dispensées par des organismes agréés. Les niveaux de qualification sont définis en fonction des responsabilités exercées. L'agrément des organismes de formation est délivré par arrêté ministériel.",
+    "reference_keywords": ["qualification", "sécurité incendie", "formation", "arrêté ministériel", "agrément"]
+  },
+  {
+    "id": "monaco-066",
+    "question": "Comment les certifications professionnelles sont-elles délivrées dans le secteur financier à Monaco ?",
+    "reference_answer": "L'Association Monégasque des Activités Financières publie des listes de certifications professionnelles reconnues à Monaco. Ces certifications attestent des compétences des professionnels exerçant dans le secteur bancaire et financier. Elles sont conformes aux exigences réglementaires en matière de lutte contre le blanchiment et de conformité financière.",
+    "reference_keywords": ["certification professionnelle", "financier", "AMAF", "compétences", "secteur bancaire"]
+  },
+  {
+    "id": "monaco-067",
+    "question": "Comment fonctionne la Caisse Autonome des Retraites (CAR) de Monaco et quels droits en découlent ?",
+    "reference_answer": "La Caisse Autonome des Retraites (CAR) gère le régime de retraite complémentaire obligatoire à Monaco. Les cotisations sont prélevées sur les salaires et partagées entre l'employeur et le salarié. Les droits à la retraite complémentaire sont acquis en fonction des cotisations versées. Le montant de la pension dépend du nombre de points accumulés pendant la carrière et de la valeur du point au moment de la liquidation.",
+    "reference_keywords": ["CAR", "retraite complémentaire", "cotisations", "pension", "points"]
+  },
+  {
+    "id": "monaco-068",
+    "question": "Quelles sont les règles de saisie des traitements, salaires et pensions à Monaco ?",
+    "reference_answer": "La saisie des traitements, salaires et pensions à Monaco est encadrée par le Code de Procédure Civile, notamment les articles 502 et 503, modifiés par la loi n° 557. Seule une fraction du salaire est saisissable, calculée par tranches progressives. Les pensions de retraite sont également partiellement saisissables selon les mêmes règles. L'employeur ou l'organisme débiteur doit verser les sommes saisies au créancier.",
+    "reference_keywords": ["saisie", "salaire", "pension", "Code de Procédure Civile", "fraction saisissable"]
+  },
+  {
+    "id": "monaco-069",
+    "question": "Quel rôle joue la pension de vieillesse dans le système de protection sociale monégasque ?",
+    "reference_answer": "La pension de vieillesse constitue l'une des prestations fondamentales du système de protection sociale à Monaco. Elle est servie aux assurés ayant cotisé pendant la durée minimale requise et ayant atteint l'âge légal de la retraite. Son montant est fonction des salaires soumis à cotisation et de la durée de cotisation. Elle peut se cumuler avec la retraite complémentaire gérée par la CAR.",
+    "reference_keywords": ["pension", "vieillesse", "protection sociale", "cotisation", "âge légal"]
+  },
+  {
+    "id": "monaco-070",
+    "question": "Comment le droit syndical est-il organisé à Monaco et quelles sont les libertés syndicales reconnues ?",
+    "reference_answer": "Le droit syndical à Monaco est reconnu par la législation qui garantit la liberté de constitution des syndicats professionnels et la liberté d'adhésion des salariés. Les syndicats peuvent négocier des conventions collectives, représenter les salariés et exercer le droit de grève dans les conditions fixées par la loi. Les délégués syndicaux bénéficient d'une protection spéciale contre le licenciement.",
+    "reference_keywords": ["syndicat", "liberté syndicale", "convention collective", "droit de grève", "protection"]
+  },
+  {
+    "id": "monaco-071",
+    "question": "Comment sont négociées et conclues les conventions collectives en Principauté de Monaco ?",
+    "reference_answer": "Les conventions collectives à Monaco sont négociées entre les organisations syndicales de salariés et les organisations patronales ou employeurs individuels. Elles fixent les conditions d'emploi, de rémunération et de travail applicables aux salariés relevant de leur champ professionnel. Leur extension à l'ensemble d'une branche peut être prononcée par arrêté ministériel. Les rémunérations minimales par secteur sont régulièrement publiées par communiqué officiel.",
+    "reference_keywords": ["convention collective", "négociation", "syndicat", "rémunération minimale", "arrêté ministériel"]
+  },
+  {
+    "id": "monaco-072",
+    "question": "Quelles sont les rémunérations minimales fixées par les conventions collectives sectorielles à Monaco ?",
+    "reference_answer": "Des communiqués officiels publiés au Journal de Monaco fixent les rémunérations minimales du personnel dans différents secteurs, notamment les commerces de détail, les cabinets dentaires, la pharmacie et l'hôtellerie-restauration. Ces minima sont révisés régulièrement pour tenir compte de l'évolution du coût de la vie. Tout employeur est tenu de respecter au minimum ces barèmes conventionnels.",
+    "reference_keywords": ["rémunération minimale", "convention collective", "communiqué", "commerce", "pharmacie"]
+  },
+  {
+    "id": "monaco-073",
+    "question": "Quel est le rôle du Comité Financier de la Caisse de Compensation des Services Sociaux à Monaco ?",
+    "reference_answer": "Le Comité Financier de la Caisse de Compensation des Services Sociaux est un organe composé de membres nommés par arrêté ministériel. Il est chargé de contrôler la gestion financière des caisses sociales et de veiller à l'équilibre du régime de sécurité sociale monégasque. Sa composition et ses attributions sont définies par les textes réglementaires.",
+    "reference_keywords": ["Comité Financier", "Caisse de Compensation", "sécurité sociale", "arrêté ministériel", "gestion"]
+  },
+  {
+    "id": "monaco-074",
+    "question": "Comment est assurée la couverture maladie-maternité des salariés à Monaco ?",
+    "reference_answer": "La couverture maladie-maternité à Monaco est assurée par le régime de sécurité sociale géré par les Caisses Sociales. Les salariées enceintes bénéficient d'un congé maternité indemnisé et de la prise en charge des frais liés à la grossesse et à l'accouchement. Les prestations sont financées par les cotisations sociales des employeurs et des salariés.",
+    "reference_keywords": ["maladie", "maternité", "couverture", "Caisses Sociales", "prestations"]
+  },
+  {
+    "id": "monaco-075",
+    "question": "Comment une fondation est-elle créée et autorisée en Principauté de Monaco ?",
+    "reference_answer": "La création d'une fondation à Monaco est soumise à autorisation administrative. Les statuts de la fondation doivent définir son objet, son siège, ses ressources et ses organes de gouvernance. La fondation acquiert la personnalité juridique après approbation de ses statuts. Le Journal de Monaco publie les statuts des fondations autorisées. Certaines fondations reconnues d'utilité publique bénéficient d'avantages fiscaux.",
+    "reference_keywords": ["fondation", "statuts", "autorisation", "personnalité juridique", "Journal de Monaco"]
+  },
+  {
+    "id": "monaco-076",
+    "question": "Quel est le régime juridique des associations à Monaco ?",
+    "reference_answer": "Les associations à Monaco sont régies par une législation spécifique qui distingue les associations ordinaires et les associations reconnues d'utilité publique. La création d'une association nécessite le dépôt de ses statuts auprès des autorités compétentes. Les associations peuvent exercer des activités à but non lucratif, détenir un patrimoine et employer du personnel. Les professionnels, notamment les médecins, peuvent exercer en association dans les conditions fixées par arrêté ministériel.",
+    "reference_keywords": ["association", "statuts", "personnalité juridique", "utilité publique", "arrêté ministériel"]
+  },
+  {
+    "id": "monaco-077",
+    "question": "Quelles obligations pèsent sur les fondations monégasques en matière de gouvernance et de transparence ?",
+    "reference_answer": "Les fondations à Monaco doivent se conformer aux statuts approuvés, tenir une comptabilité régulière, et soumettre leurs comptes au contrôle des autorités de tutelle. Les modifications statutaires doivent être approuvées. La composition du conseil d'administration et les conditions de fonctionnement sont fixées par les statuts publiés au Journal de Monaco.",
+    "reference_keywords": ["fondation", "gouvernance", "statuts", "comptabilité", "contrôle"]
+  },
+  {
+    "id": "monaco-078",
+    "question": "Comment la Commission de Contrôle des Informations Nominatives (CCIN) protège-t-elle les données personnelles à Monaco ?",
+    "reference_answer": "La Commission de Contrôle des Informations Nominatives (CCIN) est l'autorité indépendante chargée de la protection des données personnelles à Monaco. Elle contrôle les traitements automatisés d'informations nominatives, délivre des avis et autorisations, et rend des délibérations sur les traitements mis en œuvre par les organismes publics et privés. La loi n° 1.165 du 23 décembre 1993 relative à la protection des informations nominatives constitue le cadre juridique principal.",
+    "reference_keywords": ["CCIN", "données personnelles", "informations nominatives", "traitement automatisé", "délibération"]
+  },
+  {
+    "id": "monaco-079",
+    "question": "Quelles obligations s'imposent aux entreprises monégasques en matière de traitement automatisé des données personnelles ?",
+    "reference_answer": "Toute mise en œuvre d'un traitement automatisé d'informations nominatives à Monaco doit faire l'objet d'une déclaration ou d'une demande d'autorisation auprès de la CCIN. Le responsable du traitement doit informer les personnes concernées de la collecte de leurs données, respecter le principe de finalité et assurer la sécurité des données. Des délibérations de la CCIN précisent les conditions applicables à chaque type de traitement.",
+    "reference_keywords": ["traitement automatisé", "informations nominatives", "CCIN", "déclaration", "finalité"]
+  },
+  {
+    "id": "monaco-080",
+    "question": "Quelles sont les règles relatives à la vidéosurveillance et aux traitements de données par les entreprises à Monaco ?",
+    "reference_answer": "La mise en place de dispositifs de vidéosurveillance à Monaco, notamment sur le lieu de travail, constitue un traitement d'informations nominatives soumis au contrôle de la CCIN. Les entreprises doivent justifier de la finalité du dispositif, informer les salariés et limiter la durée de conservation des images. Des délibérations de la CCIN encadrent ces pratiques pour préserver le droit à la vie privée.",
+    "reference_keywords": ["vidéosurveillance", "CCIN", "données personnelles", "vie privée", "salarié"]
+  },
+  {
+    "id": "monaco-081",
+    "question": "Quelles sont les principales formes de sociétés commerciales en Principauté de Monaco ?",
+    "reference_answer": "Le droit monégasque reconnaît plusieurs formes de sociétés commerciales, dont la société anonyme monégasque (SAM), la société en commandite simple, la société en commandite par actions, la société à responsabilité limitée (SARL) et la société en nom collectif. La SAM est la forme la plus répandue pour les grandes entreprises. Chaque forme obéit à des règles spécifiques de constitution, de fonctionnement et de dissolution.",
+    "reference_keywords": ["SAM", "société anonyme", "SARL", "commandite", "droit des sociétés"]
+  },
+  {
+    "id": "monaco-082",
+    "question": "Quelles sont les règles de constitution et de fonctionnement d'une société anonyme monégasque (SAM) ?",
+    "reference_answer": "La constitution d'une SAM à Monaco nécessite un capital social minimum, la rédaction de statuts et l'approbation par les autorités compétentes. L'assemblée générale des actionnaires est l'organe souverain qui modifie les statuts, approuve les comptes et décide des augmentations de capital. Les modifications statutaires, augmentations de capital et opérations sur le capital sont publiées au Journal de Monaco.",
+    "reference_keywords": ["SAM", "société anonyme monégasque", "statuts", "capital social", "assemblée générale"]
+  },
+  {
+    "id": "monaco-083",
+    "question": "Comment sont traitées les procédures collectives (faillite, redressement) des entreprises à Monaco ?",
+    "reference_answer": "Les procédures collectives à Monaco comprennent le redressement judiciaire et la liquidation judiciaire. Elles sont ouvertes lorsqu'une entreprise est en état de cessation des paiements. Le tribunal compétent désigne un administrateur judiciaire ou un liquidateur. Les créanciers déclarent leurs créances dans les délais légaux. La jurisprudence du Tribunal du travail traite des conséquences de ces procédures sur les contrats de travail des salariés.",
+    "reference_keywords": ["procédure collective", "faillite", "redressement", "liquidation", "cessation des paiements"]
+  },
+  {
+    "id": "monaco-084",
+    "question": "Comment s'effectue la cession d'un fonds de commerce à Monaco ?",
+    "reference_answer": "La cession d'un fonds de commerce à Monaco doit faire l'objet de publicités légales, notamment par voie d'insertions au Journal de Monaco. L'acte de cession mentionne le prix, les éléments cédés (clientèle, enseigne, bail) et l'état des privilèges et nantissements. Les créanciers du cédant disposent d'un droit d'opposition. Le registre du commerce enregistre la mutation.",
+    "reference_keywords": ["fonds de commerce", "cession", "publicité", "Journal de Monaco", "registre du commerce"]
+  },
+  {
+    "id": "monaco-085",
+    "question": "Quelles sont les obligations liées au registre du commerce et de l'industrie à Monaco ?",
+    "reference_answer": "Tout commerçant ou toute société commerciale exerçant à Monaco doit être immatriculé au Registre du Commerce et de l'Industrie (RCI). L'immatriculation mentionne les informations essentielles sur l'entreprise. Les modifications statutaires, les changements de dirigeants et les cessations d'activité doivent être déclarés. Le RCI est tenu par le greffe du tribunal de première instance.",
+    "reference_keywords": ["registre du commerce", "immatriculation", "commerçant", "société", "obligations"]
+  },
+  {
+    "id": "monaco-086",
+    "question": "Quelles sont les règles d'urbanisme et de construction en Principauté de Monaco ?",
+    "reference_answer": "L'urbanisme à Monaco est régi par des ordonnances souveraines et des arrêtés ministériels qui fixent les règles de construction, les normes de hauteur, de densité et d'occupation des sols. Les permis de construire sont délivrés par l'administration en fonction du plan d'urbanisme directeur. La désaffectation de parcelles du domaine public nécessite un projet de loi. Les opérations d'aménagement sont encadrées pour préserver le cadre de vie de la Principauté.",
+    "reference_keywords": ["urbanisme", "construction", "permis de construire", "ordonnance", "aménagement"]
+  },
+  {
+    "id": "monaco-087",
+    "question": "Comment sont encadrées les ventes immobilières et les saisies immobilières à Monaco ?",
+    "reference_answer": "Les ventes aux enchères publiques sur saisie immobilière à Monaco se déroulent devant le tribunal, assisté d'un avocat-défenseur ou notaire. La procédure est régie par le Code de Procédure Civile monégasque. Les biens sont vendus en lots avec un cahier des charges. Les études de notaires et avocats-défenseurs publient les avis de vente au Journal de Monaco.",
+    "reference_keywords": ["saisie immobilière", "vente aux enchères", "notaire", "avocat-défenseur", "immobilier"]
+  },
+  {
+    "id": "monaco-088",
+    "question": "Comment la copropriété est-elle réglementée à Monaco ?",
+    "reference_answer": "La copropriété à Monaco est régie par des dispositions spécifiques qui encadrent l'organisation des immeubles divisés en lots. Les copropriétaires sont regroupés en syndicat doté de la personnalité civile. L'assemblée générale des copropriétaires délibère sur la gestion de l'immeuble, les travaux et le budget. Un syndic est chargé de l'administration courante.",
+    "reference_keywords": ["copropriété", "syndicat", "assemblée générale", "lots", "syndic"]
+  },
+  {
+    "id": "monaco-089",
+    "question": "Quelles sont les obligations de Monaco en matière de lutte contre le blanchiment de capitaux ?",
+    "reference_answer": "Monaco dispose d'un cadre juridique de lutte contre le blanchiment de capitaux comprenant des lois, ordonnances et conventions internationales ratifiées. Le Service d'Information et de Contrôle sur les Circuits Financiers (SICCFIN) est l'autorité nationale chargée de recevoir les déclarations de soupçon et de contrôler les professionnels assujettis. Les institutions financières, avocats et notaires sont soumis à des obligations de vigilance et de déclaration.",
+    "reference_keywords": ["blanchiment", "SICCFIN", "déclaration de soupçon", "vigilance", "lutte"]
+  },
+  {
+    "id": "monaco-090",
+    "question": "Quelles conventions internationales contre le blanchiment et le financement du terrorisme Monaco a-t-il ratifiées ?",
+    "reference_answer": "Monaco a ratifié plusieurs conventions internationales en matière de lutte contre le blanchiment et le financement du terrorisme, rendues exécutoires par ordonnance souveraine. Les obligations découlant de ces conventions sont transposées en droit interne et s'imposent aux professionnels du secteur financier. Le dispositif national est régulièrement évalué par les organismes internationaux comme MONEYVAL.",
+    "reference_keywords": ["convention", "blanchiment", "ordonnance souveraine", "financement du terrorisme", "MONEYVAL"]
+  },
+  {
+    "id": "monaco-091",
+    "question": "Quel est le régime fiscal applicable à Monaco, notamment en matière de TVA ?",
+    "reference_answer": "Monaco applique la taxe sur la valeur ajoutée (TVA) dans le cadre d'une convention fiscale avec la France. L'ordonnance souveraine n° 14.371 du 15 mars 2000 régit les modalités d'application de la TVA dans la Principauté. Le Code des Taxes sur le Chiffre d'Affaires définit les taux, les exonérations et les obligations déclaratives des entreprises assujetties. Monaco ne prélève pas d'impôt sur le revenu des personnes physiques.",
+    "reference_keywords": ["TVA", "taxe", "fiscal", "ordonnance souveraine", "chiffre d'affaires"]
+  },
+  {
+    "id": "monaco-092",
+    "question": "Comment la contribution des employeurs au financement de la formation professionnelle est-elle fixée à Monaco ?",
+    "reference_answer": "Le taux de la contribution des employeurs au financement de la formation professionnelle à Monaco est fixé par arrêté ministériel, publié au Journal de Monaco. Cette contribution est assise sur la masse salariale de l'entreprise. Les fonds collectés servent à financer les actions de formation destinées aux salariés. Le taux peut être révisé annuellement.",
+    "reference_keywords": ["contribution", "formation professionnelle", "employeur", "arrêté ministériel", "masse salariale"]
+  },
+  {
+    "id": "monaco-093",
+    "question": "Comment sont réglementées les activités bancaires et financières en Principauté de Monaco ?",
+    "reference_answer": "Les activités bancaires et financières à Monaco sont encadrées par la Commission de Contrôle des Activités Financières (CCAF) et soumises à des obligations de conformité strictes. Les établissements bancaires doivent obtenir un agrément pour exercer. Les frais de fonctionnement de la commission de contrôle sont financés selon des modalités fixées par ordonnance souveraine. Les professionnels sont soumis aux règles de lutte contre le blanchiment.",
+    "reference_keywords": ["bancaire", "financier", "CCAF", "agrément", "conformité"]
+  },
+  {
+    "id": "monaco-094",
+    "question": "Quel est le rôle du Comité de Contrôle de la Caisse de Compensation à Monaco ?",
+    "reference_answer": "Le Comité de Contrôle de la Caisse de Compensation est composé de membres nommés par arrêté ministériel. Il veille à la bonne gestion du régime de sécurité sociale et contrôle l'utilisation des fonds. Il peut émettre des avis sur les projets de modification des prestations ou des taux de cotisation. Sa composition inclut des représentants de l'État, des employeurs et des salariés.",
+    "reference_keywords": ["Comité de Contrôle", "Caisse de Compensation", "sécurité sociale", "gestion", "cotisation"]
+  },
+  {
+    "id": "monaco-095",
+    "question": "Quelles sont les règles relatives à l'exercice de la pharmacie et à la vente de médicaments à Monaco ?",
+    "reference_answer": "L'exercice de la pharmacie à Monaco est subordonné à une autorisation administrative et au respect des conditions de diplôme et d'inscription à l'ordre. La vente de médicaments est réglementée par des arrêtés ministériels qui fixent les listes de substances classées comme stupéfiants et psychotropes. Les officines de pharmacie sont soumises à des obligations en matière de détention, de délivrance et de traçabilité des médicaments.",
+    "reference_keywords": ["pharmacie", "médicament", "stupéfiant", "psychotrope", "arrêté ministériel"]
+  },
+  {
+    "id": "monaco-096",
+    "question": "Comment les données de santé à caractère personnel sont-elles protégées à Monaco ?",
+    "reference_answer": "La protection des données de santé à caractère personnel à Monaco est renforcée par l'ordonnance souveraine n° 8.337 du 5 novembre 2020. Les traitements de données de santé sont soumis à des conditions strictes de collecte, de conservation et de transmission. La CCIN exerce un contrôle spécifique sur ces traitements. Le consentement du patient et le secret médical constituent des garanties fondamentales.",
+    "reference_keywords": ["données de santé", "ordonnance souveraine", "CCIN", "protection", "secret médical"]
+  },
+  {
+    "id": "monaco-097",
+    "question": "Quelle est la compétence du Tribunal Suprême de Monaco et quelles affaires tranche-t-il ?",
+    "reference_answer": "Le Tribunal Suprême de Monaco est la juridiction constitutionnelle de la Principauté. Il est compétent pour statuer sur les recours en annulation pour excès de pouvoir contre les décisions administratives, les recours en interprétation et les recours en appréciation de validité des actes administratifs. Il garantit le respect des droits et libertés consacrés par la Constitution du 17 décembre 1962.",
+    "reference_keywords": ["Tribunal Suprême", "excès de pouvoir", "annulation", "Constitution", "recours"]
+  },
+  {
+    "id": "monaco-098",
+    "question": "Quelles sont les règles de reclassement des salariés déclarés inaptes à Monaco ?",
+    "reference_answer": "La loi n° 1.348 du 25 juin 2008 encadre le reclassement des salariés déclarés inaptes par le médecin du travail à Monaco. L'employeur doit rechercher un poste de reclassement compatible avec les capacités du salarié. En cas d'impossibilité de reclassement, le salarié peut être licencié avec des indemnités spécifiques. Des mesures d'accompagnement et d'aide au retour à l'emploi sont prévues.",
+    "reference_keywords": ["reclassement", "inaptitude", "loi n° 1.348", "médecin du travail", "licenciement"]
+  },
+  {
+    "id": "monaco-099",
+    "question": "Comment est organisé le régime d'allocations chômage à Monaco ?",
+    "reference_answer": "Le régime d'allocations chômage à Monaco offre une protection aux salariés involontairement privés d'emploi. Les conditions d'attribution, la durée et le montant des prestations sont fixés par les textes législatifs et réglementaires. Les salariés doivent justifier d'une durée minimale de cotisation et être inscrits comme demandeurs d'emploi. L'ordonnance souveraine n° 6.988 a modernisé certaines dispositions du régime.",
+    "reference_keywords": ["chômage", "allocations", "demandeur d'emploi", "ordonnance souveraine", "prestations"]
+  },
+  {
+    "id": "monaco-100",
+    "question": "Comment le droit monégasque encadre-t-il le survol de l'espace aérien par des drones ?",
+    "reference_answer": "Le survol de l'espace aérien monégasque par des engins volants télépilotés (drones) est réglementé par des arrêtés ministériels définissant les zones autorisées, les conditions d'utilisation et les procédures d'autorisation. L'arrêté ministériel n° 2025-655 et ses modifications fixent les règles applicables. L'utilisation de drones à des fins professionnelles ou de loisir est soumise à des restrictions pour des raisons de sécurité et de protection de la vie privée.",
+    "reference_keywords": ["drone", "espace aérien", "arrêté ministériel", "survol", "télépilotés"]
   }
 ]

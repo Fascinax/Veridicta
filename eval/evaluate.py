@@ -211,6 +211,7 @@ def run_eval(
     backend: str | None = None,
     workers: int = 4,
     bm25=None,
+    stream_out: Path | None = None,
 ) -> list[EvalResult]:
     active_backend = backend or LLM_BACKEND
     n = len(questions)
@@ -277,11 +278,23 @@ def run_eval(
         for i, (q, r) in enumerate(zip(questions, retrieved_all), 1)
     ]
     ordered: dict[int, EvalResult] = {}
-    with ThreadPoolExecutor(max_workers=effective_workers) as pool:
-        futures = {pool.submit(_generate_one, task): task[0] for task in tasks}
-        for future in as_completed(futures):
-            idx, result = future.result()
-            ordered[idx] = result
+    stream_fh = None
+    if stream_out is not None:
+        stream_out.parent.mkdir(parents=True, exist_ok=True)
+        stream_fh = open(stream_out, "w", encoding="utf-8")
+        print(f"  Streaming results -> {stream_out}", flush=True)
+    try:
+        with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+            futures = {pool.submit(_generate_one, task): task[0] for task in tasks}
+            for future in as_completed(futures):
+                idx, result = future.result()
+                ordered[idx] = result
+                if stream_fh is not None:
+                    stream_fh.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+                    stream_fh.flush()
+    finally:
+        if stream_fh is not None:
+            stream_fh.close()
 
     return [ordered[i] for i in range(1, n + 1)]
 
@@ -506,14 +519,18 @@ def main() -> None:
         default_model = COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
         mode = "retrieval-only" if args.retrieval_only else f"full RAG ({active_backend}/{model or default_model})"
         print(f"\nRunning evaluation  [k={args.k}, retriever={retriever_label}, mode={mode}]\n")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stream_path = out_dir / f"eval_{ts}.jsonl"
         results = run_eval(
             questions, index, chunks, embedder,
             k=args.k, retrieval_only=args.retrieval_only,
             model=model, backend=active_backend,
             workers=args.workers, bm25=bm25,
+            stream_out=stream_path,
         )
         print_report(results)
-        save_results(results, out_dir)
+        print(f"Results saved -> {stream_path}")
 
 
 if __name__ == "__main__":
