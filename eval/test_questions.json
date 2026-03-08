@@ -1,62 +1,92 @@
 [
   {
-    "id": "droit-travail-001",
-    "question": "Quels sont les délais de préavis pour un licenciement économique ?",
-    "reference_answer": "Le délai de préavis pour un licenciement économique varie selon l'ancienneté: 1 mois pour une ancienneté de 6 mois à 2 ans, 2 mois pour une ancienneté de 2 ans ou plus.",
-    "reference_sources": ["code_travail_L1234-1", "code_travail_L1234-2"]
+    "id": "monaco-001",
+    "question": "Quelles sont les indemnités de licenciement prévues par le droit monégasque ?",
+    "reference_answer": "En droit monégasque, le salarié licencié a droit à une indemnité de congédiement calculée en fonction de l'ancienneté, ainsi qu'à une indemnité compensatrice de préavis si ce dernier n'est pas effectué. En cas de licenciement abusif, des dommages et intérêts supplémentaires peuvent être accordés par le Tribunal du travail.",
+    "reference_keywords": ["indemnité", "congédiement", "ancienneté", "préavis", "licenciement"]
   },
   {
-    "id": "droit-travail-002",
-    "question": "Quelles sont les conditions pour bénéficier du congé parental ?",
-    "reference_answer": "Pour bénéficier du congé parental, le salarié doit avoir au moins un an d'ancienneté dans l'entreprise à la date de naissance de l'enfant ou de l'adoption.",
-    "reference_sources": ["code_travail_L1225-47", "code_travail_L1225-48"]
+    "id": "monaco-002",
+    "question": "Quelle est la durée maximale de la période d'essai en droit du travail monégasque ?",
+    "reference_answer": "La période d'essai en droit monégasque varie selon la catégorie professionnelle du salarié. Elle est encadrée par la loi n° 729 et les conventions collectives applicables dans la Principauté de Monaco.",
+    "reference_keywords": ["période d'essai", "durée", "catégorie", "convention collective"]
   },
   {
-    "id": "droit-travail-003",
-    "question": "Quel est le montant de l'indemnité légale de licenciement ?",
-    "reference_answer": "L'indemnité légale de licenciement est égale à 1/4 de mois de salaire par année d'ancienneté pour les 10 premières années, puis 1/3 de mois par année d'ancienneté au-delà de 10 ans.",
-    "reference_sources": ["code_travail_R1234-2"]
+    "id": "monaco-003",
+    "question": "Quelles sont les conditions de validité d'un licenciement pour faute grave à Monaco ?",
+    "reference_answer": "Le licenciement pour faute grave à Monaco doit être justifié par un comportement rendant impossible le maintien du salarié dans l'entreprise. Il prive le salarié du droit au préavis et, selon les circonstances, de l'indemnité de congédiement. Le Tribunal du travail apprécie souverainement la gravité de la faute.",
+    "reference_keywords": ["faute grave", "licenciement", "préavis", "indemnité", "tribunal du travail"]
   },
   {
-    "id": "droit-travail-004",
-    "question": "Quelles sont les durées maximales de la période d'essai ?",
-    "reference_answer": "Pour les CDI, la période d'essai ne peut dépasser 2 mois pour les ouvriers et employés, 3 mois pour les agents de maîtrise et techniciens, et 4 mois pour les cadres.",
-    "reference_sources": ["code_travail_L1221-19"]
+    "id": "monaco-004",
+    "question": "Comment est calculée l'indemnité compensatrice de préavis dans la jurisprudence monégasque ?",
+    "reference_answer": "L'indemnité compensatrice de préavis est calculée sur la base du salaire brut que le salarié aurait perçu s'il avait travaillé pendant la durée du préavis. Elle correspond au salaire de base augmenté des avantages contractuels.",
+    "reference_keywords": ["indemnité compensatrice", "préavis", "salaire", "calcul"]
   },
   {
-    "id": "droit-civil-001",
-    "question": "Quels sont les délais de prescription en matière civile ?",
-    "reference_answer": "Le délai de prescription de droit commun est de 5 ans. Les actions personnelles ou mobilières se prescrivent par 5 ans à compter du jour où le titulaire d'un droit a connu ou aurait dû connaître les faits lui permettant de l'exercer.",
-    "reference_sources": ["code_civil_2224"]
+    "id": "monaco-005",
+    "question": "Quels sont les droits du salarié en cas de licenciement abusif devant le Tribunal du travail de Monaco ?",
+    "reference_answer": "En cas de licenciement abusif reconnu par le Tribunal du travail de Monaco, le salarié peut obtenir des dommages et intérêts pour réparer le préjudice subi. Le tribunal apprécie le montant en fonction de l'ancienneté, de l'âge, de la situation personnelle et des difficultés à retrouver un emploi.",
+    "reference_keywords": ["licenciement abusif", "dommages et intérêts", "tribunal du travail", "ancienneté", "préjudice"]
   },
   {
-    "id": "droit-civil-002",
-    "question": "Quelle est la définition légale du contrat de vente ?",
-    "reference_answer": "La vente est une convention par laquelle l'un s'oblige à livrer une chose, et l'autre à la payer. Elle peut être faite par acte authentique ou sous seing privé.",
-    "reference_sources": ["code_civil_1582", "code_civil_1583"]
+    "id": "monaco-006",
+    "question": "Quelles sont les obligations de l'employeur en cas de rupture du contrat de travail à Monaco ?",
+    "reference_answer": "En cas de rupture du contrat de travail à Monaco, l'employeur est tenu de respecter la procédure de licenciement, de donner congé en respectant le délai de préavis ou de verser l'indemnité compensatrice correspondante, et de remettre les documents de fin de contrat au salarié.",
+    "reference_keywords": ["rupture", "contrat de travail", "procédure", "préavis", "documents"]
   },
   {
-    "id": "droit-civil-003",
-    "question": "Quels sont les droits et obligations du locataire ?",
-    "reference_answer": "Le locataire est obligé d'user de la chose louée en bon père de famille, de payer le prix du bail aux termes convenus, et d'effectuer les menues réparations locatives.",
-    "reference_sources": ["code_civil_1728", "code_civil_1754"]
+    "id": "monaco-007",
+    "question": "Comment le Tribunal du travail de Monaco apprécie-t-il le licenciement pour motif personnel ?",
+    "reference_answer": "Le Tribunal du travail de Monaco apprécie le licenciement pour motif personnel en vérifiant que les faits reprochés au salarié sont réels, suffisamment graves et justifient la rupture du contrat. Il contrôle également le respect de la procédure contradictoire.",
+    "reference_keywords": ["tribunal du travail", "licenciement", "motif personnel", "faits", "procédure"]
   },
   {
-    "id": "jurisprudence-001",
-    "question": "Quelle est la jurisprudence sur le harcèlement moral au travail ?",
-    "reference_answer": "Le harcèlement moral est caractérisé par des agissements répétés ayant pour objet ou pour effet une dégradation des conditions de travail susceptible de porter atteinte à ses droits et à sa dignité, d'altérer sa santé physique ou mentale ou de compromettre son avenir professionnel.",
-    "reference_sources": ["cassation_sociale_20091125", "cassation_sociale_20140611"]
+    "id": "monaco-008",
+    "question": "Quelles indemnités peut obtenir un salarié dont le contrat à durée déterminée est rompu abusivement à Monaco ?",
+    "reference_answer": "Un salarié dont le CDD est rompu avant son terme sans motif légitime peut obtenir des dommages et intérêts correspondant au minimum aux rémunérations qu'il aurait perçues jusqu'à la fin du contrat, ainsi que les indemnités de fin de contrat prévues.",
+    "reference_keywords": ["CDD", "rupture", "dommages et intérêts", "rémunérations", "indemnités"]
   },
   {
-    "id": "jurisprudence-002",
-    "question": "Quels sont les critères jurisprudentiels du licenciement abusif ?",
-    "reference_answer": "Un licenciement est considéré comme abusif lorsqu'il ne repose pas sur une cause réelle et sérieuse, ou lorsque la procédure de licenciement n'a pas été respectée.",
-    "reference_sources": ["cassation_sociale_20130320", "cassation_sociale_20150708"]
+    "id": "monaco-009",
+    "question": "Quel est le délai de prescription pour agir devant le Tribunal du travail de Monaco ?",
+    "reference_answer": "Les actions en paiement de salaires et indemnités devant le Tribunal du travail de Monaco sont soumises à des délais de prescription. Le salarié doit agir dans les délais impartis par la loi monégasque pour ne pas voir sa demande déclarée irrecevable.",
+    "reference_keywords": ["prescription", "délai", "tribunal du travail", "action", "recevable"]
   },
   {
-    "id": "jurisprudence-003",
-    "question": "Comment est définie la faute grave en droit du travail selon la jurisprudence ?",
-    "reference_answer": "La faute grave est celle qui rend impossible le maintien du salarié dans l'entreprise, même pendant la durée limitée du préavis. Elle justifie le licenciement immédiat sans préavis ni indemnités.",
-    "reference_sources": ["cassation_sociale_20110126", "cassation_sociale_20120314"]
+    "id": "monaco-010",
+    "question": "Comment est défini le harcèlement moral dans la jurisprudence du Tribunal du travail de Monaco ?",
+    "reference_answer": "Le harcèlement moral est caractérisé par des agissements répétés ayant pour objet ou pour effet une dégradation des conditions de travail. Le Tribunal du travail de Monaco sanctionne ces comportements et peut accorder des dommages et intérêts significatifs à la victime.",
+    "reference_keywords": ["harcèlement moral", "agissements répétés", "conditions de travail", "dommages et intérêts"]
+  },
+  {
+    "id": "monaco-011",
+    "question": "Que prévoit le droit monégasque concernant le respect de la procédure avant un licenciement ?",
+    "reference_answer": "Le droit monégasque impose à l'employeur de respecter une procédure préalable avant tout licenciement, notamment la convocation du salarié à un entretien préalable et le respect d'un délai avant la notification de la décision. Le non-respect de cette procédure peut entraîner des dommages et intérêts supplémentaires.",
+    "reference_keywords": ["procédure", "entretien préalable", "convocation", "notification", "délai"]
+  },
+  {
+    "id": "monaco-012",
+    "question": "Quelles sont les conséquences d'une démission déguisée en droit monégasque ?",
+    "reference_answer": "Lorsque le Tribunal du travail de Monaco requalifie une démission en prise d'acte aux torts de l'employeur ou en licenciement sans cause réelle et sérieuse, le salarié peut prétendre aux indemnités de rupture comme s'il avait été licencié abusivement.",
+    "reference_keywords": ["démission", "prise d'acte", "requalification", "licenciement", "torts de l'employeur"]
+  },
+  {
+    "id": "monaco-013",
+    "question": "Quelle est la portée de la clause de non-concurrence dans les contrats de travail monégasques ?",
+    "reference_answer": "La clause de non-concurrence dans les contrats de travail monégasques doit être limitée dans le temps, dans l'espace et dans son objet pour être valable. Elle doit être assortie d'une contrepartie financière pour le salarié et ne pas compromettre sa capacité à exercer son activité professionnelle.",
+    "reference_keywords": ["non-concurrence", "clause", "contrepartie", "limitation", "contrat de travail"]
+  },
+  {
+    "id": "monaco-014",
+    "question": "Quels types d'entreprises sont concernés par le droit du travail monégasque ?",
+    "reference_answer": "Le droit du travail monégasque s'applique aux entreprises établies et exerçant leur activité sur le territoire de la Principauté de Monaco, quel que soit leur secteur d'activité. Les sociétés anonymes monégasiennes (SAM) et autres formes sociales sont soumises à la législation du travail monégasque.",
+    "reference_keywords": ["entreprises", "SAM", "Principauté de Monaco", "territoire", "législation"]
+  },
+  {
+    "id": "monaco-015",
+    "question": "Comment le Tribunal du travail de Monaco évalue-t-il le préjudice moral d'un salarié licencié ?",
+    "reference_answer": "Le Tribunal du travail de Monaco évalue le préjudice moral en tenant compte des circonstances dans lesquelles s'est déroulé le licenciement, notamment son caractère vexatoire, la brutalité de la rupture, et les répercussions sur la vie personnelle et professionnelle du salarié.",
+    "reference_keywords": ["préjudice moral", "vexatoire", "brutalité", "tribunal du travail", "évaluation"]
   }
 ]

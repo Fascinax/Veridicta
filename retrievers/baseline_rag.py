@@ -1,8 +1,8 @@
 """Baseline RAG retriever for Veridicta — Monegasque labour law assistant.
 
 Pipeline:
-    chunks.jsonl -> multilingual-e5 embeddings -> FAISS IndexFlatIP
-    Query -> embed -> FAISS search -> top-k chunks -> Groq Llama 3.1 -> answer
+    chunks.jsonl -> multilingual-MiniLM embeddings -> FAISS IndexFlatIP
+    Query -> embed -> FAISS search -> top-k chunks -> Cerebras Llama -> answer
 
 Build index:
     python -m retrievers.baseline_rag --build
@@ -17,13 +17,15 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import faiss
 import jsonlines
 import numpy as np
 from dotenv import load_dotenv
-from groq import Groq
+from cerebras.cloud.sdk import Cerebras
+from cerebras.cloud.sdk import RateLimitError as CerebrasRateLimitError
 from sentence_transformers import SentenceTransformer
 
 load_dotenv()
@@ -35,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 EMBED_BATCH_SIZE = 64
-GROQ_MODEL = "llama-3.3-70b-versatile"
+LLM_MODEL = "gpt-oss-120b"
 DEFAULT_TOP_K = 5
 MAX_CONTEXT_CHARS = 12_000
 
@@ -168,18 +170,18 @@ def _format_context(chunks: list[dict]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def answer(query: str, context_chunks: list[dict]) -> str:
-    """Generate a grounded answer via Groq Llama 3.1 from retrieved context chunks."""
-    api_key = os.getenv("GROQ_API_KEY")
+def answer(query: str, context_chunks: list[dict], model: str | None = None) -> str:
+    """Generate a grounded answer via Cerebras from retrieved context chunks."""
+    api_key = os.getenv("CEREBRAS_API_KEY")
     if not api_key:
-        raise EnvironmentError("GROQ_API_KEY not set. Add it to your .env file.")
+        raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
 
     context = _format_context(context_chunks)
     user_message = f"Sources:\n\n{context}\n\nQuestion: {query}"
 
-    client = Groq(api_key=api_key)
-    completion = client.chat.completions.create(
-        model=GROQ_MODEL,
+    client = Cerebras(api_key=api_key)
+    payload = dict(
+        model=model or LLM_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
@@ -187,7 +189,17 @@ def answer(query: str, context_chunks: list[dict]) -> str:
         temperature=0.1,
         max_tokens=1024,
     )
-    return completion.choices[0].message.content
+
+    for attempt in range(5):
+        try:
+            completion = client.chat.completions.create(**payload)
+            return completion.choices[0].message.content
+        except CerebrasRateLimitError:
+            wait = 10 * (attempt + 1)
+            logger.warning("Cerebras 429 — retrying in %ds (attempt %d/5)", wait, attempt + 1)
+            time.sleep(wait)
+
+    raise RuntimeError("Cerebras rate limit: max retries exceeded.")
 
 
 # --- CLI ---
