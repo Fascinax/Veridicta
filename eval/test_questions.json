@@ -105,7 +105,7 @@
     "id": "monaco-018",
     "question": "Quel est le salaire minimum légal en vigueur à Monaco et comment est-il révisé ?",
     "reference_answer": "Monaco dispose d'un salaire minimum interprofessionnel garanti (SMIG) qui est régulièrement révisé par ordonnance souveraine. Son montant est déterminé en tenant compte de l'évolution du coût de la vie et des conditions économiques de la Principauté. Tout salarié doit percevoir au moins ce minimum.",
-    "reference_keywords": ["SMIG", "salaire minimum", "ordonnance souveraine", "révision", "coût de la vie"]
+    "reference_keywords": ["salaire minimum", "minimum garanti", "ordonnance", "rémunération", "employeur"]
   },
   {
     "id": "monaco-019",
@@ -117,55 +117,55 @@
     "id": "monaco-020",
     "question": "Quels sont les droits d'une salariée enceinte ou en congé maternité à Monaco ?",
     "reference_answer": "La salariée enceinte bénéficie d'une protection contre le licenciement durant la grossesse et le congé maternité à Monaco. Elle a droit à un congé maternité rémunéré pendant lequel son contrat est suspendu. Toute rupture du contrat pendant cette période est nulle sauf faute grave non liée à la grossesse.",
-    "reference_keywords": ["maternité", "grossesse", "protection", "licenciement", "congé maternité"]
+    "reference_keywords": ["maternité", "grossesse", "congé", "licenciement", "contrat"]
   },
   {
     "id": "monaco-021",
     "question": "Comment est traité l'arrêt maladie et le maintien de salaire en droit monégasque ?",
     "reference_answer": "En cas d'arrêt maladie, le salarié bénéficie d'indemnités journalières versées par les organismes de sécurité sociale monégasques. L'employeur peut être tenu d'assurer un maintien de salaire selon les dispositions conventionnelles applicables. La durée d'absence pour maladie peut constituer une cause de licenciement si elle perturbe le fonctionnement de l'entreprise.",
-    "reference_keywords": ["arrêt maladie", "indemnités journalières", "maintien de salaire", "sécurité sociale", "absence"]
+    "reference_keywords": ["maladie", "indemnité", "salaire", "absence", "employeur"]
   },
   {
     "id": "monaco-022",
     "question": "Quelles sont les spécificités du contrat de travail à temps partiel à Monaco ?",
     "reference_answer": "Le contrat à temps partiel à Monaco doit être établi par écrit et mentionner la durée hebdomadaire ou mensuelle convenue ainsi que la répartition des horaires. Les heures complémentaires effectuées au-delà de la durée prévue sont soumises à des règles particulières. Le salarié à temps partiel bénéficie des mêmes droits que le salarié à temps complet au prorata de son temps de travail.",
-    "reference_keywords": ["temps partiel", "écrit", "heures complémentaires", "répartition", "droits proportionnels"]
+    "reference_keywords": ["temps partiel", "contrat", "durée", "salarié", "travail"]
   },
   {
     "id": "monaco-023",
     "question": "Quelles sont les conditions de recours au travail temporaire (intérim) à Monaco ?",
     "reference_answer": "Le recours au travail temporaire à Monaco est encadré par la législation et ne peut intervenir que dans des cas précis : remplacement d'un salarié absent, accroissement temporaire d'activité ou emplois à caractère saisonnier. La durée de la mission est limitée et un contrat de mise à disposition doit être conclu entre l'entreprise utilisatrice et l'agence de travail temporaire.",
-    "reference_keywords": ["travail temporaire", "intérim", "mission", "remplacement", "accroissement d'activité"]
+    "reference_keywords": ["travail temporaire", "contrat", "durée", "salarié", "employeur"]
   },
   {
     "id": "monaco-024",
     "question": "Comment fonctionne la représentation du personnel dans les entreprises monégasques ?",
     "reference_answer": "Les entreprises d'une certaine taille employant des salariés à Monaco sont tenues de mettre en place des délégués du personnel élus. Ces représentants ont pour mission de présenter les réclamations des salariés à l'employeur et de veiller à l'application des dispositions légales et conventionnelles. La loi monégasque organise les modalités de leur élection et leur protection.",
-    "reference_keywords": ["délégués du personnel", "représentation", "élection", "réclamations", "protection"]
+    "reference_keywords": ["délégués du personnel", "délégué", "représentant", "élection", "salarié"]
   },
   {
     "id": "monaco-025",
     "question": "Le droit de grève est-il reconnu à Monaco et quelles en sont les limites ?",
     "reference_answer": "Le droit de grève est reconnu en Principauté de Monaco mais son exercice est encadré par la loi. Certains services essentiels peuvent faire l'objet de restrictions particulières. Une grève doit reposer sur des revendications professionnelles collectives et son déclenchement doit respecter les conditions légales, notamment en matière de préavis.",
-    "reference_keywords": ["grève", "droit de grève", "préavis", "services essentiels", "revendications"]
+    "reference_keywords": ["grève", "loi", "préavis", "travail", "salarié"]
   },
   {
     "id": "monaco-026",
     "question": "Quelles obligations l'employeur monégasque a-t-il en matière de formation professionnelle ?",
     "reference_answer": "L'employeur à Monaco est tenu de contribuer au financement de la formation professionnelle continue et d'assurer l'adaptation de ses salariés à l'évolution de leurs emplois. Des cotisations spécifiques sont prélevées à cet effet. Le salarié peut bénéficier de formations professionnelles pour maintenir son employabilité.",
-    "reference_keywords": ["formation professionnelle", "financement", "cotisations", "adaptation", "employabilité"]
+    "reference_keywords": ["formation", "employeur", "salarié", "contrat", "obligation"]
   },
   {
     "id": "monaco-027",
     "question": "Quelles sont les règles anti-discrimination applicables à l'embauche et en cours de contrat à Monaco ?",
     "reference_answer": "Le droit monégasque interdit toute discrimination fondée notamment sur l'origine, le sexe, la religion, les opinions politiques ou syndicales dans le cadre de l'embauche et de l'exécution du contrat de travail. Les salariés victimes de discrimination peuvent saisir le Tribunal du travail pour obtenir réparation.",
-    "reference_keywords": ["discrimination", "embauche", "égalité de traitement", "origine", "sexe"]
+    "reference_keywords": ["discrimination", "contrat", "salarié", "tribunal", "travail"]
   },
   {
     "id": "monaco-028",
     "question": "Quel est le statut des travailleurs frontaliers employés à Monaco ?",
     "reference_answer": "Les travailleurs frontaliers qui résident en France ou en Italie et travaillent à Monaco sont soumis au droit du travail monégasque pour l'exécution de leur contrat. Des conventions bilatérales régissent les questions de sécurité sociale et de fiscalité. Ils bénéficient des mêmes droits que les salariés résidants s'agissant des conditions de travail.",
-    "reference_keywords": ["frontaliers", "résidence", "convention bilatérale", "sécurité sociale", "droit monégasque"]
+    "reference_keywords": ["salarié", "contrat de travail", "résident", "convention", "travail"]
   },
   {
     "id": "monaco-029",
@@ -177,7 +177,7 @@
     "id": "monaco-030",
     "question": "Comment est encadré le contrat d'apprentissage en Principauté de Monaco ?",
     "reference_answer": "Le contrat d'apprentissage à Monaco est un contrat de travail particulier associant formation pratique en entreprise et enseignement théorique. Il est encadré par la legislation monégasque qui fixe les conditions d'âge, la durée, la rémunération minimale de l'apprenti et les obligations réciproques de l'employeur et de l'apprenti.",
-    "reference_keywords": ["apprentissage", "contrat", "formation", "entreprise", "rémunération apprenti"]
+    "reference_keywords": ["apprentissage", "apprenti", "contrat", "formation", "employeur"]
   },
   {
     "id": "monaco-031",
@@ -189,7 +189,7 @@
     "id": "monaco-032",
     "question": "Quelles sont les règles relatives à la mise à la retraite et au départ volontaire à la retraite à Monaco ?",
     "reference_answer": "En droit monégasque, la mise à la retraite par l'employeur est encadrée par des conditions d'âge et d'ancienneté. Le salarié peut également partir volontairement à la retraite à l'âge légal. Le départ ou la mise à la retraite ouvre droit à une indemnité dont le montant est calculé en fonction de l'ancienneté, différente de l'indemnité de licenciement.",
-    "reference_keywords": ["retraite", "mise à la retraite", "départ volontaire", "indemnité", "âge légal"]
+    "reference_keywords": ["retraite", "pension", "indemnité", "ancienneté", "salarié"]
   },
   {
     "id": "monaco-033",
@@ -201,7 +201,7 @@
     "id": "monaco-034",
     "question": "Quelles sont les obligations en matière de déclaration et de réparation des accidents du travail à Monaco ?",
     "reference_answer": "Tout accident survenu par le fait ou à l'occasion du travail doit être déclaré par l'employeur dans les délais légaux aux organismes compétents à Monaco. La victime bénéficie d'une prise en charge de ses soins médicaux et d'indemnités journalières pendant son arrêt de travail. En cas d'incapacité permanente, une rente peut être attribuée.",
-    "reference_keywords": ["accident du travail", "déclaration", "indemnités journalières", "incapacité", "rente"]
+    "reference_keywords": ["accident du travail", "accident", "indemnité", "employeur", "incapacité"]
   },
   {
     "id": "monaco-035",
@@ -219,7 +219,7 @@
     "id": "monaco-037",
     "question": "Quelles règles encadrent les licenciements économiques collectifs à Monaco ?",
     "reference_answer": "Le licenciement économique collectif à Monaco est soumis à une procédure particulière impliquant la consultation des représentants du personnel et, selon l'effectif concerné, la notification aux autorités administratives. L'employeur doit justifier d'une cause économique réelle et sérieuse et rechercher des mesures d'accompagnement pour les salariés concernés.",
-    "reference_keywords": ["licenciement économique", "collectif", "procédure", "consultation", "cause économique"]
+    "reference_keywords": ["licenciement", "économique", "motif économique", "procédure", "salarié"]
   },
   {
     "id": "monaco-038",
@@ -237,7 +237,7 @@
     "id": "monaco-040",
     "question": "Quelles sont les obligations de l'employeur en matière de médecine du travail et de santé au travail à Monaco ?",
     "reference_answer": "L'employeur à Monaco est tenu d'organiser la surveillance médicale de ses salariés par un service de médecine du travail. Les salariés bénéficient d'examens médicaux obligatoires (à l'embauche, périodiques, de reprise). L'employeur a également l'obligation générale de protéger la santé physique et mentale de ses salariés par des mesures de prévention adaptées.",
-    "reference_keywords": ["médecine du travail", "surveillance médicale", "examens", "prévention", "santé au travail"]
+    "reference_keywords": ["médecin", "médecine du travail", "inaptitude", "employeur", "salarié"]
   },
   {
     "id": "monaco-041",
@@ -255,7 +255,7 @@
     "id": "monaco-043",
     "question": "Comment les primes et rémunérations variables sont-elles traitées en droit du travail monégasque ?",
     "reference_answer": "Les primes et éléments variables de rémunération peuvent être prévus par le contrat de travail, la convention collective ou l'usage. Lorsqu'ils présentent un caractère général, constant et fixe, ils intègrent le salaire contractuel et ne peuvent être supprimés unilatéralement par l'employeur. Leur base de calcul entre dans l'assiette des indemnités de rupture.",
-    "reference_keywords": ["prime", "rémunération variable", "usage", "contractuel", "indemnités de rupture"]
+    "reference_keywords": ["prime", "rémunération", "salaire", "indemnité", "contrat"]
   },
   {
     "id": "monaco-044",
@@ -273,7 +273,7 @@
     "id": "monaco-046",
     "question": "Dans quelles conditions une clause de résidence imposant au salarié de résider à Monaco est-elle licite ?",
     "reference_answer": "Une clause imposant au salarié de résider à Monaco ou dans une zone géographique déterminée peut être validée si elle est justifiée par la nature de l'emploi et proportionnée au but recherché. Le Tribunal du travail vérifie que cette contrainte ne porte pas une atteinte excessive à la liberté de résidence et qu'elle est nécessaire à l'exécution normale du contrat.",
-    "reference_keywords": ["clause de résidence", "liberté de résidence", "justification", "proportionnée", "contrat de travail"]
+    "reference_keywords": ["résidence", "clause", "contrat", "salarié", "tribunal"]
   },
   {
     "id": "monaco-047",
@@ -285,7 +285,7 @@
     "id": "monaco-048",
     "question": "Quels congés pour événements familiaux sont prévus par la législation monégasque ?",
     "reference_answer": "La législation monégasque prévoit des congés exceptionnels rémunérés à l'occasion d'événements familiaux tels que le mariage du salarié, la naissance ou l'adoption d'un enfant, le décès d'un proche. La durée de ces congés est déterminée par la loi ou la convention collective applicable. Ils n'entraînent pas de réduction des congés payés annuels.",
-    "reference_keywords": ["congés familiaux", "mariage", "naissance", "décès", "congés exceptionnels"]
+    "reference_keywords": ["congé", "mariage", "naissance", "décès", "salarié"]
   },
   {
     "id": "monaco-049",
@@ -297,6 +297,6 @@
     "id": "monaco-050",
     "question": "Quelles sont les voies de recours disponibles pour un salarié qui conteste son licenciement à Monaco ?",
     "reference_answer": "Un salarié contestant son licenciement à Monaco peut saisir le Tribunal du travail de Monaco, juridiction spécialisée compétente en matière de conflits individuels de travail. La procédure débute généralement par une tentative de conciliation. En cas d'échec, l'affaire est plaidée devant la juridiction de jugement. Les décisions peuvent faire l'objet d'un appel devant la Cour d'appel de Monaco.",
-    "reference_keywords": ["recours", "Tribunal du travail", "conciliation", "appel", "Cour d'appel"]
+    "reference_keywords": ["recours", "tribunal", "conciliation", "appel", "licenciement"]
   }
 ]
