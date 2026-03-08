@@ -52,6 +52,12 @@ try:
 except ImportError:
     _HYBRID_AVAILABLE = False
 
+try:
+    from retrievers.graph_rag import graph_retrieve, load_neo4j_manager
+    _GRAPH_AVAILABLE = True
+except ImportError:
+    _GRAPH_AVAILABLE = False
+
 CEREBRAS_MODELS = [
     "llama3.1-8b",
     "gpt-oss-120b",
@@ -211,17 +217,29 @@ def run_eval(
     backend: str | None = None,
     workers: int = 4,
     bm25=None,
+    neo4j_mgr=None,
     stream_out: Path | None = None,
 ) -> list[EvalResult]:
     active_backend = backend or LLM_BACKEND
     n = len(questions)
     use_hybrid = bm25 is not None
+    use_graph = neo4j_mgr is not None
 
     # Phase 1 — retrieval (sequential: SentenceTransformer is not thread-safe)
-    retriever_label = "hybrid BM25+FAISS" if use_hybrid else "FAISS"
+    if use_graph:
+        retriever_label = "Graph (Neo4j)"
+    elif use_hybrid:
+        retriever_label = "hybrid BM25+FAISS"
+    else:
+        retriever_label = "FAISS"
     print(f"  Retrieving context for {n} questions  [{retriever_label}] ...", flush=True)
-    if use_hybrid:
+    if use_graph:
         retrieved_all: list[list[dict]] = [
+            graph_retrieve(q.question, index, chunks, embedder, neo4j_manager=neo4j_mgr, k=k)
+            for q in questions
+        ]
+    elif use_hybrid:
+        retrieved_all = [
             hybrid_retrieve(q.question, index, bm25, chunks, embedder, k=k)
             for q in questions
         ]
@@ -456,8 +474,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--retriever",
         default="faiss",
-        choices=["faiss", "hybrid"],
-        help="Retriever to use: faiss (dense only) or hybrid (BM25+FAISS, default: faiss)",
+        choices=["faiss", "hybrid", "graph"],
+        help=(
+            "Retriever to use: faiss (dense only), hybrid (BM25+FAISS), "
+            "or graph (FAISS+Neo4j CITE expansion)  (default: faiss)"
+        ),
     )
     return parser.parse_args()
 
@@ -490,12 +511,31 @@ def main() -> None:
         except FileNotFoundError as exc:
             sys.exit(f"ERROR: {exc}")
 
+    neo4j_mgr = None
+    if args.retriever == "graph":
+        if not _GRAPH_AVAILABLE:
+            sys.exit("ERROR: graph_rag module unavailable. Check retrievers/graph_rag.py.")
+        print("Connecting to Neo4j ...")
+        neo4j_mgr = load_neo4j_manager()
+        if neo4j_mgr is None:
+            sys.exit(
+                "ERROR: Neo4j unreachable. Check NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD.\n"
+                "Build the graph first: python -m retrievers.neo4j_setup --build"
+            )
+        s = neo4j_mgr.stats()
+        print(f"  Graph connected: {s}")
+
     print("Loading embedder ...")
     embedder = _load_embedder()
 
     out_dir = Path(args.out)
 
-    retriever_label = f"hybrid ({args.retriever})" if args.retriever == "hybrid" else "faiss"
+    if args.retriever == "hybrid":
+        retriever_label = "hybrid"
+    elif args.retriever == "graph":
+        retriever_label = "graph"
+    else:
+        retriever_label = "faiss"
 
     if args.all_models:
         models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
@@ -508,7 +548,7 @@ def main() -> None:
                 questions, index, chunks, embedder,
                 k=args.k, retrieval_only=args.retrieval_only,
                 model=model_name, backend=active_backend,
-                workers=args.workers, bm25=bm25,
+                workers=args.workers, bm25=bm25, neo4j_mgr=neo4j_mgr,
             )
             print_report(results)
             save_results(results, out_dir / model_name.replace("/", "_"))
@@ -526,7 +566,7 @@ def main() -> None:
             questions, index, chunks, embedder,
             k=args.k, retrieval_only=args.retrieval_only,
             model=model, backend=active_backend,
-            workers=args.workers, bm25=bm25,
+            workers=args.workers, bm25=bm25, neo4j_mgr=neo4j_mgr,
             stream_out=stream_path,
         )
         print_report(results)

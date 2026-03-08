@@ -60,6 +60,12 @@ try:
 except ImportError:
     _HYBRID_AVAILABLE = False
 
+try:
+    from retrievers.graph_rag import graph_retrieve, load_neo4j_manager
+    _GRAPH_AVAILABLE = True
+except ImportError:
+    _GRAPH_AVAILABLE = False
+
 # ── Page config ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -176,6 +182,15 @@ def _get_bm25():
     except FileNotFoundError:
         return None
 
+@st.cache_resource(show_spinner="Connexion au graphe Neo4j…")
+def _get_neo4j():
+    """Return a connected Neo4jManager, or None if Neo4j is not reachable."""
+    if not _GRAPH_AVAILABLE:
+        return None
+    try:
+        return load_neo4j_manager()
+    except Exception:
+        return None
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
@@ -195,13 +210,21 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
         show_sources = st.toggle("Afficher les sources", value=True)
 
         # Retriever selector
-        if _HYBRID_AVAILABLE:
-            retriever_options = ["FAISS", "Hybrid (BM25+FAISS)"]
+        if _HYBRID_AVAILABLE or _GRAPH_AVAILABLE:
+            retriever_options = ["FAISS"]
+            if _HYBRID_AVAILABLE:
+                retriever_options.append("Hybrid (BM25+FAISS)")
+            if _GRAPH_AVAILABLE:
+                retriever_options.append("Graph (Neo4j)")
+            default_retriever_idx = 1 if _HYBRID_AVAILABLE else 0
             retriever = st.radio(
                 "Moteur de recherche",
                 retriever_options,
-                index=1,
-                help="Hybrid combine recherche semantique (FAISS) et lexicale (BM25) via RRF.",
+                index=default_retriever_idx,
+                help=(
+                    "Hybrid : sémantique (FAISS) + lexical (BM25) via RRF.\n"
+                    "Graph : FAISS + expansion via liens loi↔décision (Neo4j)."
+                ),
             )
         else:
             retriever = "FAISS"
@@ -230,7 +253,12 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
             model = st.selectbox("Modele Cerebras", cerebras_models, index=default_cerebras)
 
         st.divider()
-        retriever_label = "Hybrid BM25+FAISS" if retriever == "Hybrid (BM25+FAISS)" else "FAISS"
+        if retriever == "Hybrid (BM25+FAISS)":
+            retriever_label = "Hybrid BM25+FAISS"
+        elif retriever == "Graph (Neo4j)":
+            retriever_label = "Graph Neo4j"
+        else:
+            retriever_label = "FAISS"
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
             "Corpus : législation · jurisprudence · JOM<br>"
@@ -311,6 +339,7 @@ def main() -> None:
 
     k, show_sources, backend, model, retriever = _render_sidebar()
     use_hybrid = retriever == "Hybrid (BM25+FAISS)"
+    use_graph = retriever == "Graph (Neo4j)"
 
     # Load index & embedder (cached after first load)
     try:
@@ -331,7 +360,14 @@ def main() -> None:
             "Relance `python -m retrievers.hybrid_rag --build` pour le regenerer."
         )
         use_hybrid = False
-
+    neo4j_mgr = _get_neo4j() if use_graph else None
+    if use_graph and neo4j_mgr is None:
+        st.warning(
+            "Neo4j inaccessible — passage en mode FAISS. "
+            "Vérifie `NEO4J_URI` dans ton .env et lance "
+            "`python -m retrievers.neo4j_setup --build`."
+        )
+        use_graph = False
     # Chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -385,7 +421,12 @@ def main() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Recherche dans le corpus…"):
                 t0 = time.perf_counter()
-                if use_hybrid and bm25 is not None:
+                if use_graph and neo4j_mgr is not None:
+                    retrieved = graph_retrieve(
+                        prompt, index_data, chunks_map, embedder,
+                        neo4j_manager=neo4j_mgr, k=k,
+                    )
+                elif use_hybrid and bm25 is not None:
                     retrieved = hybrid_retrieve(
                         prompt, index_data, bm25, chunks_map, embedder, k
                     )
