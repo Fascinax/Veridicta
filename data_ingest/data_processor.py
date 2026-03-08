@@ -1,8 +1,9 @@
-"""Chunk and normalise the raw LegiMonaco corpus for embedding.
+"""Chunk and normalise the raw corpus for embedding.
 
 Reads:
   data/raw/legislation.jsonl
   data/raw/jurisprudence.jsonl
+  data/raw/journal_monaco.jsonl
 
 Writes:
   data/processed/chunks.jsonl
@@ -35,7 +36,7 @@ CHUNK_OVERLAP = 200
 MIN_CHUNK_SIZE = 100
 HARD_MAX_CHUNK = 2200  # absolute ceiling — splits on spaces when no structure exists
 
-RAW_FILES = ["legislation.jsonl", "jurisprudence.jsonl"]
+RAW_FILES = ["legislation.jsonl", "jurisprudence.jsonl", "journal_monaco.jsonl"]
 OUTPUT_FILE = "chunks.jsonl"
 
 
