@@ -22,6 +22,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from retrievers.baseline_rag import (
     DEFAULT_TOP_K,
     INDEX_DIR,
+    LLM_BACKEND,
+    CEREBRAS_DEFAULT_MODEL,
+    COPILOT_DEFAULT_MODEL,
     answer,
     load_index,
     retrieve,
@@ -137,7 +140,7 @@ def _get_embedder():
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
-def _render_sidebar() -> int:
+def _render_sidebar() -> tuple[int, bool, str, str]:
     with st.sidebar:
         st.markdown(
             "<div style='font-family:Playfair Display,serif;font-size:1.3rem;"
@@ -152,11 +155,33 @@ def _render_sidebar() -> int:
         show_sources = st.toggle("Afficher les sources", value=True)
 
         st.divider()
+
+        # Backend selector
+        backend_options = ["cerebras", "copilot"]
+        default_idx = backend_options.index(LLM_BACKEND) if LLM_BACKEND in backend_options else 0
+        backend = st.selectbox(
+            "Backend LLM",
+            backend_options,
+            index=default_idx,
+            format_func=lambda x: {"cerebras": "Cerebras (gratuit)", "copilot": "GitHub Copilot"}[x],
+        )
+
+        # Model selector per backend
+        if backend == "copilot":
+            copilot_models = ["gpt-4.1", "gpt-4.1-mini", "claude-sonnet-4", "o3-mini"]
+            default_copilot = copilot_models.index(COPILOT_DEFAULT_MODEL) if COPILOT_DEFAULT_MODEL in copilot_models else 0
+            model = st.selectbox("Modele Copilot", copilot_models, index=default_copilot)
+        else:
+            cerebras_models = ["gpt-oss-120b", "llama3.1-8b"]
+            default_cerebras = cerebras_models.index(CEREBRAS_DEFAULT_MODEL) if CEREBRAS_DEFAULT_MODEL in cerebras_models else 0
+            model = st.selectbox("Modele Cerebras", cerebras_models, index=default_cerebras)
+
+        st.divider()
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
             "Corpus : 2 867 documents (3 sources)<br>"
             "Index : 26 517 chunks MiniLM-L12<br>"
-            "LLM : Cerebras (gpt-oss-120b)"
+            f"Backend : {backend} ({model})"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -165,7 +190,7 @@ def _render_sidebar() -> int:
             st.session_state.messages = []
             st.rerun()
 
-    return k, show_sources
+    return k, show_sources, backend, model
 
 
 # ── Citation formatting ───────────────────────────────────────────────────────
@@ -224,7 +249,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    k, show_sources = _render_sidebar()
+    k, show_sources, backend, model = _render_sidebar()
 
     # Load index & embedder (cached after first load)
     try:
@@ -273,7 +298,7 @@ def main() -> None:
             response_placeholder = st.empty()
             with st.spinner("Génération de la réponse…"):
                 try:
-                    response_text = answer(prompt, retrieved)
+                    response_text = answer(prompt, retrieved, model=model, backend=backend)
                 except EnvironmentError as exc:
                     response_text = f"⚠️ Clé API manquante : {exc}"
                 except Exception as exc:

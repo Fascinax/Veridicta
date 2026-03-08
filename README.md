@@ -6,7 +6,7 @@
 
 ## 1. Vision
 
-Assistant conversationnel juridique specialise en **droit du travail monegasque**, combinant **RAG (FAISS)**, **prompt engineering avance** et un **LLM via Cerebras Cloud** pour delivrer des reponses precises, sourcees et tracables a destination de **juristes et avocats professionnels**.
+Assistant conversationnel juridique specialise en **droit du travail monegasque**, combinant **RAG (FAISS)**, **prompt engineering avance** et un **LLM multi-backend** (Cerebras Cloud ou GitHub Copilot) pour delivrer des reponses precises, sourcees et tracables a destination de **juristes et avocats professionnels**.
 
 ## 2. Resultats MVP
 
@@ -32,11 +32,11 @@ Le LLM est contraint de citer `[Source N]` dans chaque affirmation -- inspire de
 
 | Composant       | Choix MVP                                                     |
 | --------------- | ------------------------------------------------------------- |
-| **Langage**     | Python 3.11                                                   |
+| **Langage**     | Python 3.11 + Node.js 18+ (bridge Copilot)                   |
 | **Embeddings**  | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384)     |
 | **Retrieval**   | FAISS IndexFlatIP (26 517 vecteurs)                           |
-| **LLM**         | Cerebras Cloud (`gpt-oss-120b`, `llama3.1-8b`) -- gratuit     |
-| **UI**          | Streamlit (chat conversationnel, sources cliquables)          |
+| **LLM**         | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`, `claude-sonnet-4`, etc.) |
+| **UI**          | Streamlit (chat conversationnel, sources cliquables, backend selector) |
 | **Evaluation**  | 50 questions gold standard, KW recall, F1, citation faithfulness, hallucination risk |
 | **Scraping**    | API Elasticsearch LegiMonaco + Playwright Journal de Monaco   |
 
@@ -57,8 +57,10 @@ Veridicta/
 |   +-- monaco_scraper.py       # Scraper Playwright du Journal de Monaco
 |   +-- data_processor.py       # Chunking 1800 chars + overlap -> JSONL
 +-- retrievers/
-|   +-- baseline_rag.py         # FAISS retrieval + Cerebras LLM generation
+|   +-- baseline_rag.py         # FAISS retrieval + LLM generation (Cerebras ou Copilot)
 |   +-- neo4j_setup.py          # [v2] Graphe de connaissances
++-- tools/
+|   +-- copilot_client.py       # Wrapper Python du bridge @github/copilot-sdk
 +-- eval/
 |   +-- evaluate.py             # Metriques multi-modeles (KW recall, F1, citation faithfulness, halluc. risk)
 |   +-- test_questions.json     # 50 questions gold standard droit du travail MCO
@@ -68,6 +70,8 @@ Veridicta/
 |   +-- raw/                    # JSONL bruts (legislation, jurisprudence, journal_monaco)
 |   +-- processed/              # chunks.jsonl (corpus normalise)
 |   +-- index/                  # veridicta.faiss + chunks_map.jsonl
++-- copilot-bridge.mjs          # Bridge Node.js @github/copilot-sdk -> stdin/stdout
++-- package.json                # Dependance npm : @github/copilot-sdk
 +-- requirements.txt
 +-- README.md
 +-- ROADMAP.md
@@ -89,7 +93,7 @@ LegiMonaco (API ES)  ---+
                         +-> data_processor.py -> chunks.jsonl -> MiniLM embeddings -> FAISS index
 Journal de Monaco ------+                                                                 |
                                                                                           v
-                              User query -> embed -> FAISS top-k -> Cerebras LLM -> Reponse + sources
+                              User query -> embed -> FAISS top-k -> LLM (Cerebras ou Copilot) -> Reponse + [Source N]
 ```
 
 ## 7. Installation
@@ -107,8 +111,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 
-# Configurer la cle API Cerebras
+# --- Backend Cerebras (par defaut, gratuit) ---
 echo "CEREBRAS_API_KEY=votre_cle_ici" > .env
+
+# --- Backend GitHub Copilot (optionnel) ---
+npm install                              # installe @github/copilot-sdk
+echo "LLM_BACKEND=copilot" >> .env       # active le backend Copilot
+echo "GITHUB_PAT=ghp_xxx" >> .env        # PAT avec scope copilot
+# ou : gh auth login                     # authentification via gh CLI
 ```
 
 ## 8. Utilisation
@@ -136,11 +146,17 @@ streamlit run ui/app.py
 ## 9. Evaluation
 
 ```bash
-# Evaluer un modele
+# Evaluer un modele (Cerebras par defaut)
 python -m eval.evaluate --k 5 --model gpt-oss-120b
 
-# Comparer tous les modeles disponibles
+# Comparer tous les modeles Cerebras
 python -m eval.evaluate --k 5 --all-models
+
+# Evaluer avec GitHub Copilot
+python -m eval.evaluate --k 5 --backend copilot --model gpt-4.1
+
+# Comparer tous les modeles Copilot
+python -m eval.evaluate --k 5 --backend copilot --all-models
 
 # Retrieval only (sans LLM, plus rapide)
 python -m eval.evaluate --retrieval-only

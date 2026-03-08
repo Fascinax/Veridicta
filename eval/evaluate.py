@@ -36,7 +36,9 @@ if str(ROOT) not in sys.path:
 
 from retrievers.baseline_rag import (
     INDEX_DIR,
-    LLM_MODEL,
+    LLM_BACKEND,
+    CEREBRAS_DEFAULT_MODEL,
+    COPILOT_DEFAULT_MODEL,
     _load_embedder,
     answer,
     load_index,
@@ -46,8 +48,11 @@ from retrievers.baseline_rag import (
 CEREBRAS_MODELS = [
     "llama3.1-8b",
     "gpt-oss-120b",
-    # "qwen-3-235b-a22b-instruct-2507",  # 404 - not accessible on this account
-    # "zai-glm-4.7",                     # 404 - not accessible on this account
+]
+
+COPILOT_MODELS = [
+    "gpt-4.1-mini",
+    "gpt-4.1",
 ]
 
 # ---------------------------------------------------------------------------
@@ -196,8 +201,10 @@ def run_eval(
     k: int = 5,
     retrieval_only: bool = False,
     model: str | None = None,
+    backend: str | None = None,
 ) -> list[EvalResult]:
     results: list[EvalResult] = []
+    active_backend = backend or LLM_BACKEND
 
     for i, q in enumerate(questions, 1):
         print(f"  [{i:02d}/{len(questions)}] {q.id} ...", flush=True)
@@ -205,11 +212,11 @@ def run_eval(
 
         retrieved = retrieve(q.question, index, chunks, embedder, k=k)
 
-        if retrieval_only or not os.environ.get("CEREBRAS_API_KEY"):
+        if retrieval_only:
             generated = " ".join(c.get("text", "") for c in retrieved[:3])
             wf1: float | None = None
         else:
-            generated = answer(q.question, retrieved, model=model)
+            generated = answer(q.question, retrieved, model=model, backend=active_backend)
             wf1 = word_f1(generated, q.reference_answer)
 
         latency = time.monotonic() - t0
@@ -370,14 +377,20 @@ def _parse_args() -> argparse.Namespace:
         help="Skip LLM generation; score keyword recall against retrieved chunk text",
     )
     parser.add_argument(
+        "--backend",
+        default=None,
+        choices=["cerebras", "copilot"],
+        help=f"LLM backend to use  (default: {LLM_BACKEND})",
+    )
+    parser.add_argument(
         "--model",
         default=None,
-        help=f"Cerebras model to use  (default: {LLM_MODEL})",
+        help="LLM model to use  (default depends on backend)",
     )
     parser.add_argument(
         "--all-models",
         action="store_true",
-        help="Run evaluation on all available Cerebras models and print comparison",
+        help="Run evaluation on all models for the active backend and print comparison",
     )
     return parser.parse_args()
 
@@ -390,6 +403,7 @@ def main() -> None:
         sys.exit(f"ERROR: questions file not found: {questions_path}")
 
     index_dir = Path(args.index_dir)
+    active_backend = args.backend or LLM_BACKEND
 
     print("Loading questions ...")
     questions = load_questions(questions_path)
@@ -405,15 +419,16 @@ def main() -> None:
     out_dir = Path(args.out)
 
     if args.all_models:
-        models = CEREBRAS_MODELS
+        models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
         all_results: dict[str, list[EvalResult]] = {}
         for model_name in models:
             print(f"\n{'='*60}")
-            print(f"  Model: {model_name}")
+            print(f"  Backend: {active_backend} | Model: {model_name}")
             print(f"{'='*60}")
             results = run_eval(
                 questions, index, chunks, embedder,
-                k=args.k, retrieval_only=args.retrieval_only, model=model_name,
+                k=args.k, retrieval_only=args.retrieval_only,
+                model=model_name, backend=active_backend,
             )
             print_report(results)
             save_results(results, out_dir / model_name.replace("/", "_"))
@@ -421,11 +436,13 @@ def main() -> None:
         print_comparison(all_results)
     else:
         model = args.model
-        mode = "retrieval-only" if args.retrieval_only else f"full RAG ({model or LLM_MODEL})"
+        default_model = COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
+        mode = "retrieval-only" if args.retrieval_only else f"full RAG ({active_backend}/{model or default_model})"
         print(f"\nRunning evaluation  [k={args.k}, mode={mode}]\n")
         results = run_eval(
             questions, index, chunks, embedder,
-            k=args.k, retrieval_only=args.retrieval_only, model=model,
+            k=args.k, retrieval_only=args.retrieval_only,
+            model=model, backend=active_backend,
         )
         print_report(results)
         save_results(results, out_dir)

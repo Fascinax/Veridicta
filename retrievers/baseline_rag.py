@@ -2,7 +2,11 @@
 
 Pipeline:
     chunks.jsonl -> multilingual-MiniLM embeddings -> FAISS IndexFlatIP
-    Query -> embed -> FAISS search -> top-k chunks -> Cerebras Llama -> answer
+    Query -> embed -> FAISS search -> top-k chunks -> LLM -> answer
+
+LLM backends (set LLM_BACKEND in .env):
+    cerebras  — Cerebras Cloud API (default, free, ultra-fast)
+    copilot   — GitHub Copilot via @github/copilot-sdk Node.js bridge
 
 Build index:
     python -m retrievers.baseline_rag --build
@@ -24,8 +28,6 @@ import faiss
 import jsonlines
 import numpy as np
 from dotenv import load_dotenv
-from cerebras.cloud.sdk import Cerebras
-from cerebras.cloud.sdk import RateLimitError as CerebrasRateLimitError
 from sentence_transformers import SentenceTransformer
 
 load_dotenv()
@@ -37,9 +39,13 @@ logger = logging.getLogger(__name__)
 
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 EMBED_BATCH_SIZE = 64
-LLM_MODEL = "gpt-oss-120b"
 DEFAULT_TOP_K = 5
 MAX_CONTEXT_CHARS = 12_000
+
+# LLM backend configuration
+LLM_BACKEND = os.getenv("LLM_BACKEND", "cerebras")  # "cerebras" | "copilot"
+CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b"
+COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "gpt-4.1")
 
 INDEX_DIR = Path("data/index")
 FAISS_FILENAME = "veridicta.faiss"
@@ -178,15 +184,11 @@ def _format_context(chunks: list[dict]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def answer(query: str, context_chunks: list[dict], model: str | None = None) -> str:
-    """Generate a grounded answer via Cerebras from retrieved context chunks."""
-    api_key = os.getenv("CEREBRAS_API_KEY")
-    if not api_key:
-        raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
-
+def _build_user_message(query: str, context_chunks: list[dict]) -> str:
+    """Build the user message with numbered sources and the question."""
     context = _format_context(context_chunks)
-    n_sources = min(len(context_chunks), MAX_CONTEXT_CHARS // 500)  # approx
-    user_message = (
+    n_sources = min(len(context_chunks), MAX_CONTEXT_CHARS // 500)
+    return (
         f"Voici {n_sources} sources numerotees :\n\n"
         f"{context}\n\n"
         f"---\n\n"
@@ -194,12 +196,22 @@ def answer(query: str, context_chunks: list[dict], model: str | None = None) -> 
         f"Reponds en citant [Source N] apres chaque affirmation."
     )
 
+
+def _answer_cerebras(system: str, user: str, model: str) -> str:
+    """Call Cerebras Cloud API."""
+    from cerebras.cloud.sdk import Cerebras
+    from cerebras.cloud.sdk import RateLimitError as CerebrasRateLimitError
+
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
+
     client = Cerebras(api_key=api_key)
     payload = dict(
-        model=model or LLM_MODEL,
+        model=model,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
         ],
         temperature=0.1,
         max_tokens=1024,
@@ -215,6 +227,39 @@ def answer(query: str, context_chunks: list[dict], model: str | None = None) -> 
             time.sleep(wait)
 
     raise RuntimeError("Cerebras rate limit: max retries exceeded.")
+
+
+def _answer_copilot(system: str, user: str, model: str) -> str:
+    """Call GitHub Copilot via the Node.js bridge."""
+    from tools.copilot_client import CopilotClient
+
+    with CopilotClient(model=model) as client:
+        return client.chat(system=system, user=user)
+
+
+def answer(
+    query: str,
+    context_chunks: list[dict],
+    model: str | None = None,
+    backend: str | None = None,
+) -> str:
+    """Generate a grounded answer from retrieved context chunks.
+
+    Args:
+        query: User question.
+        context_chunks: Retrieved chunks from FAISS.
+        model: Override LLM model name. Defaults per backend.
+        backend: "cerebras" or "copilot". Defaults to LLM_BACKEND env var.
+    """
+    active_backend = backend or LLM_BACKEND
+    user_message = _build_user_message(query, context_chunks)
+
+    if active_backend == "copilot":
+        resolved_model = model or COPILOT_DEFAULT_MODEL
+        return _answer_copilot(SYSTEM_PROMPT, user_message, resolved_model)
+
+    resolved_model = model or CEREBRAS_DEFAULT_MODEL
+    return _answer_cerebras(SYSTEM_PROMPT, user_message, resolved_model)
 
 
 # --- CLI ---

@@ -188,3 +188,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Node.js (copilot bridge)
+node_modules/
+package-lock.json
