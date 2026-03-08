@@ -12,12 +12,17 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 
 | Indicateur              | Cible MVP   | Resultat         |
 | ----------------------- | ----------- | ---------------- |
-| Latence (256 tokens)    | < 3 s       | **~1.76 s**      |
-| Keyword Recall (50 Q)   | >= 60 %     | **66 %**         |
-| F1 Score (50 Q)         | >= 15 %     | **16.5 %**       |
+| Latence (256 tokens)    | < 3 s       | **~2.80 s**      |
+| Keyword Recall (50 Q)   | >= 60 %     | **65.9 %**       |
+| Word F1 (50 Q)          | >= 15 %     | **17.6 %**       |
 | Cout variable           | 0 EUR       | **0 EUR**        |
 
-Resultats obtenus avec le modele `gpt-oss-120b` via Cerebras Cloud sur 50 questions gold standard couvrant licenciement, CDD, salaires, jurisprudence et cas monegasques specifiques.
+Resultats obtenus avec `gpt-oss-120b` via Cerebras Cloud sur 50 questions gold standard et un corpus de 26 517 chunks (legislation, jurisprudence, Journal de Monaco).
+
+| Modele         | KW Recall | Word F1 | Latence |
+| -------------- | --------- | ------- | ------- |
+| gpt-oss-120b   | 0.659     | 0.176   | 2.80 s  |
+| llama3.1-8b    | 0.548     | 0.193   | 3.27 s  |
 
 ## 3. Stack technologique
 
@@ -25,7 +30,7 @@ Resultats obtenus avec le modele `gpt-oss-120b` via Cerebras Cloud sur 50 questi
 | --------------- | ------------------------------------------------------------- |
 | **Langage**     | Python 3.11                                                   |
 | **Embeddings**  | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384)     |
-| **Retrieval**   | FAISS IndexFlatIP (16 097 vecteurs)                           |
+| **Retrieval**   | FAISS IndexFlatIP (26 517 vecteurs)                           |
 | **LLM**         | Cerebras Cloud (`gpt-oss-120b`, `llama3.1-8b`) -- gratuit     |
 | **UI**          | Streamlit (chat conversationnel, sources cliquables)          |
 | **Evaluation**  | 50 questions gold standard, keyword recall, F1, latence       |
@@ -69,9 +74,9 @@ Veridicta/
 | Source | Records | Contenu | Scraper |
 | --- | --- | --- | --- |
 | **[LegiMonaco](https://legimonaco.mc/)** | 149 textes + 762 decisions | Legislation et jurisprudence du travail (API ES) | `legimonaco_scraper.py` |
-| **[Journal de Monaco](https://journaldemonaco.gouv.mc/)** | 158+ articles | Lois, ordonnances, arretes (bulletin officiel) | `monaco_scraper.py` |
+| **[Journal de Monaco](https://journaldemonaco.gouv.mc/)** | 1 956 articles | Lois, ordonnances, arretes (bulletin officiel, 1947-2026) | `monaco_scraper.py` |
 
-**Corpus total** : 911+ documents -> **16 097 chunks** indexes dans FAISS.
+**Corpus total** : 2 867 documents -> **26 517 chunks** indexes dans FAISS.
 
 ## 6. Pipeline
 
