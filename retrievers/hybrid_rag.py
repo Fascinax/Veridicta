@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 
 BM25_FILENAME = "bm25_corpus.pkl"
 RRF_K = 60          # standard RRF constant (higher -> smoother fusion)
-FAISS_WEIGHT = 0.6  # default weight applied to FAISS RRF scores
-BM25_WEIGHT = 0.4   # default weight applied to BM25 RRF scores
+FAISS_WEIGHT = 0.4  # tuned via grid search on 50-question eval (eval/tune_rrf.py)
+BM25_WEIGHT = 0.6   # BM25 slightly dominant — best KW Recall on Monegasque labour law
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +247,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--faiss-weight", type=float, default=FAISS_WEIGHT, metavar="W",
-        help=f"FAISS RRF weight (default: {FAISS_WEIGHT})",
+        help=f"FAISS RRF weight (default: {FAISS_WEIGHT}, tuned via eval/tune_rrf.py)",
     )
     parser.add_argument(
         "--bm25-weight", type=float, default=BM25_WEIGHT, metavar="W",
-        help=f"BM25 RRF weight (default: {BM25_WEIGHT})",
+        help=f"BM25 RRF weight (default: {BM25_WEIGHT}, tuned via eval/tune_rrf.py)",
     )
     parser.add_argument(
         "--chunks", default=str(CHUNKS_PATH), metavar="PATH",
