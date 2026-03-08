@@ -4,6 +4,9 @@ The heavy files (FAISS index, BM25 index, chunks.jsonl) are gitignored and must 
 fetched at startup if not present locally.
 
 HuggingFace repo: https://huggingface.co/datasets/Fascinax/veridicta-index
+
+BM25 artifacts are optional at download time because they can be rebuilt locally
+from `chunks_map.jsonl` if only FAISS + chunks are present.
 """
 
 from __future__ import annotations
@@ -20,8 +23,20 @@ HF_REPO_TYPE = "dataset"
 # Map: local relative path -> filename in HF Hub repo
 _ARTIFACTS = {
     "data/index/veridicta.faiss": "index/veridicta.faiss",
-    "data/index/bm25_corpus.pkl": "index/bm25_corpus.pkl",
+    "data/index/bm25s_index/data.csc.index.npy": "index/bm25s_index/data.csc.index.npy",
+    "data/index/bm25s_index/indices.csc.index.npy": "index/bm25s_index/indices.csc.index.npy",
+    "data/index/bm25s_index/indptr.csc.index.npy": "index/bm25s_index/indptr.csc.index.npy",
+    "data/index/bm25s_index/params.index.json": "index/bm25s_index/params.index.json",
+    "data/index/bm25s_index/vocab.index.json": "index/bm25s_index/vocab.index.json",
     "data/processed/chunks.jsonl": "processed/chunks.jsonl",
+}
+
+_OPTIONAL_ARTIFACTS = {
+    "data/index/bm25s_index/data.csc.index.npy",
+    "data/index/bm25s_index/indices.csc.index.npy",
+    "data/index/bm25s_index/indptr.csc.index.npy",
+    "data/index/bm25s_index/params.index.json",
+    "data/index/bm25s_index/vocab.index.json",
 }
 
 
@@ -82,6 +97,14 @@ def ensure_artifacts(root: str | Path = ".") -> None:
             )
             logger.info("Saved to %s", dest)
         except Exception as exc:
+            if local in _OPTIONAL_ARTIFACTS:
+                logger.warning(
+                    "Optional artifact missing on HF Hub: %s (%s). "
+                    "bm25s will be rebuilt locally if needed.",
+                    remote,
+                    exc,
+                )
+                continue
             raise RuntimeError(
                 f"Failed to download artifact '{remote}' from {HF_REPO_ID}: {exc}"
             ) from exc

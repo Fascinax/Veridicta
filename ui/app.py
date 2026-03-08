@@ -228,7 +228,7 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
             )
         else:
             retriever = "FAISS"
-            st.caption("_rank_bm25 non installe — FAISS uniquement_")
+            st.caption("_bm25s / PyStemmer non installes — FAISS uniquement_")
 
         st.divider()
 
@@ -356,8 +356,8 @@ def main() -> None:
     bm25 = _get_bm25() if use_hybrid else None
     if use_hybrid and bm25 is None:
         st.warning(
-            "Index BM25 introuvable — passage en mode FAISS. "
-            "Relance `python -m retrievers.hybrid_rag --build` pour le regenerer."
+            "Index bm25s indisponible — passage en mode FAISS. "
+            "Installe `bm25s` + `PyStemmer` puis relance `python -m retrievers.hybrid_rag --build`."
         )
         use_hybrid = False
     neo4j_mgr = _get_neo4j() if use_graph else None

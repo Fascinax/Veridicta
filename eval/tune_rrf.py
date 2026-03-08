@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 logging.basicConfig(level=logging.WARNING)
 
-from retrievers.hybrid_rag import hybrid_retrieve, load_bm25_index
+from retrievers.hybrid_rag import BM25_WEIGHT, FAISS_WEIGHT, hybrid_retrieve, load_bm25_index
 from retrievers.baseline_rag import _load_embedder, load_index
 from eval.evaluate import context_coverage, keyword_recall, load_questions
 
@@ -31,7 +31,7 @@ WEIGHT_COMBOS: list[tuple[float, float]] = [
     (0.7, 0.3),
     (0.6, 0.4),   # old default (pre-tuning)
     (0.5, 0.5),
-    (0.4, 0.6),   # tuned default
+    (0.4, 0.6),
     (0.3, 0.7),
     (0.2, 0.8),
     (0.0, 1.0),   # BM25 only
@@ -90,7 +90,12 @@ def main() -> None:
         kw, cov = _score(questions, index, bm25, chunks, embedder, args.k, fw, bw)
         composite = round((kw + cov) / 2, 4)
         grid.append((fw, bw, kw, cov, composite))
-        tag = "  <-- default" if (fw, bw) == (0.4, 0.6) else ("  <-- old default" if (fw, bw) == (0.6, 0.4) else "")
+        if (fw, bw) == (FAISS_WEIGHT, BM25_WEIGHT):
+            tag = "  <-- current default"
+        elif (fw, bw) == (0.6, 0.4):
+            tag = "  <-- old default"
+        else:
+            tag = ""
         print("  %.1f      %.1f      %.4f    %.4f  %.4f%s" % (fw, bw, kw, cov, composite, tag))
 
     best = max(grid, key=lambda x: x[4])

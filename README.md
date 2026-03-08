@@ -36,9 +36,9 @@ Le LLM est contraint de citer `[Source N]` dans chaque affirmation.
 | --------------- | ------------------------------------------------------------- |
 | **Langage**     | Python 3.11 + Node.js 18+ (bridge Copilot)                   |
 | **Embeddings**  | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384)     |
-| **Retrieval**   | **Hybrid BM25+FAISS** (RRF, k=60) -- FAISS 0.4 / BM25 0.6  |
+| **Retrieval**   | **Hybrid bm25s+FAISS** (RRF, k=60) -- FAISS 0.3 / BM25 0.7, stemming francais PyStemmer |
 | **LLM**         | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) |
-| **Artifacts**   | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+BM25+chunks auto-telecharges (180 MB) |
+| **Artifacts**   | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+bm25s+chunks auto-telecharges (180 MB) |
 | **UI**          | Streamlit (chat, sources cliquables, toggle FAISS/Hybrid)    |
 | **Evaluation**  | 50 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk |
 | **Scraping**    | API Elasticsearch LegiMonaco + Playwright Journal de Monaco  |
@@ -61,8 +61,8 @@ Veridicta/
 |   +-- data_processor.py       # Chunking 1800 chars + overlap -> JSONL
 +-- retrievers/
 |   +-- baseline_rag.py         # FAISS retrieval + LLM generation (Cerebras ou Copilot)
-|   +-- hybrid_rag.py           # BM25 + FAISS + RRF fusion (tokenizer francais accent-aware)
-|   +-- artifacts.py            # Download/upload auto FAISS+BM25+chunks depuis HF Hub
+|   +-- hybrid_rag.py           # bm25s + FAISS + RRF fusion (stemming francais PyStemmer)
+|   +-- artifacts.py            # Download/upload auto FAISS+bm25s+chunks depuis HF Hub
 |   +-- neo4j_setup.py          # [v2] Graphe de connaissances
 +-- eval/
 |   +-- evaluate.py             # Metriques multi-modeles (--retriever faiss|hybrid)
@@ -73,7 +73,7 @@ Veridicta/
 +-- data/
 |   +-- raw/                    # JSONL bruts (legislation, jurisprudence, journal_monaco)
 |   +-- processed/              # chunks.jsonl (corpus normalise)
-|   +-- index/                  # veridicta.faiss + bm25_corpus.pkl
+|   +-- index/                  # veridicta.faiss + bm25s_index/
 +-- .streamlit/
 |   +-- config.toml             # Config Streamlit Cloud
 +-- requirements.txt
@@ -88,16 +88,16 @@ Veridicta/
 | **LegiMonaco** | 149 textes + 762 decisions | Legislation et jurisprudence du travail (API ES) | `legimonaco_scraper.py` |
 | **Journal de Monaco** | 1 956 articles | Lois, ordonnances, arretes (bulletin officiel, 1947-2026) | `monaco_scraper.py` |
 
-**Corpus total** : 2 867 documents -> **26 517 chunks** indexes (FAISS + BM25).
+**Corpus total** : 2 867 documents -> **26 517 chunks** indexes (FAISS + bm25s).
 
 ## 6. Pipeline
 
 ```
 LegiMonaco (API ES)  ---+
-                        +-> data_processor.py -> chunks.jsonl -> MiniLM -> FAISS + BM25
+                        +-> data_processor.py -> chunks.jsonl -> MiniLM -> FAISS + bm25s
 Journal de Monaco ------+                                                       |
                                                                                 v
-              User query -> embed -> [FAISS top-k + BM25 top-k] -> RRF -> LLM -> Reponse + [Source N]
+              User query -> embed -> [FAISS top-k + bm25s top-k] -> RRF -> LLM -> Reponse + [Source N]
 ```
 
 ## 7. Installation
@@ -124,7 +124,7 @@ echo "LLM_BACKEND=copilot" >> .env
 echo "GITHUB_PAT=ghp_xxx" >> .env
 ```
 
-> **Note** : les artifacts FAISS, BM25 et chunks (180 MB) sont telecharges automatiquement depuis
+> **Note** : les artifacts FAISS, bm25s et chunks (180 MB) sont telecharges automatiquement depuis
 > `Fascinax/veridicta-index` sur Hugging Face au premier demarrage.
 > Pas besoin de relancer le scraping ou l'indexation.
 
@@ -167,10 +167,17 @@ Produit un rapport JSONL par question avec keyword recall, F1, citation faithful
 4. **Specificite MCO** : *Quelles sont les obligations de l'employeur envers les travailleurs frontaliers a Monaco ?*
 5. **Salaire** : *Quel est le montant actuel du SMIG a Monaco et comment est-il revalorise ?*
 
-## 11. Licence
+## 11. Mise a jour 2026-03-09
+
+* Migration du sparse retrieval de `rank-bm25` vers **`bm25s` + `PyStemmer`**
+* Stockage natif de l'index sparse dans `data/index/bm25s_index/`
+* Retuning RRF apres migration : **FAISS 0.3 / BM25 0.7** (`eval.tune_rrf`)
+* Rebuild local possible depuis `chunks_map.jsonl` si les artifacts bm25s sont absents
+
+## 12. Licence
 
 MIT pour le code. Les donnees publiques monegasques sont librement reutilisables pour usage non commercial.
 
 ---
 
-*Derniere mise a jour : 2026-03-08*
+Derniere mise a jour : 2026-03-09

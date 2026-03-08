@@ -141,14 +141,14 @@ def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) ->
         writer.write_all(chunks)
     logger.info("Chunk map saved: %s", map_path)
 
-    # Optionally co-build BM25 index for hybrid retrieval (requires rank_bm25)
+    # Optionally co-build bm25s index for hybrid retrieval.
     try:
         from retrievers.hybrid_rag import build_bm25_index  # noqa: PLC0415
         build_bm25_index(chunks, index_dir)
     except ImportError:
         logger.info(
-            "rank_bm25 not installed — skipping BM25 index "
-            "(pip install rank-bm25 to enable hybrid retrieval)"
+            "bm25s / PyStemmer not installed — skipping sparse index "
+            "(pip install bm25s PyStemmer to enable hybrid retrieval)"
         )
 
 

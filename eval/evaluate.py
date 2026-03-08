@@ -534,7 +534,7 @@ def main() -> None:
     bm25 = None
     if args.retriever == "hybrid":
         if not _HYBRID_AVAILABLE:
-            sys.exit("ERROR: rank_bm25 not installed. Run: pip install rank-bm25")
+            sys.exit("ERROR: hybrid retriever unavailable. Run: pip install bm25s PyStemmer")
         print("Loading BM25 index ...")
         try:
             bm25 = load_bm25_index(index_dir)

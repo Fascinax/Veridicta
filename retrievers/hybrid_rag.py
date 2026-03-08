@@ -14,17 +14,22 @@ Query:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
+import jsonlines
 import logging
-import os
-import pickle
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import faiss
 import numpy as np
-from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
+
+with contextlib.redirect_stdout(io.StringIO()):
+    import bm25s
+import Stemmer
 
 from retrievers.baseline_rag import (
     CHUNKS_MAP_FILENAME,
@@ -41,10 +46,11 @@ from retrievers.baseline_rag import (
 
 logger = logging.getLogger(__name__)
 
-BM25_FILENAME = "bm25_corpus.pkl"
+BM25_DIRNAME = "bm25s_index"
 RRF_K = 60          # standard RRF constant (higher -> smoother fusion)
-FAISS_WEIGHT = 0.4  # tuned via grid search on 50-question eval (eval/tune_rrf.py)
-BM25_WEIGHT = 0.6   # BM25 slightly dominant — best KW Recall on Monegasque labour law
+FAISS_WEIGHT = 0.3  # retuned after bm25s+French stemming migration (eval/tune_rrf.py)
+BM25_WEIGHT = 0.7   # bm25s now dominates slightly more on Monaco labour-law recall
+FRENCH_STEMMER_LANGUAGE = "french"
 
 
 # ---------------------------------------------------------------------------
@@ -62,46 +68,81 @@ def _tokenize_fr(text: str) -> list[str]:
     return [t for t in tokens if len(t) >= 2]
 
 
+@lru_cache(maxsize=1)
+def _get_french_stemmer() -> Stemmer.Stemmer:
+    """Return a cached French stemmer for bm25s tokenization."""
+    return Stemmer.Stemmer(FRENCH_STEMMER_LANGUAGE)
+
+
+def _bm25_index_path(index_dir: Path) -> Path:
+    return index_dir / BM25_DIRNAME
+
+
+def _tokenize_texts(texts: list[str], show_progress: bool) -> list[list[str]]:
+    """Tokenize texts with French stemming for bm25s indexing and querying."""
+    tokenized = bm25s.tokenize(
+        texts,
+        lower=True,
+        token_pattern=r"(?u)\b\w\w+\b",
+        stopwords=[],
+        stemmer=_get_french_stemmer(),
+        return_ids=False,
+        show_progress=show_progress,
+    )
+    return [list(tokens) for tokens in tokenized]
+
+
+def _load_chunk_texts(index_dir: Path) -> list[str]:
+    """Load chunk texts from the existing chunk map without touching FAISS."""
+    map_path = index_dir / CHUNKS_MAP_FILENAME
+    if not map_path.exists():
+        raise FileNotFoundError(
+            f"Chunk map not found at {map_path}. Run --build first."
+        )
+
+    with jsonlines.open(map_path) as reader:
+        return [row.get("text", "") for row in reader]
+
+
 # ---------------------------------------------------------------------------
 # Build / load BM25
 # ---------------------------------------------------------------------------
 
 
-def build_bm25_index(chunks: list[dict], index_dir: Path = INDEX_DIR) -> BM25Okapi:
-    """Tokenise chunk texts, fit BM25Okapi, and pickle the corpus to disk.
-
-    Only the tokenised corpus is persisted (not the BM25 object itself, since
-    BM25Okapi reconstructs in <1 s from the corpus list).
-
-    Returns:
-        Fitted BM25Okapi instance.
-    """
+def build_bm25_index(chunks: list[dict], index_dir: Path = INDEX_DIR) -> bm25s.BM25:
+    """Tokenize chunk texts, fit bm25s, and persist the sparse index to disk."""
     index_dir.mkdir(parents=True, exist_ok=True)
-    tokenized: list[list[str]] = [_tokenize_fr(c.get("text", "")) for c in chunks]
-    bm25 = BM25Okapi(tokenized)
+    corpus_texts = [chunk.get("text", "") for chunk in chunks]
+    tokenized_corpus = _tokenize_texts(corpus_texts, show_progress=True)
+    bm25 = bm25s.BM25()
+    bm25.index(tokenized_corpus, show_progress=True)
 
-    pkl_path = index_dir / BM25_FILENAME
-    with open(pkl_path, "wb") as fh:
-        pickle.dump(tokenized, fh, protocol=pickle.HIGHEST_PROTOCOL)
-    logger.info("BM25 corpus saved: %s  (%d docs)", pkl_path, len(tokenized))
+    save_dir = _bm25_index_path(index_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    bm25.save(save_dir, corpus=None)
+    logger.info("bm25s index saved: %s  (%d docs)", save_dir, len(tokenized_corpus))
     return bm25
 
 
-def load_bm25_index(index_dir: Path = INDEX_DIR) -> BM25Okapi:
-    """Load the pickled tokenised corpus and reconstruct BM25Okapi.
+def load_bm25_index(index_dir: Path = INDEX_DIR) -> bm25s.BM25:
+    """Load a bm25s index, rebuilding it from chunks_map if needed."""
+    save_dir = _bm25_index_path(index_dir)
+    if save_dir.exists():
+        bm25 = bm25s.BM25.load(save_dir, load_corpus=False)
+        logger.info("bm25s index loaded: %s", save_dir)
+        return bm25
 
-    Raises:
-        FileNotFoundError: if bm25_corpus.pkl does not exist.
-    """
-    pkl_path = index_dir / BM25_FILENAME
-    if not pkl_path.exists():
-        raise FileNotFoundError(
-            f"BM25 corpus not found at {pkl_path}. Run --build first."
-        )
-    with open(pkl_path, "rb") as fh:
-        tokenized: list[list[str]] = pickle.load(fh)
-    bm25 = BM25Okapi(tokenized)
-    logger.info("BM25 index loaded: %d docs  (%s)", len(tokenized), pkl_path)
+    logger.warning(
+        "bm25s index missing at %s — rebuilding from chunks_map.jsonl.",
+        save_dir,
+    )
+    corpus_texts = _load_chunk_texts(index_dir)
+    tokenized_corpus = _tokenize_texts(corpus_texts, show_progress=True)
+    bm25 = bm25s.BM25()
+    bm25.index(tokenized_corpus, show_progress=True)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    bm25.save(save_dir, corpus=None)
+    logger.info("bm25s index rebuilt and saved: %s  (%d docs)", save_dir, len(tokenized_corpus))
     return bm25
 
 
@@ -118,7 +159,7 @@ def _rrf_score(rank: int) -> float:
 def hybrid_retrieve(
     query: str,
     faiss_index: faiss.Index,
-    bm25: BM25Okapi,
+    bm25: bm25s.BM25,
     chunks: list[dict],
     embedder: SentenceTransformer,
     k: int = DEFAULT_TOP_K,
@@ -136,12 +177,12 @@ def hybrid_retrieve(
     Args:
         query: User question in French.
         faiss_index: Loaded FAISS index.
-        bm25: Fitted BM25Okapi instance.
+        bm25: Fitted bm25s instance.
         chunks: Parallel list of chunk dicts (same order as the index).
         embedder: SentenceTransformer used to embed the query.
         k: Number of final results to return.
-        faiss_weight: Multiplier for FAISS RRF contribution (default 0.6).
-        bm25_weight: Multiplier for BM25 RRF contribution (default 0.4).
+        faiss_weight: Multiplier for FAISS RRF contribution (default 0.3).
+        bm25_weight: Multiplier for BM25 RRF contribution (default 0.7).
         candidate_k: Candidates per ranker (default: min(k*4, len(chunks))).
 
     Returns:
@@ -163,7 +204,7 @@ def hybrid_retrieve(
             faiss_rrf[int(idx)] = _rrf_score(rank) * faiss_weight
 
     # --- Sparse: BM25 ---
-    query_tokens = _tokenize_fr(query)
+    query_tokens = _tokenize_texts([query], show_progress=False)[0]
     bm25_raw = bm25.get_scores(query_tokens)
     bm25_top_idx = np.argsort(bm25_raw)[::-1][:candidate_k]
     bm25_rrf: dict[int, float] = {}
@@ -201,7 +242,7 @@ def build_all(
 ) -> None:
     """Build FAISS (if missing) + BM25 index.
 
-    If the FAISS index already exists, only the BM25 corpus is (re)built —
+    If the FAISS index already exists, only the bm25s sparse index is (re)built —
     saving the ~20-minute re-embedding step.
     Pass ``force=True`` (or ``--force`` via the CLI) to force a full FAISS rebuild.
     """

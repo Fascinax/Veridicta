@@ -41,7 +41,7 @@
 
 | Phase | Livrables cles | Priorite | Effort | Impact attendu |
 | --- | --- | --- | --- | --- |
-| **12. bm25s** | Remplacer `rank-bm25` par `bm25s` dans `hybrid_rag.py` ; stemmer francais natif via PyStemmer (`stemmer="french"`) ; `.save()` / `.load()` natif (fin du pickle maison) | P0 | Faible (drop-in) | Indexation ~42x plus rapide (573 vs 13 QPS sur benchmark arguana) ; stemming FR ameliore sans code custom |
+| **12. bm25s** | `bm25s` a remplace `rank-bm25` dans `hybrid_rag.py` ; stemmer francais natif via PyStemmer (`stemmer="french"`) ; `.save()` / `.load()` natif (fin du pickle maison) ; fallback rebuild depuis `chunks_map.jsonl` si artifacts absents | **Done (2026-03-09)** | Faible (drop-in) | RRF retune apres migration : **FAISS 0.3 / BM25 0.7** ; stockage natif `data/index/bm25s_index/` ; meilleure base pour recall FR |
 | **12bis. Prompt Engineering v2/v3** | Iterer sur `SYSTEM_PROMPT` dans `baseline_rag.py` ; tester structures (bullet points thematiques, citation obligatoire de numeros de loi) ; `--prompt-version` flag dans `evaluate.py` deja implemente | P0 | Faible | **+16.5% KW Recall** mesure (0.363 -> 0.423) sans cout infra ; trade-off a gerer : F1 baisse (-33%) car reponses plus longues divergent du format reference |
 | **13. FlashRank** | Remplacer `cross-encoder` (sentence-transformers + PyTorch) par `FlashRank` dans `reranker.py` ; modele `ms-marco-MultiBERT-L-12` (ONNX, 100+ langues, 150 MB) | P2 | Faible | Suppression de PyTorch comme dependance (-~2 GB) ; reranking CPU-only natif ; modele multilingue (vs ms-marco-MiniLM anglais-only actuel) — **NB : reranker cross-encoder actuel degrade KW Recall de -1.5% sur notre corpus FR ; a re-evaluer apres Phase 16 (Solon)** |
 
@@ -94,10 +94,11 @@
 | Hybrid + Reranker + Prompt v2 | **0.428** | 0.174 | 0.990 | 0.450 | 22.38s | **+17.9%** |
 
 **Conclusions** :
-- Le **prompt v2** (structure bullet points + citation explicite des numeros de loi) est la modification la plus impactante, zero cout infra.
-- Le **reranker cross-encoder** degrade legèrement le KW Recall (-1.5%) seul, probablement car `ms-marco-MiniLM` est entraine sur de l'anglais. A re-evaluer avec FlashRank multilingue (Phase 13) apres changement d'embeddings (Phase 16).
-- **k=8** est le meilleur compromis k-variation : +2.3% KW, meilleur CtxCov, CitFaith stable.
-- Le combo Reranker+Promptv2 est inutile (latence x2.5, +0.5% vs promptv2 seul).
+
+* Le **prompt v2** (structure bullet points + citation explicite des numeros de loi) est la modification la plus impactante, zero cout infra.
+* Le **reranker cross-encoder** degrade legèrement le KW Recall (-1.5%) seul, probablement car `ms-marco-MiniLM` est entraine sur de l'anglais. A re-evaluer avec FlashRank multilingue (Phase 13) apres changement d'embeddings (Phase 16).
+* **k=8** est le meilleur compromis k-variation : +2.3% KW, meilleur CtxCov, CitFaith stable.
+* Le combo Reranker+Promptv2 est inutile (latence x2.5, +0.5% vs promptv2 seul).
 
 ---
 
@@ -109,7 +110,7 @@
 | Domaine | Droit du travail | idem | Scope serre, evaluable, utile aux praticiens |
 | LLM routing | if/else cerebras vs copilot (`baseline_rag.py`) | idem (LiteLLM hors scope) | `@github/copilot-sdk` utilise `CopilotClient.createSession()` — endpoint proprietaire ; LiteLLM ne couvre pas le bridge Copilot et n'apporte que ~20 lignes de confort sur Cerebras |
 | Embeddings | paraphrase-multilingual-MiniLM-L12-v2 (384d) | **Solon-embeddings-large-0.1** (1024d) en phase 16 | SOTA FR : MTEB score 0.749 vs 0.598 ; intermedaire : Solon-base (137M, plus leger) |
-| BM25 | rank-bm25 + pickle maison | **bm25s** en phase 12 | ~42x plus rapide, stemming FR natif, `.save()` natif |
+| BM25 | **bm25s + PyStemmer + stockage natif** | idem | `rank-bm25` retire ; stemming FR natif ; rebuild local possible si artifacts sparse manquants |
 | Reranker | cross-encoder/ms-marco-MiniLM (PyTorch) | **FlashRank MultiBERT** (ONNX) en phase 13 | CPU-only, no PyTorch, 100+ langues |
 | Eval | metriques custom (keyword_recall, word_f1, citation_faithfulness) | + **ragas** Faithfulness/ContextPrecision en phase 15 | LLM-as-judge complementaire ; garder metriques deterministes existantes |
 | Vector store | FAISS IndexFlatIP | idem (LanceDB reporte v2+) | Corpus <30k chunks, FAISS suffisant ; LanceDB overkill + SDK beta |
@@ -132,4 +133,4 @@
 
 ---
 
-*Derniere mise a jour : 2026-03-09 — quick wins evalues, ROADMAP mis a jour avec resultats experimentaux*
+Derniere mise a jour : 2026-03-09 — quick wins evalues, ROADMAP mis a jour avec resultats experimentaux
