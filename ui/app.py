@@ -31,6 +31,12 @@ from retrievers.baseline_rag import (
     _load_embedder,
 )
 
+try:
+    from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
+    _HYBRID_AVAILABLE = True
+except ImportError:
+    _HYBRID_AVAILABLE = False
+
 # ── Page config ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -137,10 +143,21 @@ def _get_embedder():
     return _load_embedder()
 
 
+@st.cache_resource(show_spinner="Chargement de l'index BM25…")
+def _get_bm25():
+    """Load BM25 index. Returns None if unavailable."""
+    if not _HYBRID_AVAILABLE:
+        return None
+    try:
+        return load_bm25_index(INDEX_DIR)
+    except FileNotFoundError:
+        return None
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
-def _render_sidebar() -> tuple[int, bool, str, str]:
+def _render_sidebar() -> tuple[int, bool, str, str, str]:
     with st.sidebar:
         st.markdown(
             "<div style='font-family:Playfair Display,serif;font-size:1.3rem;"
@@ -153,6 +170,19 @@ def _render_sidebar() -> tuple[int, bool, str, str]:
 
         k = st.slider("Nombre de sources", min_value=1, max_value=10, value=DEFAULT_TOP_K)
         show_sources = st.toggle("Afficher les sources", value=True)
+
+        # Retriever selector
+        if _HYBRID_AVAILABLE:
+            retriever_options = ["FAISS", "Hybrid (BM25+FAISS)"]
+            retriever = st.radio(
+                "Moteur de recherche",
+                retriever_options,
+                index=1,
+                help="Hybrid combine recherche semantique (FAISS) et lexicale (BM25) via RRF.",
+            )
+        else:
+            retriever = "FAISS"
+            st.caption("_rank_bm25 non installe — FAISS uniquement_")
 
         st.divider()
 
@@ -177,11 +207,13 @@ def _render_sidebar() -> tuple[int, bool, str, str]:
             model = st.selectbox("Modele Cerebras", cerebras_models, index=default_cerebras)
 
         st.divider()
+        retriever_label = "Hybrid BM25+FAISS" if retriever == "Hybrid (BM25+FAISS)" else "FAISS"
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
             "Corpus : 2 867 documents (3 sources)<br>"
             "Index : 26 517 chunks MiniLM-L12<br>"
-            f"Backend : {backend} ({model})"
+            f"Backend : {backend} ({model})<br>"
+            f"Retriever : {retriever_label}"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -190,7 +222,7 @@ def _render_sidebar() -> tuple[int, bool, str, str]:
             st.session_state.messages = []
             st.rerun()
 
-    return k, show_sources, backend, model
+    return k, show_sources, backend, model, retriever
 
 
 # ── Citation formatting ───────────────────────────────────────────────────────
@@ -249,7 +281,8 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    k, show_sources, backend, model = _render_sidebar()
+    k, show_sources, backend, model, retriever = _render_sidebar()
+    use_hybrid = retriever == "Hybrid (BM25+FAISS)"
 
     # Load index & embedder (cached after first load)
     try:
@@ -262,6 +295,14 @@ def main() -> None:
             "`python -m retrievers.baseline_rag --build`"
         )
         ready = False
+
+    bm25 = _get_bm25() if use_hybrid else None
+    if use_hybrid and bm25 is None:
+        st.warning(
+            "Index BM25 introuvable — passage en mode FAISS. "
+            "Relance `python -m retrievers.hybrid_rag --build` pour le regenerer."
+        )
+        use_hybrid = False
 
     # Chat history
     if "messages" not in st.session_state:
@@ -293,7 +334,12 @@ def main() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Recherche dans le corpus…"):
                 t0 = time.perf_counter()
-                retrieved = retrieve(prompt, index_data, chunks_map, embedder, k)
+                if use_hybrid and bm25 is not None:
+                    retrieved = hybrid_retrieve(
+                        prompt, index_data, bm25, chunks_map, embedder, k
+                    )
+                else:
+                    retrieved = retrieve(prompt, index_data, chunks_map, embedder, k)
 
             response_placeholder = st.empty()
             with st.spinner("Génération de la réponse…"):
