@@ -1,52 +1,31 @@
 # Librairies de base
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
 tqdm>=4.65.0
-joblib>=1.3.0
 python-dotenv>=1.0.0
 
-# Traitement du texte et embeddings
+# Embeddings (via HuggingFace Inference API — pas de modèle local)
+# sentence-transformers utilisé en fallback local si besoin
 sentence-transformers>=2.2.2
-spacy>=3.6.0
-fr_core_news_md @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.6.0/fr_core_news_md-3.6.0.tar.gz
 
 # RAG et vectorisation
-faiss-cpu>=1.7.4  # ou faiss-gpu si GPU disponible
+faiss-cpu>=1.7.4
 langchain>=0.1.0
 langchain-community>=0.0.10
 
-# Base de connaissances graph
-neo4j>=5.13.0
-py2neo>=2021.2.3
-
-# LLM et fine-tuning
-transformers>=4.35.0
-accelerate>=0.25.0
-peft>=0.6.0  # Pour QLoRA
-bitsandbytes>=0.41.0  # Pour quantification
-vllm>=0.3.0  # Pour inference optimisée
-
-# Guardrails
-aporia>=0.7.0
+# LLM (Groq API — pas de modèle local)
+groq>=0.4.0
 
 # UI
 streamlit>=1.28.0
 
-# Évaluation et monitoring
-wandb>=0.16.0
+# Évaluation
 pytest>=7.4.0
-pytest-benchmark>=4.0.0
-prometheus-client>=0.17.0
-grafana-client>=2.2.0
 
 # Scraping
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 playwright>=1.40.0
 pdfminer.six>=20221105
-pymupdf>=1.23.0   # Pour extraction texte PDF
+pymupdf>=1.23.0
 
 # Outils utilitaires
 jsonlines>=3.1.0
-pyarrow>=14.0.0
