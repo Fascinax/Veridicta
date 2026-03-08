@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -202,47 +203,72 @@ def run_eval(
     retrieval_only: bool = False,
     model: str | None = None,
     backend: str | None = None,
+    workers: int = 4,
 ) -> list[EvalResult]:
-    results: list[EvalResult] = []
     active_backend = backend or LLM_BACKEND
+    n = len(questions)
 
-    for i, q in enumerate(questions, 1):
-        print(f"  [{i:02d}/{len(questions)}] {q.id} ...", flush=True)
-        t0 = time.monotonic()
+    # Phase 1 — retrieval (sequential: SentenceTransformer is not thread-safe)
+    print(f"  Retrieving context for {n} questions ...", flush=True)
+    retrieved_all: list[list[dict]] = [
+        retrieve(q.question, index, chunks, embedder, k=k)
+        for q in questions
+    ]
 
-        retrieved = retrieve(q.question, index, chunks, embedder, k=k)
-
-        if retrieval_only:
+    if retrieval_only:
+        results: list[EvalResult] = []
+        for q, retrieved in zip(questions, retrieved_all):
             generated = " ".join(c.get("text", "") for c in retrieved[:3])
-            wf1: float | None = None
-        else:
-            generated = answer(q.question, retrieved, model=model, backend=active_backend)
-            wf1 = word_f1(generated, q.reference_answer)
-
-        latency = time.monotonic() - t0
-        krecall = keyword_recall(generated, q.reference_keywords)
-        cit_faith = citation_faithfulness(generated, retrieved)
-        cov = context_coverage(generated, retrieved)
-        titles = [c.get("title") or c.get("source_type", "?") for c in retrieved]
-
-        results.append(
-            EvalResult(
-                question_id=q.id,
-                question=q.question,
-                topic=q.topic,
-                keyword_recall=krecall,
-                word_f1=wf1,
-                citation_faithfulness=cit_faith,
-                context_coverage=cov,
-                hallucination_risk=round(1.0 - cov, 4),
-                latency_s=round(latency, 2),
-                n_retrieved=len(retrieved),
+            cov = context_coverage(generated, retrieved)
+            results.append(EvalResult(
+                question_id=q.id, question=q.question, topic=q.topic,
+                keyword_recall=keyword_recall(generated, q.reference_keywords),
+                word_f1=None,
+                citation_faithfulness=citation_faithfulness(generated, retrieved),
+                context_coverage=cov, hallucination_risk=round(1.0 - cov, 4),
+                latency_s=0.0, n_retrieved=len(retrieved),
                 answer=generated,
-                sources_titles=titles,
-            )
+                sources_titles=[c.get("title") or c.get("source_type", "?") for c in retrieved],
+            ))
+        return results
+
+    # Phase 2 — LLM generation (parallel: HTTP/subprocess calls are I/O-bound)
+    effective_workers = min(workers, n)
+    print(
+        f"  Generating {n} answers  [backend={active_backend}, workers={effective_workers}] ...",
+        flush=True,
+    )
+
+    def _generate_one(task: tuple[int, EvalQuestion, list[dict]]) -> tuple[int, EvalResult]:
+        idx, q, retrieved = task
+        t0 = time.monotonic()
+        generated = answer(q.question, retrieved, model=model, backend=active_backend)
+        latency = time.monotonic() - t0
+        print(f"  [{idx:02d}/{n}] {q.id}  ({latency:.1f}s)", flush=True)
+        cov = context_coverage(generated, retrieved)
+        return idx, EvalResult(
+            question_id=q.id, question=q.question, topic=q.topic,
+            keyword_recall=keyword_recall(generated, q.reference_keywords),
+            word_f1=word_f1(generated, q.reference_answer),
+            citation_faithfulness=citation_faithfulness(generated, retrieved),
+            context_coverage=cov, hallucination_risk=round(1.0 - cov, 4),
+            latency_s=round(latency, 2), n_retrieved=len(retrieved),
+            answer=generated,
+            sources_titles=[c.get("title") or c.get("source_type", "?") for c in retrieved],
         )
 
-    return results
+    tasks = [
+        (i, q, r)
+        for i, (q, r) in enumerate(zip(questions, retrieved_all), 1)
+    ]
+    ordered: dict[int, EvalResult] = {}
+    with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+        futures = {pool.submit(_generate_one, task): task[0] for task in tasks}
+        for future in as_completed(futures):
+            idx, result = future.result()
+            ordered[idx] = result
+
+    return [ordered[i] for i in range(1, n + 1)]
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +418,13 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run evaluation on all models for the active backend and print comparison",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        metavar="N",
+        help="Parallel LLM workers for generation phase  (default: 4)",
+    )
     return parser.parse_args()
 
 
@@ -429,6 +462,7 @@ def main() -> None:
                 questions, index, chunks, embedder,
                 k=args.k, retrieval_only=args.retrieval_only,
                 model=model_name, backend=active_backend,
+                workers=args.workers,
             )
             print_report(results)
             save_results(results, out_dir / model_name.replace("/", "_"))
@@ -443,6 +477,7 @@ def main() -> None:
             questions, index, chunks, embedder,
             k=args.k, retrieval_only=args.retrieval_only,
             model=model, backend=active_backend,
+            workers=args.workers,
         )
         print_report(results)
         save_results(results, out_dir)
