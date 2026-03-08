@@ -1,60 +1,85 @@
-# Road‑map MVP *Veridicta*
+﻿# Roadmap MVP Veridicta
 
-> **Périmètre** : agent conversationnel juridique FR. Objectif : prototype complet et démontrable en 8 semaines, avec KPI minima (latence < 1 s p95, EM ≥ 70 %, hallucinations ≤ 5 %, coût ≤ 0,005 €/1 k tokens).
-
----
-
-## Légende
-
-* **✔️ Fait** 🔜 À faire ⚠️ Point de vigilance
-* Durée indicative : 15 h hebdo
+> **Perimetre** : assistant conversationnel specialise en droit du travail monegasque.
+> **Cible** : juristes et avocats professionnels.
+> **Infra** : zero GPU -- APIs gratuites (Groq + HuggingFace).
+> **Deploiement** : local uniquement (demo live).
 
 ---
 
-## Tableau de route détaillé
+## Legende
 
-| Phase                               | Période cible | Livrables clés                                                            | Statut | Notes & Risques                                      |
-| ----------------------------------- | ------------- | ------------------------------------------------------------------------- | ------ | ---------------------------------------------------- |
-| **0. Kick‑off & socle Git**         | J1–J2         | dépôt Git privé, README, arborescence standard                            | 🔜     | choisir nom final (*Veridicta*)                      |
-| **1. Corpus & ingestion brute**     | J3 → J10      | scripts scraping Legifrance & Jurica, dump JSONL > 20 k articles          | 🔜     | vérifier licences, structurer `{id,titre,text,date}` |
-| **2. Baseline RAG**                 | Semaine 2     | embeddings MiniLM‑FR, index FAISS, `baseline_rag.py`, `evaluate.py`       | 🔜     | latence < 4 s, EM \~50 %                             |
-| **3. LightRAG**                     | Semaine 3     | extraction entités→Neo4j, `light_rag_retriever.py`, bench latence         | 🔜     | qualité graphe, déduplication                        |
-| **4. PathRAG (option)**             | Semaine 4     | `path_rag_retriever.py`, tokens −30 % sur Q complexes                     | 🔜     | n’implémenter que si gain ≥ 5 pts EM                 |
-| **5. Dataset QA & QLoRA fine‑tune** | Sem. 5–6      | 5 k QA jsonl, config QLoRA, modèle `veridicta‑70B‑qlora`, score EM ≥ 70 % | 🔜     | nettoyer data, surveiller over‑fit                   |
-| **6. Self‑Refine + Tool‑Calling**   | Semaine 6     | fonction `self_refine()`, plugin calcul indemnités, tests unitaires       | 🔜     | surplus latence < 2 s                                |
-| **7. Guardrails & sécurité**        | Semaine 7     | LlamaGuard 7B, règles RAIL, Aporia hallucination, logs                    | 🔜     | calibrer faux positifs                               |
-| **8. Monitoring & dashboard**       | Fin S7        | Prometheus + Grafana, intégration Aporia, alertes                         | 🔜     | anonymisation RGPD                                   |
-| **9. UI Streamlit & démo**          | Semaine 8     | `app.py` chat, références cliquables, feedback, vidéo 2 min, slides 10 p. | 🔜     | responsive mobile, TTR ≤ 10 s                        |
-| **10. Post‑mortem & plan v2**       | J56           | rapport MVP PDF/MD, décisions upgrade (Llama 3/Mixtral)                   | 🔜     | inclure métriques finales & limites                  |
+* **Done** : termine et valide
+* **En cours** : en cours de developpement
+* **A faire** : planifie
+* **v2** : reporte apres le MVP
 
 ---
 
-## KPI à valider
+## Tableau de route MVP
 
-| Indicateur                      | Cible               | Phase de contrôle |
-| ------------------------------- | ------------------- | ----------------- |
-| Latence p95 (256 tokens)        | < 1 s               | après phase 7     |
-| Hallucinations (test 50 Q)      | ≤ 5 %               | "                 |
-| Exact Match (LegalBench subset) | ≥ 70 %              | phase 6           |
-| Coût variable                   | < 0,005 €/1k tokens | phase 8           |
-
----
-
-## Checklist hebdomadaire (rituel)
-
-1. **Lundi** : plan + lecture papier (<1 h)
-2. **Mar‑Mer** : dev/features (≈4 h)
-3. **Jeudi** : tests/bench + doc (≈2 h)
-4. **Vendredi** : rétrospective + commit tagué (≈1 h)
+| Phase | Livrables cles | Statut | Notes & Risques |
+| --- | --- | --- | --- |
+| **0. Kick-off & socle Git** | Depot, README, arborescence, decisions archi | Done | Scope reduit : Monaco seul, droit du travail, API only |
+| **1. Scraping LegiMonaco** | `legimonaco_scraper.py` : codes, textes legislatifs, jurisprudence travail MCO en JSONL | A faire | HTML structure, decoupage chunk = article. Filtrer sur droit du travail (Loi n 739 etc.) |
+| **2. Scraping Journal de Monaco** | `monaco_scraper.py` : index PDF via playwright, telechargement, extraction texte | A faire | PDFs textuels -> pdfminer/pymupdf. Rate-limit poli (1 req/s) |
+| **3. Normalisation corpus** | `data_processor.py` : nettoyage, format standard `{id, titre, text, date, source, metadata}` | A faire | Objectif : corpus JSONL > 500 articles droit du travail |
+| **4. Embeddings + index FAISS** | Vectorisation via HF Inference API, construction index FAISS local | A faire | Modele FR (camembert-base ou paraphrase-multilingual). One-shot batch. |
+| **5. Baseline RAG** | `baseline_rag.py` : retrieval FAISS + generation Groq, prompt engineering juridique | A faire | Prompt system strict : citations obligatoires, pas de speculation |
+| **6. Evaluation** | `evaluate.py` + jeu de 50 questions droit du travail MCO, metriques EM/F1/hallucinations | A faire | Construire le test set manuellement (gold standard) |
+| **7. UI Streamlit** | `app.py` : chat, affichage sources cliquables, parametres sidebar | A faire | Mode local, pas de deploiement cloud |
+| **8. Polish & demo** | README final, demo live enregistree, corrections bugs | A faire | Preparer 3-5 questions demo percutantes |
 
 ---
 
-### Upgrade path prévu (post‑MVP)
+## Hors scope MVP (v2)
 
-* **T3‑2025** : re‑fine‑tune Llama 3 70B quand QLoRA 4‑bit stable.
-* **T4‑2025** : prototype Mixtral 8×22B pour tâches offline ou draft speculative decoding.
-* **2026** : évaluation modèles multimodaux (GPT‑4o‑mini open ?, Fuyu‑20B) pour analyse de pièces jointes.
+| Feature | Raison du report |
+| --- | --- |
+| Neo4j / LightRAG / PathRAG | Corpus petit (~500-2k articles), FAISS suffit |
+| QLoRA fine-tuning | Pas de GPU, prompt engineering + RAG d'abord |
+| LlamaGuard / Aporia guardrails | Prompt-level guardrails suffisent pour demo |
+| Prometheus / Grafana / wandb | Logs fichier suffisent, pas de prod |
+| Deploiement cloud | Demo locale uniquement |
+| Droit francais (Legifrance, Jurica) | Hors perimetre geo -- Monaco uniquement |
+| Scraping Juricaf | Historique jurisprudence pre-2000, pas prioritaire |
 
 ---
 
-*Dernière mise à jour : 10 mai 2025*
+## KPIs a valider
+
+| Indicateur | Cible MVP | Phase de controle |
+| --- | --- | --- |
+| Latence p95 (256 tokens) | < 3 s | Phase 5 |
+| Hallucinations (test 50 Q) | <= 10 % | Phase 6 |
+| Exact Match (test set) | >= 60 % | Phase 6 |
+| Cout variable | 0 EUR (APIs gratuites) | Toutes phases |
+
+---
+
+## Decisions architecturales
+
+| Decision | Choix | Justification |
+| --- | --- | --- |
+| Perimetre geo | Monaco uniquement | Focus, corpus maitrisable, originalite |
+| Domaine | Droit du travail | Scope serre, evaluable, utile aux praticiens |
+| LLM | Groq API (Llama 3.1 70B) | Gratuit, rapide, bon en francais |
+| Embeddings | HuggingFace Inference API | Gratuit, pas de RAM locale requise |
+| Vector store | FAISS local | Corpus petit, pas besoin de BDD vectorielle |
+| Knowledge Graph | Non (v2) | Overhead Neo4j injustifie pour < 2k docs |
+| Fine-tuning | Non (v2) | Pas de GPU, prompt engineering d'abord |
+| Deploiement | Local | Pas de contrainte cloud, demo live |
+
+---
+
+## Upgrade path (post-MVP)
+
+* **v2** : Neo4j pour modeliser les liens loi -> article -> decision (LightRAG)
+* **v2** : Fine-tuning via Mistral API si prompt engineering insuffisant
+* **v2** : Guardrails (LlamaGuard) si hallucinations > 10%
+* **v3** : Elargir au droit civil monegasque, puis droit francais
+* **v3** : Deploiement cloud (Streamlit Cloud ou HuggingFace Spaces)
+
+---
+
+*Derniere mise a jour : 2026-03-08*
