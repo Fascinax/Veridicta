@@ -318,7 +318,7 @@ def main() -> None:
     try:
         faiss_index, chunks = load_index(index_dir)
         bm25 = load_bm25_index(index_dir)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, RuntimeError) as exc:
         logger.error(str(exc))
         sys.exit(1)
 

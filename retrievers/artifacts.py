@@ -23,6 +23,8 @@ HF_REPO_TYPE = "dataset"
 # Map: local relative path -> filename in HF Hub repo
 _ARTIFACTS = {
     "data/index/veridicta.faiss": "index/veridicta.faiss",
+    "data/index/chunks_map.jsonl": "index/chunks_map.jsonl",
+    "data/index/embedding_config.json": "index/embedding_config.json",
     "data/index/bm25s_index/data.csc.index.npy": "index/bm25s_index/data.csc.index.npy",
     "data/index/bm25s_index/indices.csc.index.npy": "index/bm25s_index/indices.csc.index.npy",
     "data/index/bm25s_index/indptr.csc.index.npy": "index/bm25s_index/indptr.csc.index.npy",
@@ -93,7 +95,7 @@ def ensure_artifacts(root: str | Path = ".") -> None:
                 filename=remote,
                 repo_type=HF_REPO_TYPE,
                 token=token,
-                local_dir=str(root),
+                local_dir=str(root / "data"),
             )
             logger.info("Saved to %s", dest)
         except Exception as exc:

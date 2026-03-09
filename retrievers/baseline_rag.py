@@ -18,6 +18,7 @@ Query:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -39,8 +40,10 @@ logger = logging.getLogger(__name__)
 
 # --- Constants ---
 
-EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
-EMBED_BATCH_SIZE = 64
+EMBED_MODEL = os.getenv("VERIDICTA_EMBED_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
+EMBED_QUERY_PREFIX = os.getenv("VERIDICTA_EMBED_QUERY_PREFIX", "query: ")
+EMBED_DIMENSION = 1024
+EMBED_BATCH_SIZE = 32
 DEFAULT_TOP_K = 5
 MAX_CONTEXT_CHARS = 12_000
 
@@ -52,6 +55,7 @@ COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "gpt-4.1")
 INDEX_DIR = Path("data/index")
 FAISS_FILENAME = "veridicta.faiss"
 CHUNKS_MAP_FILENAME = "chunks_map.jsonl"
+INDEX_METADATA_FILENAME = "embedding_config.json"
 CHUNKS_PATH = Path("data/processed/chunks.jsonl")
 
 SYSTEM_PROMPT = (
@@ -93,6 +97,15 @@ def _load_embedder() -> SentenceTransformer:
     return SentenceTransformer(EMBED_MODEL)
 
 
+def _format_query_for_embedding(query: str) -> str:
+    stripped_query = query.strip()
+    if not EMBED_QUERY_PREFIX:
+        return stripped_query
+    if stripped_query.lower().startswith(EMBED_QUERY_PREFIX.lower()):
+        return stripped_query
+    return f"{EMBED_QUERY_PREFIX}{stripped_query}"
+
+
 def _embed_passages(texts: list[str], embedder: SentenceTransformer) -> np.ndarray:
     """Embed a list of passages with L2 normalisation for cosine similarity."""
     vectors = embedder.encode(
@@ -106,8 +119,60 @@ def _embed_passages(texts: list[str], embedder: SentenceTransformer) -> np.ndarr
 
 def _embed_query(query: str, embedder: SentenceTransformer) -> np.ndarray:
     """Embed a single query with L2 normalisation."""
-    vector = embedder.encode(query, normalize_embeddings=True)
+    vector = embedder.encode(_format_query_for_embedding(query), normalize_embeddings=True)
     return np.array(vector, dtype="float32").reshape(1, -1)
+
+
+def _metadata_path(index_dir: Path) -> Path:
+    return index_dir / INDEX_METADATA_FILENAME
+
+
+def _build_embedding_metadata(dim: int, chunk_count: int) -> dict[str, int | str]:
+    return {
+        "embed_model": EMBED_MODEL,
+        "embed_query_prefix": EMBED_QUERY_PREFIX,
+        "embedding_dimension": dim,
+        "chunk_count": chunk_count,
+    }
+
+
+def _write_embedding_metadata(index_dir: Path, dim: int, chunk_count: int) -> None:
+    metadata_path = _metadata_path(index_dir)
+    metadata = _build_embedding_metadata(dim, chunk_count)
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("Embedding config saved: %s", metadata_path)
+
+
+def _load_embedding_metadata(index_dir: Path) -> dict[str, int | str] | None:
+    metadata_path = _metadata_path(index_dir)
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def _ensure_index_compatibility(index: faiss.Index, index_dir: Path) -> None:
+    metadata = _load_embedding_metadata(index_dir)
+    if metadata is None:
+        if index.d != EMBED_DIMENSION:
+            raise RuntimeError(
+                "Existing FAISS index is incompatible with the active embedder "
+                f"({index.d}d on disk vs {EMBED_DIMENSION}d expected for {EMBED_MODEL}). "
+                "Rebuild with `python -m retrievers.baseline_rag --build` or download fresh artifacts."
+            )
+        return
+
+    metadata_model = str(metadata.get("embed_model", ""))
+    metadata_dimension = int(metadata.get("embedding_dimension", index.d))
+    if metadata_model != EMBED_MODEL or metadata_dimension != index.d:
+        raise RuntimeError(
+            "Embedding config mismatch detected. "
+            f"Index was built with model={metadata_model!r}, dim={metadata_dimension}; "
+            f"current config expects model={EMBED_MODEL!r}, dim={EMBED_DIMENSION}. "
+            "Rebuild the index or refresh HF artifacts before querying."
+        )
 
 
 # --- Index build ---
@@ -142,6 +207,7 @@ def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) ->
     with jsonlines.open(map_path, mode="w") as writer:
         writer.write_all(chunks)
     logger.info("Chunk map saved: %s", map_path)
+    _write_embedding_metadata(index_dir, dim=dim, chunk_count=len(chunks))
 
     # Optionally co-build bm25s index for hybrid retrieval.
     try:
@@ -166,6 +232,7 @@ def load_index(index_dir: Path = INDEX_DIR) -> tuple[faiss.Index, list[dict]]:
         raise FileNotFoundError(f"Index not found in {index_dir}. Run --build first.")
 
     index = faiss.read_index(str(faiss_path))
+    _ensure_index_compatibility(index, index_dir)
     chunks: list[dict] = []
     with jsonlines.open(map_path) as reader:
         chunks = list(reader)
@@ -330,7 +397,7 @@ def main() -> None:
 
     try:
         index, chunks = load_index(index_dir)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, RuntimeError) as exc:
         logger.error(str(exc))
         sys.exit(1)
 
