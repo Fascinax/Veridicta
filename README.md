@@ -155,9 +155,13 @@ python -m eval.evaluate --backend cerebras --model gpt-oss-120b --k 5 --retrieve
 
 # Avec GitHub Copilot
 python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid --workers 2
+
+# Graphes de comparaison prompt v2 vs bm25s
+python -m eval.plot_bm25s_prompt_comparison
 ```
 
 Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk et latence.
+Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 
 ## 10. Questions demo
 
@@ -173,6 +177,16 @@ Produit un rapport JSONL par question avec keyword recall, F1, citation faithful
 * Stockage natif de l'index sparse dans `data/index/bm25s_index/`
 * Retuning RRF apres migration : **FAISS 0.3 / BM25 0.7** (`eval.tune_rrf`)
 * Rebuild local possible depuis `chunks_map.jsonl` si les artifacts bm25s sont absents
+* Nouveau comparatif 4-way : baseline hybrid vs prompt v2 vs bm25s vs bm25s + prompt v2
+
+| Config | KW Recall | Word F1 | Cit. Faith | Ctx Cov | Latence |
+| --- | --- | --- | --- | --- | --- |
+| Hybrid baseline | 0.363 | **0.267** | 0.990 | 0.517 | **8.98 s** |
+| Hybrid + Prompt v2 | 0.423 | 0.178 | 0.980 | 0.482 | 9.67 s |
+| Hybrid + bm25s | 0.361 | 0.265 | **1.000** | **0.529** | 9.96 s |
+| **Hybrid + bm25s + Prompt v2** | **0.431** | 0.180 | 0.960 | 0.485 | 9.51 s |
+
+Les graphes correspondants sont generes dans `eval/charts/bm25s-prompt/` via `python -m eval.plot_bm25s_prompt_comparison`.
 
 ## 12. Licence
 

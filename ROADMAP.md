@@ -100,6 +100,24 @@
 * **k=8** est le meilleur compromis k-variation : +2.3% KW, meilleur CtxCov, CitFaith stable.
 * Le combo Reranker+Promptv2 est inutile (latence x2.5, +0.5% vs promptv2 seul).
 
+### Focus bm25s vs prompt v2 (copilot/gpt-4.1, 100 questions, 2026-03-09)
+
+> Resultats enregistres dans `eval/results/copilot-hybrid-bm25s/` et `eval/results/copilot-hybrid-bm25s-promptv2/`. Graphes dedies dans `eval/charts/bm25s-prompt/`.
+
+| Config | KW Recall | Word F1 | Cit. Faith | Ctx Cov | Latence | Lecture |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hybrid k=5 (baseline) | 0.363 | **0.267** | 0.990 | 0.517 | **8.98s** | meilleur F1 brut |
+| Hybrid + Prompt v2 | 0.423 | 0.178 | 0.980 | 0.482 | 9.67s | meilleur levier generation |
+| Hybrid + bm25s | 0.361 | 0.265 | **1.000** | **0.529** | 9.96s | meilleur grounding retrieval |
+| **Hybrid + bm25s + Prompt v2** | **0.431** | 0.180 | 0.960 | 0.485 | 9.51s | meilleur recall global |
+
+**Lecture produit** :
+
+* **bm25s seul** n'apporte pas de gain net de qualite end-to-end vs baseline, mais ameliore le grounding (CitFaith 1.000, CtxCov 0.529).
+* **Prompt v2** reste le levier principal pour faire monter le rappel sur les 100 questions.
+* **bm25s + prompt v2** donne le meilleur **Keyword Recall** observe a date (**0.431**), avec un cout de latence acceptable (+0.53s vs baseline).
+* Le trade-off F1 confirme que les reponses prompt v2 divergent davantage du format de reference ; la priorite reste donc de consolider le style de sortie plutot que de changer encore la stack retrieval.
+
 ---
 
 ## Decisions architecturales
