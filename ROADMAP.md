@@ -3,7 +3,7 @@
 > **Perimetre** : assistant conversationnel specialise en droit du travail monegasque.
 > **Cible** : juristes et avocats professionnels.
 > **Infra** : zero GPU -- APIs gratuites (Cerebras Cloud + sentence-transformers local).
-> **Deploiement** : local + Streamlit Cloud (via HF Hub artifacts).
+> **Deploiement** : local (Streamlit UI).
 
 ---
 
@@ -30,7 +30,7 @@
 | **7. UI Streamlit** | `app.py` : chat conversationnel, sources cliquables, sidebar parametres | Done | Port 8501, dark sidebar, cartes sources avec metadata |
 | **8. Polish & demo** | README final, ROADMAP a jour, questions demo percutantes | Done | 5 questions demo couvrant legislation, jurisprudence et cas complexes |
 | **9. Hybrid BM25+FAISS** | `hybrid_rag.py` : BM25Okapi + FAISS dense + RRF fusion, tokenizer francais accent-aware | Done | FAISS_WEIGHT=0.4, BM25_WEIGHT=0.6, RRF_K=60 ; CitFaith 0.900->0.940 (+4%) |
-| **10. HF Hub + Streamlit Cloud prep** | `artifacts.py` : upload/download auto FAISS+BM25+chunks (180 MB), secrets template | Done | Dataset `Fascinax/veridicta-index` public ; `.streamlit/config.toml` pret au deploy |
+| **10. HF Hub artifacts** | `artifacts.py` : upload/download auto FAISS+BM25+chunks (180 MB) | Done | Dataset `Fascinax/veridicta-index` public ; cold-start auto au demarrage (ensure_artifacts) |
 | **11. Graph RAG (Neo4j)** | `neo4j_setup.py` : 2 789 Doc nodes, 26 517 Chunk nodes, 1 693 aretes CITE loi←→jurisprudence ; `graph_rag.py` : FAISS seed + CITE expansion ; UI + eval integres | Done | KW=0.569 CitFaith=0.860 CtxCov=0.590 Halluc=0.411 Latence=2.88s (100 Q) — plus rapide que hybrid mais precision inferieure ; CITE_BOOST=0.12 a tuner |
 
 ---
@@ -64,7 +64,7 @@
 | QLoRA fine-tuning | Pas de GPU, prompt engineering + RAG d'abord |
 | LlamaGuard / Aporia guardrails | Prompt-level guardrails suffisent pour demo |
 | Prometheus / Grafana / wandb | Logs fichier suffisent, pas de prod |
-| Deploiement cloud (prod) | Streamlit Cloud OK pour demo ; infra prod (k8s, monitoring) hors scope |
+| Deploiement cloud | Hors scope -- application locale uniquement ; infra prod (k8s, monitoring) non vise |
 | Droit francais (Legifrance, Jurica) | Hors perimetre geo -- Monaco uniquement |
 | Scraping Juricaf | Historique jurisprudence pre-2000, pas prioritaire |
 
@@ -140,7 +140,7 @@
 | Artifacts | HF Hub dataset `Fascinax/veridicta-index` | idem (+ re-upload si phase 16) | FAISS+BM25+chunks telecharges au demarrage ; zero dependance locale |
 | Knowledge Graph | Neo4j 5 (Docker local) + `graph_rag.py` | idem | 2789 Doc / 26517 Chunk / 1693 CITE edges ; CITE_BOOST=0.12 ; fallback FAISS si Neo4j down |
 | Fine-tuning | Non | Non (v2+) | Pas de GPU, prompt engineering d'abord |
-| Deploiement | Streamlit Cloud + HF Hub | idem | Secrets via Streamlit Cloud ; artifacts depuis HF Hub au 1er boot (~2 min) |
+| Deploiement | Local (Streamlit UI) | idem | HF Hub pour artifacts au demarrage ; Streamlit Cloud non vise |
 
 ---
 
