@@ -337,7 +337,7 @@ def _retrieve_contexts(
     if not use_reranker or not _RERANKER_AVAILABLE:
         return retrieved_all
 
-    print(f"  Reranking {retrieval_k} -> {k} with cross-encoder ...", flush=True)
+    print(f"  Reranking {retrieval_k} -> {k} with FlashRank ...", flush=True)
     return [
         rerank(question.question, retrieved, k=k, candidate_k=retrieval_k)
         for question, retrieved in zip(questions, retrieved_all)
@@ -757,7 +757,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--reranker",
         action="store_true",
-        help="Apply cross-encoder reranking after retrieval (over-retrieves 4x then reranks to k)",
+        help="Apply FlashRank reranking after retrieval (over-retrieves 4x then reranks to k)",
     )
     parser.add_argument(
         "--prompt-version",
@@ -954,7 +954,10 @@ def main() -> None:
     print(f"  {len(questions)} questions loaded from {questions_path}")
 
     print("Loading FAISS index ...")
-    index, chunks = load_index(index_dir)
+    try:
+        index, chunks = load_index(index_dir)
+    except (FileNotFoundError, RuntimeError) as exc:
+        sys.exit(f"ERROR: {exc}")
     print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
     bm25, neo4j_mgr = _load_optional_retrievers(args, index_dir)
 
@@ -965,7 +968,7 @@ def main() -> None:
     retriever_label = _build_cli_retriever_label(args)
 
     if args.reranker and not _RERANKER_AVAILABLE:
-        sys.exit("ERROR: cross-encoder reranker not available. Run: pip install sentence-transformers")
+        sys.exit("ERROR: FlashRank reranker not available. Run: pip install flashrank")
 
     ragas_evaluator = _build_ragas_evaluator(args)
 

@@ -10,6 +10,7 @@ faiss-cpu>=1.7.4
 bm25s>=0.3.2
 PyStemmer>=2.2.0.3
 huggingface_hub>=0.23.0
+flashrank>=0.2.10
 
 # Knowledge graph (Neo4j)
 neo4j>=5.0.0
