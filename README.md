@@ -22,27 +22,27 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 Resultats obtenus sur 50 questions gold standard, corpus 26 517 chunks (legislation, jurisprudence, Journal de Monaco), retriever hybrid BM25+FAISS.
 Le LLM est contraint de citer `[Source N]` dans chaque affirmation.
 
-| Modele / Retriever    | KW Recall | Word F1 | Cit.Faith | Halluc.Risk | Latence |
-| --------------------- | --------- | ------- | --------- | ----------- | ------- |
-| gpt-oss-120b / FAISS  | 0.648     | 0.225   | 0.900     | 0.308       | 2.60 s  |
-| gpt-oss-120b / Hybrid | **0.646** | **0.223** | **0.940** | 0.313     | 4.98 s  |
-| gpt-4.1 / Hybrid      | 0.342     | 0.115   | **1.000** | 0.000       | --      |
+| Modele / Retriever    | KW Recall | Word F1  | Cit.Faith | Halluc.Risk | Latence |
+| --------------------- | --------- | -------- | --------- | ----------- | ------- |
+| gpt-oss-120b / FAISS  | 0.648     | 0.225    | 0.900     | 0.308       | 2.60 s  |
+| gpt-oss-120b / Hybrid | **0.646** | **0.223**| **0.940** | 0.313       | 4.98 s  |
+| gpt-4.1 / Hybrid      | 0.342     | 0.115    | **1.000** | 0.000       | --      |
 
 > **Cit.Faith** mesure la fraction de references `[Source N]` qui pointent vers un chunk effectivement recupere. **Hybrid** apporte +4% CitFaith par rapport a FAISS seul.
 
 ## 3. Stack technologique
 
-| Composant       | Choix                                                         |
-| --------------- | ------------------------------------------------------------- |
-| **Langage**     | Python 3.11 + Node.js 18+ (bridge Copilot)                   |
-| **Embeddings**  | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384)     |
-| **Retrieval**   | **Hybrid bm25s+FAISS** (RRF, k=60) -- FAISS 0.3 / BM25 0.7, stemming francais PyStemmer |
-| **LLM**         | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) |
-| **Artifacts**   | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+bm25s+chunks auto-telecharges (180 MB) |
-| **UI**          | Streamlit (chat, sources cliquables, toggle FAISS/Hybrid)    |
-| **Evaluation**  | 50 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk |
-| **Scraping**    | API Elasticsearch LegiMonaco + Playwright Journal de Monaco  |
-| **Deploy**      | Streamlit Cloud (artifacts depuis HF Hub au boot, ~2 min)    |
+| Composant | Choix |
+| --------- | ----- |
+| **Langage** | Python 3.11 + Node.js 18+ (bridge Copilot) |
+| **Embeddings** | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384) |
+| **Retrieval** | **Hybrid bm25s+FAISS** (RRF, k=60) -- FAISS 0.3 / BM25 0.7, stemming francais PyStemmer |
+| **LLM** | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) |
+| **Artifacts** | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+bm25s+chunks auto-telecharges (180 MB) |
+| **UI** | Streamlit (chat, sources cliquables, toggle FAISS/Hybrid) |
+| **Evaluation** | 50 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk + Ragas (`Faithfulness`, `ContextPrecision`) |
+| **Scraping** | API Elasticsearch LegiMonaco + Playwright Journal de Monaco |
+| **Deploy** | Streamlit Cloud (artifacts depuis HF Hub au boot, ~2 min) |
 
 ### Hors scope MVP (v2)
 
@@ -53,7 +53,7 @@ Le LLM est contraint de citer `[Source N]` dans chaque affirmation.
 
 ## 4. Arborescence du depot
 
-```
+```text
 Veridicta/
 +-- data_ingest/
 |   +-- legimonaco_scraper.py   # API Elasticsearch LegiMonaco (legislation + jurisprudence)
@@ -92,7 +92,7 @@ Veridicta/
 
 ## 6. Pipeline
 
-```
+```text
 LegiMonaco (API ES)  ---+
                         +-> data_processor.py -> chunks.jsonl -> MiniLM -> FAISS + bm25s
 Journal de Monaco ------+                                                       |
@@ -114,14 +114,15 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 
-# Backend Cerebras (par defaut, gratuit)
-echo "CEREBRAS_API_KEY=votre_cle_ici" > .env
+# Backend GitHub Copilot (par defaut)
+echo "LLM_BACKEND=copilot" > .env
+echo "GITHUB_PAT=ghp_xxx" >> .env
+echo "COPILOT_MODEL=gpt-4.1" >> .env
 echo "HF_API_TOKEN=votre_token_hf" >> .env   # pour les artifacts HF Hub
 
-# Backend GitHub Copilot (optionnel)
+# Backend Cerebras (optionnel)
 npm install
-echo "LLM_BACKEND=copilot" >> .env
-echo "GITHUB_PAT=ghp_xxx" >> .env
+echo "CEREBRAS_API_KEY=votre_cle_ici" >> .env
 ```
 
 > **Note** : les artifacts FAISS, bm25s et chunks (180 MB) sont telecharges automatiquement depuis
@@ -156,11 +157,15 @@ python -m eval.evaluate --backend cerebras --model gpt-oss-120b --k 5 --retrieve
 # Avec GitHub Copilot
 python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid --workers 2
 
+# Ajoute les metriques Ragas (juge Cerebras `llama3.1-8b` + prompts adaptes en francais)
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid --workers 2 --ragas --ragas-model llama3.1-8b
+
 # Graphes de comparaison prompt v2 vs bm25s
 python -m eval.plot_bm25s_prompt_comparison
 ```
 
-Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk et latence.
+Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk, latence et, si `--ragas` est active, `ragas_faithfulness` + `ragas_context_precision`.
+Le juge Ragas utilise actuellement Cerebras en mode OpenAI-compatible et adapte ses few-shots au francais via `--ragas-language` (par defaut : `french`).
 Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 
 ## 10. Questions demo

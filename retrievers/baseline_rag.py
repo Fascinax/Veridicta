@@ -5,8 +5,8 @@ Pipeline:
     Query -> embed -> FAISS search -> top-k chunks -> LLM -> answer
 
 LLM backends (set LLM_BACKEND in .env):
-    cerebras  — Cerebras Cloud API (default, free, ultra-fast)
-    copilot   — GitHub Copilot via @github/copilot-sdk Node.js bridge
+    copilot   — GitHub Copilot via @github/copilot-sdk Node.js bridge (default)
+    cerebras  — Cerebras Cloud API (optional, free, ultra-fast)
 
 Build index:
     python -m retrievers.baseline_rag --build
@@ -45,7 +45,7 @@ DEFAULT_TOP_K = 5
 MAX_CONTEXT_CHARS = 12_000
 
 # LLM backend configuration
-LLM_BACKEND = os.getenv("LLM_BACKEND", "cerebras")  # "cerebras" | "copilot"
+LLM_BACKEND = os.getenv("LLM_BACKEND", "copilot")  # "cerebras" | "copilot"
 CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b"
 COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "gpt-4.1")
 

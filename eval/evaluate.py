@@ -6,6 +6,8 @@ Metrics per question:
   - word_f1              : token-level F1 vs. reference_answer
   - citation_faithfulness: fraction of cited laws/articles grounded in context
   - context_coverage     : fraction of answer tokens present in retrieved context
+    - ragas_faithfulness   : claim-level grounding score computed by Ragas
+    - ragas_context_precision: ranking precision of retrieved chunks via Ragas
   - hallucination_risk   : 1 - context_coverage (higher = riskier)
   - latency_s            : wall-clock time for retrieve() + answer()
   - n_retrieved          : number of chunks returned
@@ -64,6 +66,36 @@ try:
 except ImportError:
     _RERANKER_AVAILABLE = False
 
+try:
+    from eval.ragas_support import (
+        DEFAULT_RAGAS_BACKEND,
+        DEFAULT_RAGAS_LANGUAGE,
+        DEFAULT_RAGAS_MODEL,
+        RagasConfig,
+        RagasConfigurationError,
+        RagasEvaluator,
+    )
+    _RAGAS_AVAILABLE = True
+except ImportError:
+    _RAGAS_AVAILABLE = False
+
+    DEFAULT_RAGAS_BACKEND = "cerebras"
+    DEFAULT_RAGAS_LANGUAGE = "french"
+    DEFAULT_RAGAS_MODEL = "llama3.1-8b"
+
+    class RagasConfig:  # type: ignore[override]
+        def __init__(self, *args, **kwargs) -> None:
+            self.args = args
+            self.kwargs = kwargs
+
+
+    class RagasEvaluator:  # type: ignore[override]
+        label = "unavailable"
+        language = DEFAULT_RAGAS_LANGUAGE
+
+    class RagasConfigurationError(RuntimeError):
+        """Fallback error type when optional ragas dependencies are absent."""
+
 CEREBRAS_MODELS = [
     "llama3.1-8b",
     "gpt-oss-120b",
@@ -97,11 +129,27 @@ class EvalResult:
     word_f1: float | None
     citation_faithfulness: float
     context_coverage: float
+    ragas_faithfulness: float | None
+    ragas_context_precision: float | None
     hallucination_risk: float
     latency_s: float
     n_retrieved: int
     answer: str
+    ragas_error: str | None = None
     sources_titles: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class EvalRunConfig:
+    k: int = 5
+    retrieval_only: bool = False
+    model: str | None = None
+    backend: str | None = None
+    workers: int = 4
+    stream_out: Path | None = None
+    use_reranker: bool = False
+    prompt_version: int = 1
+    ragas_evaluator: RagasEvaluator | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -217,122 +265,196 @@ def run_eval(
     index,
     chunks: list[dict],
     embedder,
-    k: int = 5,
-    retrieval_only: bool = False,
-    model: str | None = None,
-    backend: str | None = None,
-    workers: int = 4,
+    config: EvalRunConfig,
     bm25=None,
     neo4j_mgr=None,
-    stream_out: Path | None = None,
-    use_reranker: bool = False,
-    prompt_version: int = 1,
 ) -> list[EvalResult]:
-    active_backend = backend or LLM_BACKEND
-    n = len(questions)
-    use_hybrid = bm25 is not None
-    use_graph = neo4j_mgr is not None
+    retrieved_all = _retrieve_contexts(
+        questions,
+        index,
+        chunks,
+        embedder,
+        k=config.k,
+        bm25=bm25,
+        neo4j_mgr=neo4j_mgr,
+        use_reranker=config.use_reranker,
+    )
 
-    # Phase 1 — retrieval (sequential: SentenceTransformer is not thread-safe)
-    if use_graph:
-        retriever_label = "Graph (Neo4j)"
-    elif use_hybrid:
-        retriever_label = "hybrid BM25+FAISS"
-    else:
-        retriever_label = "FAISS"
-    print(f"  Retrieving context for {n} questions  [{retriever_label}] ...", flush=True)
-    reranker_k = k
+    if config.retrieval_only:
+        return _build_retrieval_only_results(questions, retrieved_all)
+
+    results = _generate_eval_results(questions, retrieved_all, config)
+
+    if config.ragas_evaluator is not None:
+        _apply_ragas_scores(results, questions, retrieved_all, config.ragas_evaluator)
+
+    if config.stream_out is not None:
+        _write_results_file(results, config.stream_out)
+
+    return results
+
+
+def _retriever_label(bm25=None, neo4j_mgr=None) -> str:
+    if neo4j_mgr is not None:
+        return "Graph (Neo4j)"
+    if bm25 is not None:
+        return "hybrid BM25+FAISS"
+    return "FAISS"
+
+
+def _retrieve_contexts(
+    questions: list[EvalQuestion],
+    index,
+    chunks: list[dict],
+    embedder,
+    *,
+    k: int,
+    bm25=None,
+    neo4j_mgr=None,
+    use_reranker: bool = False,
+) -> list[list[dict]]:
+    question_count = len(questions)
+    retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr)
+    print(f"  Retrieving context for {question_count} questions  [{retriever_label}] ...", flush=True)
+
     retrieval_k = k * 4 if use_reranker else k
-
-    if use_graph:
-        retrieved_all: list[list[dict]] = [
-            graph_retrieve(q.question, index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
-            for q in questions
-        ]
-    elif use_hybrid:
+    if neo4j_mgr is not None:
         retrieved_all = [
-            hybrid_retrieve(q.question, index, bm25, chunks, embedder, k=retrieval_k)
-            for q in questions
+            graph_retrieve(question.question, index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
+            for question in questions
+        ]
+    elif bm25 is not None:
+        retrieved_all = [
+            hybrid_retrieve(question.question, index, bm25, chunks, embedder, k=retrieval_k)
+            for question in questions
         ]
     else:
         retrieved_all = [
-            retrieve(q.question, index, chunks, embedder, k=retrieval_k)
-            for q in questions
+            retrieve(question.question, index, chunks, embedder, k=retrieval_k)
+            for question in questions
         ]
 
-    if use_reranker and _RERANKER_AVAILABLE:
-        print(f"  Reranking {retrieval_k} -> {reranker_k} with cross-encoder ...", flush=True)
-        retrieved_all = [
-            rerank(q.question, r, k=reranker_k, candidate_k=retrieval_k)
-            for q, r in zip(questions, retrieved_all)
-        ]
+    if not use_reranker or not _RERANKER_AVAILABLE:
+        return retrieved_all
 
-    if retrieval_only:
-        results: list[EvalResult] = []
-        for q, retrieved in zip(questions, retrieved_all):
-            generated = " ".join(c.get("text", "") for c in retrieved[:3])
-            cov = context_coverage(generated, retrieved)
-            results.append(EvalResult(
-                question_id=q.id, question=q.question, topic=q.topic,
-                keyword_recall=keyword_recall(generated, q.reference_keywords),
-                word_f1=None,
-                citation_faithfulness=citation_faithfulness(generated, retrieved),
-                context_coverage=cov, hallucination_risk=round(1.0 - cov, 4),
-                latency_s=0.0, n_retrieved=len(retrieved),
-                answer=generated,
-                sources_titles=[c.get("title") or c.get("source_type", "?") for c in retrieved],
-            ))
-        return results
+    print(f"  Reranking {retrieval_k} -> {k} with cross-encoder ...", flush=True)
+    return [
+        rerank(question.question, retrieved, k=k, candidate_k=retrieval_k)
+        for question, retrieved in zip(questions, retrieved_all)
+    ]
 
-    # Phase 2 — LLM generation (parallel: HTTP/subprocess calls are I/O-bound)
-    effective_workers = min(workers, n)
+
+def _source_titles(retrieved_chunks: list[dict]) -> list[str]:
+    return [chunk.get("title") or chunk.get("source_type", "?") for chunk in retrieved_chunks]
+
+
+def _build_eval_result(
+    question: EvalQuestion,
+    retrieved_chunks: list[dict],
+    generated_answer: str,
+    *,
+    latency_s: float,
+    include_word_f1: bool,
+) -> EvalResult:
+    coverage = context_coverage(generated_answer, retrieved_chunks)
+    word_f1_score = word_f1(generated_answer, question.reference_answer) if include_word_f1 else None
+    return EvalResult(
+        question_id=question.id,
+        question=question.question,
+        topic=question.topic,
+        keyword_recall=keyword_recall(generated_answer, question.reference_keywords),
+        word_f1=word_f1_score,
+        citation_faithfulness=citation_faithfulness(generated_answer, retrieved_chunks),
+        ragas_faithfulness=None,
+        ragas_context_precision=None,
+        context_coverage=coverage,
+        hallucination_risk=round(1.0 - coverage, 4),
+        latency_s=latency_s,
+        n_retrieved=len(retrieved_chunks),
+        answer=generated_answer,
+        sources_titles=_source_titles(retrieved_chunks),
+    )
+
+
+def _build_retrieval_only_results(
+    questions: list[EvalQuestion],
+    retrieved_all: list[list[dict]],
+) -> list[EvalResult]:
+    return [
+        _build_eval_result(
+            question,
+            retrieved,
+            " ".join(chunk.get("text", "") for chunk in retrieved[:3]),
+            latency_s=0.0,
+            include_word_f1=False,
+        )
+        for question, retrieved in zip(questions, retrieved_all)
+    ]
+
+
+def _generate_eval_results(
+    questions: list[EvalQuestion],
+    retrieved_all: list[list[dict]],
+    config: EvalRunConfig,
+) -> list[EvalResult]:
+    question_count = len(questions)
+    effective_workers = min(config.workers, question_count)
+    active_backend = config.backend or LLM_BACKEND
     print(
-        f"  Generating {n} answers  [backend={active_backend}, workers={effective_workers}] ...",
+        f"  Generating {question_count} answers  [backend={active_backend}, workers={effective_workers}] ...",
         flush=True,
     )
 
     def _generate_one(task: tuple[int, EvalQuestion, list[dict]]) -> tuple[int, EvalResult]:
-        idx, q, retrieved = task
-        t0 = time.monotonic()
-        generated = answer(q.question, retrieved, model=model, backend=active_backend, prompt_version=prompt_version)
-        latency = time.monotonic() - t0
-        print(f"  [{idx:02d}/{n}] {q.id}  ({latency:.1f}s)", flush=True)
-        cov = context_coverage(generated, retrieved)
-        return idx, EvalResult(
-            question_id=q.id, question=q.question, topic=q.topic,
-            keyword_recall=keyword_recall(generated, q.reference_keywords),
-            word_f1=word_f1(generated, q.reference_answer),
-            citation_faithfulness=citation_faithfulness(generated, retrieved),
-            context_coverage=cov, hallucination_risk=round(1.0 - cov, 4),
-            latency_s=round(latency, 2), n_retrieved=len(retrieved),
-            answer=generated,
-            sources_titles=[c.get("title") or c.get("source_type", "?") for c in retrieved],
+        index, question, retrieved = task
+        started_at = time.monotonic()
+        generated_answer = answer(
+            question.question,
+            retrieved,
+            model=config.model,
+            backend=active_backend,
+            prompt_version=config.prompt_version,
+        )
+        latency_s = round(time.monotonic() - started_at, 2)
+        print(f"  [{index:02d}/{question_count}] {question.id}  ({latency_s:.1f}s)", flush=True)
+        return index, _build_eval_result(
+            question,
+            retrieved,
+            generated_answer,
+            latency_s=latency_s,
+            include_word_f1=True,
         )
 
-    tasks = [
-        (i, q, r)
-        for i, (q, r) in enumerate(zip(questions, retrieved_all), 1)
-    ]
-    ordered: dict[int, EvalResult] = {}
-    stream_fh = None
-    if stream_out is not None:
-        stream_out.parent.mkdir(parents=True, exist_ok=True)
-        stream_fh = open(stream_out, "w", encoding="utf-8")
-        print(f"  Streaming results -> {stream_out}", flush=True)
+    tasks = [(index, question, retrieved) for index, (question, retrieved) in enumerate(zip(questions, retrieved_all), 1)]
+    ordered_results: dict[int, EvalResult] = {}
+    stream_file_handle = _open_stream_file(config.stream_out)
     try:
         with ThreadPoolExecutor(max_workers=effective_workers) as pool:
             futures = {pool.submit(_generate_one, task): task[0] for task in tasks}
             for future in as_completed(futures):
-                idx, result = future.result()
-                ordered[idx] = result
-                if stream_fh is not None:
-                    stream_fh.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
-                    stream_fh.flush()
+                index, result = future.result()
+                ordered_results[index] = result
+                _stream_eval_result(stream_file_handle, result)
     finally:
-        if stream_fh is not None:
-            stream_fh.close()
+        if stream_file_handle is not None:
+            stream_file_handle.close()
 
-    return [ordered[i] for i in range(1, n + 1)]
+    return [ordered_results[index] for index in range(1, question_count + 1)]
+
+
+def _open_stream_file(stream_out: Path | None):
+    if stream_out is None:
+        return None
+    stream_out.parent.mkdir(parents=True, exist_ok=True)
+    print(f"  Streaming results -> {stream_out}", flush=True)
+    return open(stream_out, "w", encoding="utf-8")
+
+
+def _stream_eval_result(stream_file_handle, result: EvalResult) -> None:
+    if stream_file_handle is None:
+        return
+    stream_file_handle.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+    stream_file_handle.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -344,91 +466,225 @@ def _avg(values: list[float]) -> float:
     return round(sum(values) / len(values), 4) if values else 0.0
 
 
-def print_report(results: list[EvalResult]) -> None:
-    print("\n" + "=" * 88)
+def _write_results_file(results: list[EvalResult], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as fh:
+        for result in results:
+            fh.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+
+
+def _has_ragas_scores(results: list[EvalResult]) -> bool:
+    return any(
+        result.ragas_faithfulness is not None or result.ragas_context_precision is not None
+        for result in results
+    )
+
+
+def _metric_str(value: float | None) -> str:
+    return f"{value:.4f}" if value is not None else "  n/a "
+
+
+def _apply_ragas_scores(
+    results: list[EvalResult],
+    questions: list[EvalQuestion],
+    retrieved_all: list[list[dict]],
+    ragas_evaluator: RagasEvaluator,
+) -> None:
+    total = len(results)
+    print(
+        f"  Scoring {total} answers with Ragas  [judge={ragas_evaluator.label}, language={ragas_evaluator.language}] ...",
+        flush=True,
+    )
+
+    for index, (result, question, retrieved) in enumerate(zip(results, questions, retrieved_all), 1):
+        ragas_scores = ragas_evaluator.score(
+            question=question.question,
+            answer=result.answer,
+            reference_answer=question.reference_answer,
+            retrieved_chunks=retrieved,
+        )
+        result.ragas_faithfulness = ragas_scores.faithfulness
+        result.ragas_context_precision = ragas_scores.context_precision
+        result.ragas_error = ragas_scores.error
+        print(f"  [Ragas {index:02d}/{total}] {question.id}", flush=True)
+
+
+def _print_report_header(has_ragas: bool, line_width: int) -> None:
+    print("\n" + "=" * line_width)
     print("VERIDICTA EVALUATION REPORT")
-    print("=" * 88)
+    print("=" * line_width)
+    if has_ragas:
+        print(
+            f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} {'Cit.Faith':>10} "
+            f"{'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'Ctx Cov':>8} {'Latency':>9} {'k':>4}"
+        )
+        return
     print(
         f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} "
         f"{'Cit.Faith':>10} {'Ctx Cov':>8} {'Halluc.Risk':>11} {'Latency':>9} {'k':>4}"
     )
-    print("-" * 88)
 
-    for r in results:
-        wf1_str = f"{r.word_f1:.4f}" if r.word_f1 is not None else "  n/a "
+
+def _print_report_row(result: EvalResult, has_ragas: bool) -> None:
+    wf1_str = _metric_str(result.word_f1)
+    if has_ragas:
         print(
-            f"{r.question_id:<15} {r.keyword_recall:>10.4f} {wf1_str:>9} "
-            f"{r.citation_faithfulness:>10.4f} {r.context_coverage:>8.4f} "
-            f"{r.hallucination_risk:>11.4f} {r.latency_s:>8.2f}s {r.n_retrieved:>4}"
+            f"{result.question_id:<15} {result.keyword_recall:>10.4f} {wf1_str:>9} "
+            f"{result.citation_faithfulness:>10.4f} {_metric_str(result.ragas_faithfulness):>12} "
+            f"{_metric_str(result.ragas_context_precision):>11} {result.context_coverage:>8.4f} "
+            f"{result.latency_s:>8.2f}s {result.n_retrieved:>4}"
         )
+        return
+    print(
+        f"{result.question_id:<15} {result.keyword_recall:>10.4f} {wf1_str:>9} "
+        f"{result.citation_faithfulness:>10.4f} {result.context_coverage:>8.4f} "
+        f"{result.hallucination_risk:>11.4f} {result.latency_s:>8.2f}s {result.n_retrieved:>4}"
+    )
 
-    print("-" * 88)
-    kw_vals = [r.keyword_recall for r in results]
-    wf1_vals = [r.word_f1 for r in results if r.word_f1 is not None]
-    cit_vals = [r.citation_faithfulness for r in results]
-    cov_vals = [r.context_coverage for r in results]
-    risk_vals = [r.hallucination_risk for r in results]
-    lat_vals = [r.latency_s for r in results]
-    wf1_avg_str = f"{_avg(wf1_vals):.4f}" if wf1_vals else "  n/a "
+
+def _print_overall_summary(results: list[EvalResult], has_ragas: bool) -> None:
+    kw_vals = [result.keyword_recall for result in results]
+    wf1_vals = [result.word_f1 for result in results if result.word_f1 is not None]
+    cit_vals = [result.citation_faithfulness for result in results]
+    cov_vals = [result.context_coverage for result in results]
+    risk_vals = [result.hallucination_risk for result in results]
+    lat_vals = [result.latency_s for result in results]
+    ragas_faith_vals = [result.ragas_faithfulness for result in results if result.ragas_faithfulness is not None]
+    ragas_ctx_vals = [
+        result.ragas_context_precision
+        for result in results
+        if result.ragas_context_precision is not None
+    ]
+    wf1_avg_str = _metric_str(_avg(wf1_vals) if wf1_vals else None)
+
+    if has_ragas:
+        print(
+            f"{'OVERALL AVG':<15} {_avg(kw_vals):>10.4f} {wf1_avg_str:>9} "
+            f"{_avg(cit_vals):>10.4f} {_metric_str(_avg(ragas_faith_vals) if ragas_faith_vals else None):>12} "
+            f"{_metric_str(_avg(ragas_ctx_vals) if ragas_ctx_vals else None):>11} {_avg(cov_vals):>8.4f} "
+            f"{_avg(lat_vals):>8.2f}s"
+        )
+        return
+
     print(
         f"{'OVERALL AVG':<15} {_avg(kw_vals):>10.4f} {wf1_avg_str:>9} "
         f"{_avg(cit_vals):>10.4f} {_avg(cov_vals):>8.4f} "
         f"{_avg(risk_vals):>11.4f} {_avg(lat_vals):>8.2f}s"
     )
 
-    # Per-topic breakdown
+
+def _print_topic_breakdown(results: list[EvalResult], has_ragas: bool) -> None:
     topics: dict[str, list[EvalResult]] = {}
-    for r in results:
-        topics.setdefault(r.topic, []).append(r)
+    for result in results:
+        topics.setdefault(result.topic, []).append(result)
 
-    if len(topics) > 1:
-        print("\nPer-topic averages:")
+    if len(topics) <= 1:
+        return
+
+    print("\nPer-topic averages:")
+    if has_ragas:
+        print(
+            f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'n':>4}"
+        )
+    else:
         print(f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Halluc.Risk':>12} {'n':>4}")
-        for topic, rows in sorted(topics.items()):
-            kw = _avg([r.keyword_recall for r in rows])
-            wf1_t = [r.word_f1 for r in rows if r.word_f1 is not None]
-            wf1_s = f"{_avg(wf1_t):.4f}" if wf1_t else "  n/a "
-            risk = _avg([r.hallucination_risk for r in rows])
-            print(f"  {topic:<25} {kw:>10.4f} {wf1_s:>9} {risk:>12.4f} {len(rows):>4}")
 
-    print("=" * 88 + "\n")
+    for topic, rows in sorted(topics.items()):
+        kw_score = _avg([row.keyword_recall for row in rows])
+        wf1_values = [row.word_f1 for row in rows if row.word_f1 is not None]
+        wf1_text = _metric_str(_avg(wf1_values) if wf1_values else None)
+        if has_ragas:
+            ragas_faith_values = [row.ragas_faithfulness for row in rows if row.ragas_faithfulness is not None]
+            ragas_ctx_values = [
+                row.ragas_context_precision
+                for row in rows
+                if row.ragas_context_precision is not None
+            ]
+            print(
+                f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} "
+                f"{_metric_str(_avg(ragas_faith_values) if ragas_faith_values else None):>12} "
+                f"{_metric_str(_avg(ragas_ctx_values) if ragas_ctx_values else None):>11} {len(rows):>4}"
+            )
+            continue
+
+        hallucination_risk_score = _avg([row.hallucination_risk for row in rows])
+        print(
+            f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} "
+            f"{hallucination_risk_score:>12.4f} {len(rows):>4}"
+        )
+
+
+def print_report(results: list[EvalResult]) -> None:
+    has_ragas = _has_ragas_scores(results)
+    line_width = 112 if has_ragas else 88
+
+    _print_report_header(has_ragas, line_width)
+    print("-" * line_width)
+
+    for result in results:
+        _print_report_row(result, has_ragas)
+
+    print("-" * line_width)
+    _print_overall_summary(results, has_ragas)
+    _print_topic_breakdown(results, has_ragas)
+
+    print("=" * line_width + "\n")
 
 
 def save_results(results: list[EvalResult], out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = out_dir / f"eval_{ts}.jsonl"
-    with open(out_path, "w", encoding="utf-8") as fh:
-        for r in results:
-            fh.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
+    _write_results_file(results, out_path)
     print(f"Results saved -> {out_path}")
 
 
 def print_comparison(all_results: dict[str, list[EvalResult]]) -> None:
     """Print a side-by-side comparison table across multiple models."""
-    print("\n" + "=" * 84)
+    has_ragas = any(_has_ragas_scores(results) for results in all_results.values())
+    line_width = 108 if has_ragas else 84
+
+    print("\n" + "=" * line_width)
     print("MODEL COMPARISON REPORT")
-    print("=" * 84)
-    print(
-        f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} "
-        f"{'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}"
-    )
-    print("  " + "-" * 80)
+    print("=" * line_width)
+    if has_ragas:
+        print(
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'Cit.Faith':>10} "
+            f"{'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'Latency':>9}"
+        )
+        print("  " + "-" * 104)
+    else:
+        print(
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} "
+            f"{'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}"
+        )
+        print("  " + "-" * 80)
 
     for model_name, results in all_results.items():
         kw = _avg([r.keyword_recall for r in results])
         wf1_vals = [r.word_f1 for r in results if r.word_f1 is not None]
-        wf1_s = f"{_avg(wf1_vals):.4f}" if wf1_vals else "  n/a "
+        wf1_s = _metric_str(_avg(wf1_vals) if wf1_vals else None)
         cit = _avg([r.citation_faithfulness for r in results])
         risk = _avg([r.hallucination_risk for r in results])
         lat = _avg([r.latency_s for r in results])
+        ragas_faith_vals = [r.ragas_faithfulness for r in results if r.ragas_faithfulness is not None]
+        ragas_ctx_vals = [
+            r.ragas_context_precision for r in results if r.ragas_context_precision is not None
+        ]
         short = model_name[:30]
-        print(
-            f"  {short:<30} {kw:>10.4f} {wf1_s:>9} "
-            f"{cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
-        )
+        if has_ragas:
+            print(
+                f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {cit:>10.4f} "
+                f"{_metric_str(_avg(ragas_faith_vals) if ragas_faith_vals else None):>12} "
+                f"{_metric_str(_avg(ragas_ctx_vals) if ragas_ctx_vals else None):>11} {lat:>8.2f}s"
+            )
+        else:
+            print(
+                f"  {short:<30} {kw:>10.4f} {wf1_s:>9} "
+                f"{cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
+            )
 
-    print("=" * 84 + "\n")
+    print("=" * line_width + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -510,27 +766,31 @@ def _parse_args() -> argparse.Namespace:
         choices=[1, 2],
         help="System prompt version: 1 (original) or 2 (structured/exhaustive)  (default: 1)",
     )
+    parser.add_argument(
+        "--ragas",
+        action="store_true",
+        help="Compute optional Ragas Faithfulness + ContextPrecision with an LLM judge",
+    )
+    parser.add_argument(
+        "--ragas-backend",
+        default=DEFAULT_RAGAS_BACKEND,
+        choices=[DEFAULT_RAGAS_BACKEND],
+        help="Backend used by the Ragas judge  (default: cerebras)",
+    )
+    parser.add_argument(
+        "--ragas-model",
+        default=None,
+        help="LLM model used by the Ragas judge  (default: llama3.1-8b)",
+    )
+    parser.add_argument(
+        "--ragas-language",
+        default=DEFAULT_RAGAS_LANGUAGE,
+        help="Target language used to adapt Ragas prompt examples  (default: french)",
+    )
     return parser.parse_args()
 
 
-def main() -> None:
-    args = _parse_args()
-
-    questions_path = Path(args.questions)
-    if not questions_path.exists():
-        sys.exit(f"ERROR: questions file not found: {questions_path}")
-
-    index_dir = Path(args.index_dir)
-    active_backend = args.backend or LLM_BACKEND
-
-    print("Loading questions ...")
-    questions = load_questions(questions_path)
-    print(f"  {len(questions)} questions loaded from {questions_path}")
-
-    print("Loading FAISS index ...")
-    index, chunks = load_index(index_dir)
-    print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
-
+def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tuple[object | None, object | None]:
     bm25 = None
     if args.retriever == "hybrid":
         if not _HYBRID_AVAILABLE:
@@ -552,66 +812,192 @@ def main() -> None:
                 "ERROR: Neo4j unreachable. Check NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD.\n"
                 "Build the graph first: python -m retrievers.neo4j_setup --build"
             )
-        s = neo4j_mgr.stats()
-        print(f"  Graph connected: {s}")
+        stats = neo4j_mgr.stats()
+        print(f"  Graph connected: {stats}")
+
+    return bm25, neo4j_mgr
+
+
+def _build_cli_retriever_label(args: argparse.Namespace) -> str:
+    retriever_label = args.retriever
+    if args.reranker:
+        retriever_label += "+reranker"
+    if args.prompt_version == 2:
+        retriever_label += "+promptv2"
+    return retriever_label
+
+
+def _build_ragas_evaluator(args: argparse.Namespace) -> RagasEvaluator | None:
+    if not args.ragas:
+        return None
+    if args.retrieval_only:
+        sys.exit("ERROR: --ragas is only available in full RAG mode (without --retrieval-only).")
+    if not _RAGAS_AVAILABLE:
+        sys.exit("ERROR: Ragas dependencies unavailable. Run: pip install ragas openai")
+
+    ragas_model = args.ragas_model or DEFAULT_RAGAS_MODEL
+    print("Preparing Ragas judge ...")
+    try:
+        evaluator = RagasEvaluator(
+            RagasConfig(
+                backend=args.ragas_backend,
+                model=ragas_model,
+                language=args.ragas_language,
+            )
+        )
+    except RagasConfigurationError as exc:
+        sys.exit(f"ERROR: {exc}")
+
+    print(f"  Judge ready: {evaluator.label} (language={evaluator.language})")
+    return evaluator
+
+
+def _build_run_config(
+    args: argparse.Namespace,
+    *,
+    ragas_evaluator: RagasEvaluator | None,
+    stream_out: Path | None = None,
+    model: str | None = None,
+) -> EvalRunConfig:
+    return EvalRunConfig(
+        k=args.k,
+        retrieval_only=args.retrieval_only,
+        model=model if model is not None else args.model,
+        backend=args.backend or LLM_BACKEND,
+        workers=args.workers,
+        stream_out=stream_out,
+        use_reranker=args.reranker,
+        prompt_version=args.prompt_version,
+        ragas_evaluator=ragas_evaluator,
+    )
+
+
+def _run_all_models_evaluation(
+    args: argparse.Namespace,
+    questions: list[EvalQuestion],
+    index,
+    chunks: list[dict],
+    embedder,
+    out_dir: Path,
+    bm25,
+    neo4j_mgr,
+    ragas_evaluator: RagasEvaluator | None,
+    retriever_label: str,
+    active_backend: str,
+) -> None:
+    models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
+    all_results: dict[str, list[EvalResult]] = {}
+    for model_name in models:
+        print(f"\n{'='*60}")
+        print(f"  Backend: {active_backend} | Model: {model_name} | Retriever: {retriever_label}")
+        print(f"{'='*60}")
+        results = run_eval(
+            questions,
+            index,
+            chunks,
+            embedder,
+            _build_run_config(args, ragas_evaluator=ragas_evaluator, model=model_name),
+            bm25=bm25,
+            neo4j_mgr=neo4j_mgr,
+        )
+        print_report(results)
+        save_results(results, out_dir / model_name.replace("/", "_"))
+        all_results[model_name] = results
+    print_comparison(all_results)
+
+
+def _run_single_evaluation(
+    args: argparse.Namespace,
+    questions: list[EvalQuestion],
+    index,
+    chunks: list[dict],
+    embedder,
+    out_dir: Path,
+    bm25,
+    neo4j_mgr,
+    ragas_evaluator: RagasEvaluator | None,
+    retriever_label: str,
+    active_backend: str,
+) -> None:
+    default_model = COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
+    mode = "retrieval-only" if args.retrieval_only else f"full RAG ({active_backend}/{args.model or default_model})"
+    print(f"\nRunning evaluation  [k={args.k}, retriever={retriever_label}, mode={mode}]\n")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stream_path = out_dir / f"eval_{timestamp}.jsonl"
+    results = run_eval(
+        questions,
+        index,
+        chunks,
+        embedder,
+        _build_run_config(args, ragas_evaluator=ragas_evaluator, stream_out=stream_path),
+        bm25=bm25,
+        neo4j_mgr=neo4j_mgr,
+    )
+    print_report(results)
+    print(f"Results saved -> {stream_path}")
+
+
+def main() -> None:
+    args = _parse_args()
+
+    questions_path = Path(args.questions)
+    if not questions_path.exists():
+        sys.exit(f"ERROR: questions file not found: {questions_path}")
+
+    index_dir = Path(args.index_dir)
+    active_backend = args.backend or LLM_BACKEND
+
+    print("Loading questions ...")
+    questions = load_questions(questions_path)
+    print(f"  {len(questions)} questions loaded from {questions_path}")
+
+    print("Loading FAISS index ...")
+    index, chunks = load_index(index_dir)
+    print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
+    bm25, neo4j_mgr = _load_optional_retrievers(args, index_dir)
 
     print("Loading embedder ...")
     embedder = _load_embedder()
 
     out_dir = Path(args.out)
-
-    if args.retriever == "hybrid":
-        retriever_label = "hybrid"
-    elif args.retriever == "graph":
-        retriever_label = "graph"
-    else:
-        retriever_label = "faiss"
+    retriever_label = _build_cli_retriever_label(args)
 
     if args.reranker and not _RERANKER_AVAILABLE:
         sys.exit("ERROR: cross-encoder reranker not available. Run: pip install sentence-transformers")
 
-    if args.reranker:
-        retriever_label += "+reranker"
-
-    if args.prompt_version == 2:
-        retriever_label += "+promptv2"
+    ragas_evaluator = _build_ragas_evaluator(args)
 
     if args.all_models:
-        models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
-        all_results: dict[str, list[EvalResult]] = {}
-        for model_name in models:
-            print(f"\n{'='*60}")
-            print(f"  Backend: {active_backend} | Model: {model_name} | Retriever: {retriever_label}")
-            print(f"{'='*60}")
-            results = run_eval(
-                questions, index, chunks, embedder,
-                k=args.k, retrieval_only=args.retrieval_only,
-                model=model_name, backend=active_backend,
-                workers=args.workers, bm25=bm25, neo4j_mgr=neo4j_mgr,
-                use_reranker=args.reranker, prompt_version=args.prompt_version,
-            )
-            print_report(results)
-            save_results(results, out_dir / model_name.replace("/", "_"))
-            all_results[model_name] = results
-        print_comparison(all_results)
-    else:
-        model = args.model
-        default_model = COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
-        mode = "retrieval-only" if args.retrieval_only else f"full RAG ({active_backend}/{model or default_model})"
-        print(f"\nRunning evaluation  [k={args.k}, retriever={retriever_label}, mode={mode}]\n")
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        stream_path = out_dir / f"eval_{ts}.jsonl"
-        results = run_eval(
-            questions, index, chunks, embedder,
-            k=args.k, retrieval_only=args.retrieval_only,
-            model=model, backend=active_backend,
-            workers=args.workers, bm25=bm25, neo4j_mgr=neo4j_mgr,
-            stream_out=stream_path,
-            use_reranker=args.reranker, prompt_version=args.prompt_version,
+        _run_all_models_evaluation(
+            args,
+            questions,
+            index,
+            chunks,
+            embedder,
+            out_dir,
+            bm25,
+            neo4j_mgr,
+            ragas_evaluator,
+            retriever_label,
+            active_backend,
         )
-        print_report(results)
-        print(f"Results saved -> {stream_path}")
+        return
+
+    _run_single_evaluation(
+        args,
+        questions,
+        index,
+        chunks,
+        embedder,
+        out_dir,
+        bm25,
+        neo4j_mgr,
+        ragas_evaluator,
+        retriever_label,
+        active_backend,
+    )
 
 
 if __name__ == "__main__":
