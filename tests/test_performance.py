@@ -71,9 +71,9 @@ def faiss_index_data():
 def bm25_index():
     """Load BM25s index once per module."""
     try:
-        from retrievers.hybrid_rag import load_bm25s_index
-        return load_bm25s_index()
-    except (ImportError, FileNotFoundError):
+        from retrievers.hybrid_rag import load_bm25_index
+        return load_bm25_index()
+    except (ImportError, FileNotFoundError, RuntimeError):
         pytest.skip("BM25s index not found or bm25s not installed")
 
 
@@ -172,10 +172,10 @@ class TestRetrievalPerformance:
             for q in sample_queries:
                 hit = hybrid_retrieve(
                     q, 
-                    index=index, 
-                    chunks=chunks, 
-                    embedder=embedder,
+                    faiss_index=index,
                     bm25=bm25_index,
+                    chunks=chunks,
+                    embedder=embedder,
                     k=5
                 )
                 results.append(hit)

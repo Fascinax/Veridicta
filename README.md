@@ -113,6 +113,12 @@ pytest tests/test_performance.py --benchmark-only --benchmark-compare=baseline
 # Exporter en JSON
 pytest tests/test_performance.py --benchmark-only --benchmark-json=perf_results.json
 
+# Comparer deux snapshots de benchmarks
+python -m eval.compare_benchmarks --old eval/results/benchmarks/perf_full_YYYYMMDD_HHMMSS.json --new eval/results/benchmarks/perf_full_YYYYMMDD_HHMMSS.json
+
+# Auto-comparer les deux derniers snapshots
+python -m eval.compare_benchmarks
+
 # Benchmarks specifiques (sans les tests slow)
 pytest tests/test_performance.py::TestChunkingPerformance --benchmark-only
 
@@ -214,6 +220,7 @@ echo "LLM_BACKEND=copilot" > .env
 echo "GITHUB_PAT=ghp_xxx" >> .env
 echo "COPILOT_MODEL=gpt-4.1" >> .env
 echo "HF_API_TOKEN=votre_token_hf" >> .env   # pour les artifacts HF Hub
+echo "VERIDICTA_QUERY_EMBED_CACHE_SIZE=512" >> .env   # optionnel: cache LRU des embeddings de requetes
 
 # Backend Cerebras (optionnel)
 npm install

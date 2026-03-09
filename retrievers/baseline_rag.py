@@ -18,10 +18,12 @@ Query:
 from __future__ import annotations
 
 import argparse
+from collections import OrderedDict
 import json
 import logging
 import os
 import sys
+from threading import Lock
 import time
 from pathlib import Path
 
@@ -44,6 +46,7 @@ EMBED_MODEL = os.getenv("VERIDICTA_EMBED_MODEL", "OrdalieTech/Solon-embeddings-l
 EMBED_QUERY_PREFIX = os.getenv("VERIDICTA_EMBED_QUERY_PREFIX", "query: ")
 EMBED_DIMENSION = 1024
 EMBED_BATCH_SIZE = 32
+QUERY_EMBED_CACHE_SIZE = int(os.getenv("VERIDICTA_QUERY_EMBED_CACHE_SIZE", "512"))
 DEFAULT_TOP_K = 5
 MAX_CONTEXT_CHARS = 12_000
 
@@ -110,6 +113,31 @@ SYSTEM_PROMPT_V3 = (
 # --- Embedding ---
 
 
+_QUERY_EMBED_CACHE: OrderedDict[tuple[int, str], np.ndarray] = OrderedDict()
+_QUERY_EMBED_CACHE_LOCK = Lock()
+
+
+def _query_embed_cache_get(cache_key: tuple[int, str]) -> np.ndarray | None:
+    if QUERY_EMBED_CACHE_SIZE <= 0:
+        return None
+    with _QUERY_EMBED_CACHE_LOCK:
+        cached_vector = _QUERY_EMBED_CACHE.get(cache_key)
+        if cached_vector is None:
+            return None
+        _QUERY_EMBED_CACHE.move_to_end(cache_key)
+        return cached_vector
+
+
+def _query_embed_cache_set(cache_key: tuple[int, str], vector: np.ndarray) -> None:
+    if QUERY_EMBED_CACHE_SIZE <= 0:
+        return
+    with _QUERY_EMBED_CACHE_LOCK:
+        _QUERY_EMBED_CACHE[cache_key] = vector
+        _QUERY_EMBED_CACHE.move_to_end(cache_key)
+        while len(_QUERY_EMBED_CACHE) > QUERY_EMBED_CACHE_SIZE:
+            _QUERY_EMBED_CACHE.popitem(last=False)
+
+
 def _load_embedder() -> SentenceTransformer:
     logger.info("Loading embedder: %s", EMBED_MODEL)
     return SentenceTransformer(EMBED_MODEL)
@@ -137,8 +165,16 @@ def _embed_passages(texts: list[str], embedder: SentenceTransformer) -> np.ndarr
 
 def _embed_query(query: str, embedder: SentenceTransformer) -> np.ndarray:
     """Embed a single query with L2 normalisation."""
-    vector = embedder.encode(_format_query_for_embedding(query), normalize_embeddings=True)
-    return np.array(vector, dtype="float32").reshape(1, -1)
+    formatted_query = _format_query_for_embedding(query)
+    cache_key = (id(embedder), formatted_query)
+    cached_vector = _query_embed_cache_get(cache_key)
+    if cached_vector is not None:
+        return cached_vector
+
+    vector = embedder.encode(formatted_query, normalize_embeddings=True)
+    cached_array = np.array(vector, dtype="float32").reshape(1, -1)
+    _query_embed_cache_set(cache_key, cached_array)
+    return cached_array
 
 
 def _metadata_path(index_dir: Path) -> Path:
