@@ -93,6 +93,59 @@ pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=html
 
 **Rapport HTML detaille** : `htmlcov/index.html` (genere apres execution des tests)
 
+## 3.2. Benchmarks de performance
+
+Suite de benchmarks pour mesurer la performance du pipeline RAG.
+
+```bash
+# Installer pytest-benchmark
+pip install pytest-benchmark memory-profiler
+
+# Lancer tous les benchmarks
+pytest tests/test_performance.py --benchmark-only
+
+# Sauvegarder une baseline
+pytest tests/test_performance.py --benchmark-only --benchmark-save=baseline
+
+# Comparer avec la baseline
+pytest tests/test_performance.py --benchmark-only --benchmark-compare=baseline
+
+# Exporter en JSON
+pytest tests/test_performance.py --benchmark-only --benchmark-json=perf_results.json
+
+# Benchmarks specifiques (sans les tests slow)
+pytest tests/test_performance.py::TestChunkingPerformance --benchmark-only
+
+# Sauter les benchmarks lors des tests normaux
+pytest tests/ -m "not benchmark"
+```
+
+**Benchmarks disponibles** :
+
+| Categorie | Tests | Metriques |
+|-----------|-------|-----------|
+| **Chunking** | `test_chunk_single_document`, `test_clean_text` | ops/sec, stddev |
+| **Embeddings** | `test_embed_single_query`, `test_embed_batch_queries` | latence query/batch |
+| **Retrieval** | `test_faiss_retrieve_k5`, `test_hybrid_retrieve_k5` | latence moyenne 5 queries |
+| **Memory** | `test_memory_faiss_index_load`, `test_memory_embedding_model_load` | peak/retained MB |
+| **End-to-end** | `test_e2e_rag_latency` | latence totale retrieve+generate |
+
+**Resultats typiques** (machine locale, CPU):
+
+```
+test_chunk_single_document     : 1.23 ms per op (±0.15 ms)
+test_faiss_retrieve_k5         : 42.5 ms per query (±3.2 ms)
+test_hybrid_retrieve_k5        : 51.8 ms per query (±4.1 ms)
+test_memory_faiss_index_load   : Peak 350 MB, Retained 280 MB
+test_e2e_rag_latency          : 8.2 s (retrieval + LLM generation)
+```
+
+**Best practices** :
+- Lancer benchmarks sur machine dediee (pas en parallele avec autre charge)
+- Utiliser `--benchmark-warmup=on` pour stabiliser resultats
+- Comparer systematiquement avec baseline avant merge
+- Tracker JSON dans repo pour historique performance
+
 ## 4. Arborescence du depot
 
 ```text
