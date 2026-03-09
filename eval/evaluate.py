@@ -824,6 +824,8 @@ def _build_cli_retriever_label(args: argparse.Namespace) -> str:
         retriever_label += "+reranker"
     if args.prompt_version == 2:
         retriever_label += "+promptv2"
+    elif args.prompt_version == 3:
+        retriever_label += "+promptv3"
     return retriever_label
 
 

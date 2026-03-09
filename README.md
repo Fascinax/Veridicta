@@ -10,46 +10,41 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 
 ## 2. Resultats
 
-| Indicateur              | Cible MVP   | Resultat             |
-| ----------------------- | ----------- | -------------------- |
-| Latence (256 tokens)    | < 3 s       | **4.98 s** (hybrid)  |
-| Keyword Recall (50 Q)   | >= 60 %     | **64.6 %**           |
-| Word F1 (50 Q)          | >= 15 %     | **22.3 %**           |
-| Citation Faithfulness   | >= 90 %     | **94.0 %**           |
-| Context Coverage        | >= 65 %     | **68.7 %**           |
-| Cout variable           | 0 EUR       | **0 EUR**            |
+Resultats recents (100 questions gold standard, backend Copilot `gpt-4.1`, corpus 26 517 chunks).
 
-Resultats obtenus sur 50 questions gold standard, corpus 26 517 chunks (legislation, jurisprudence, Journal de Monaco), retriever hybrid BM25+FAISS.
-Le LLM est contraint de citer `[Source N]` dans chaque affirmation.
+| Configuration | KW Recall | Word F1 | Cit.Faith | Context Coverage | Latence |
+| --- | --- | --- | --- | --- | --- |
+| Hybrid + bm25s + Prompt v3 (k=5) | 0.395 | 0.246 | 1.000 | 0.536 | 18.90 s |
+| **Hybrid + bm25s + Prompt v3 (k=8)** | **0.399** | 0.248 | 1.000 | 0.527 | 14.33 s |
+| Hybrid + bm25s + Prompt v3 (k=10) | 0.387 | 0.248 | 1.000 | 0.538 | **13.33 s** |
+| Hybrid + bm25s + Prompt v3 + Reranker (k=8, 32->8) | 0.363 | **0.250** | 1.000 | **0.549** | 12.98 s |
 
-| Modele / Retriever    | KW Recall | Word F1  | Cit.Faith | Halluc.Risk | Latence |
-| --------------------- | --------- | -------- | --------- | ----------- | ------- |
-| gpt-oss-120b / FAISS  | 0.648     | 0.225    | 0.900     | 0.308       | 2.60 s  |
-| gpt-oss-120b / Hybrid | **0.646** | **0.223**| **0.940** | 0.313       | 4.98 s  |
-| gpt-4.1 / Hybrid      | 0.342     | 0.115    | **1.000** | 0.000       | --      |
+Conclusion pratique:
 
-> **Cit.Faith** mesure la fraction de references `[Source N]` qui pointent vers un chunk effectivement recupere. **Hybrid** apporte +4% CitFaith par rapport a FAISS seul.
+- **Config recommandee production**: `k=8`, `prompt-version=3`, sans reranker.
+- Le reranker ameliore legerement F1/coverage mais baisse KW recall sur ce corpus.
+- L'objectif KW >= 0.55 reste hors de portee sans changement infra/corpus.
 
 ## 3. Stack technologique
 
 | Composant | Choix |
 | --------- | ----- |
 | **Langage** | Python 3.11 + Node.js 18+ (bridge Copilot) |
-| **Embeddings** | `paraphrase-multilingual-MiniLM-L12-v2` (local, dim 384) |
+| **Embeddings** | `OrdalieTech/Solon-embeddings-large-0.1` (local, dim 1024) |
 | **Retrieval** | **Hybrid bm25s+FAISS** (RRF, k=60) -- FAISS 0.3 / BM25 0.7, stemming francais PyStemmer |
 | **LLM** | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) |
 | **Artifacts** | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+bm25s+chunks auto-telecharges (180 MB) |
 | **UI** | Streamlit (chat, sources cliquables, toggle FAISS/Hybrid) |
-| **Evaluation** | 50 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk + Ragas (`Faithfulness`, `ContextPrecision`) |
+| **Evaluation** | 100 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk + Ragas (`Faithfulness`, `ContextPrecision`) |
 | **Scraping** | API Elasticsearch LegiMonaco + Playwright Journal de Monaco |
 | **Deploy** | Streamlit Cloud (artifacts depuis HF Hub au boot, ~2 min) |
 
 ### Hors scope MVP (v2)
 
-* Neo4j / LightRAG (Knowledge Graph)
-* QLoRA fine-tuning
-* Guardrails (LlamaGuard)
-* Monitoring (Prometheus, wandb)
+- Neo4j / LightRAG (Knowledge Graph)
+- QLoRA fine-tuning
+- Guardrails (LlamaGuard)
+- Monitoring (Prometheus, wandb)
 
 ## 4. Arborescence du depot
 
@@ -136,7 +131,7 @@ echo "CEREBRAS_API_KEY=votre_cle_ici" >> .env
 streamlit run ui/app.py
 
 # Requete en ligne de commande
-python -m retrievers.baseline_rag --query "Quel est le preavis de licenciement a Monaco ?" --k 5
+python -m retrievers.baseline_rag --query "Quel est le preavis de licenciement a Monaco ?" --k 8
 
 # Reconstruire l'index manuellement (scraping + chunking + indexation)
 python -m data_ingest.legimonaco_scraper --out data/raw
@@ -149,26 +144,45 @@ python -m retrievers.baseline_rag --build
 
 ```bash
 # Hybrid retriever (recommande)
-python -m eval.evaluate --backend cerebras --model gpt-oss-120b --k 5 --retriever hybrid --workers 1
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --prompt-version 3 --workers 4
 
 # FAISS seul
-python -m eval.evaluate --backend cerebras --model gpt-oss-120b --k 5 --retriever faiss --workers 1
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever faiss --prompt-version 3 --workers 4
 
-# Avec GitHub Copilot
-python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid --workers 2
+# Test reranker (Phase 13bis): retrieve 32 puis rerank top-8
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --reranker --prompt-version 3 --workers 4 --out eval/results/copilot-hybrid-bm25s-promptv3-k8-reranker
 
 # Ajoute les metriques Ragas (juge Cerebras `llama3.1-8b` + prompts adaptes en francais)
-python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid --workers 2 --ragas --ragas-model llama3.1-8b
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --prompt-version 3 --workers 2 --ragas --ragas-model llama3.1-8b
 
 # Graphes de comparaison prompt v2 vs bm25s
 python -m eval.plot_bm25s_prompt_comparison
+
+# Resume tuning k + reranker
+python -m eval.tune_k_value
 ```
 
 Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk, latence et, si `--ragas` est active, `ragas_faithfulness` + `ragas_context_precision`.
 Le juge Ragas utilise actuellement Cerebras en mode OpenAI-compatible et adapte ses few-shots au francais via `--ragas-language` (par defaut : `french`).
 Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 
-## 10. Questions demo
+## 10. Deploiement Streamlit Cloud (demo)
+
+1. Pousser le repo sur GitHub (`main` a jour).
+2. Creer une app sur Streamlit Cloud depuis ce repo (`ui/app.py`).
+3. Ajouter les secrets dans **App Settings > Secrets** (copier `.streamlit/secrets.toml.example`):
+
+```toml
+HF_API_TOKEN = "hf_..."
+GITHUB_PAT = "github_pat_..."   # si backend Copilot
+CEREBRAS_API_KEY = "csk-..."    # si backend Cerebras
+LLM_BACKEND = "copilot"
+```
+
+1. Deploy: les artifacts (`FAISS + bm25s + chunks`) sont telecharges automatiquement depuis `Fascinax/veridicta-index` au boot.
+2. Verifier dans les logs que l'index charge bien `26517 vectors` puis lancer les questions demo.
+
+## 11. Questions demo
 
 1. **Licenciement** : *Quelles sont les indemnites de licenciement prevues par le droit monegasque ?*
 2. **CDD** : *Quelle est la duree maximale d'un contrat a duree determinee a Monaco ?*
@@ -176,13 +190,27 @@ Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 4. **Specificite MCO** : *Quelles sont les obligations de l'employeur envers les travailleurs frontaliers a Monaco ?*
 5. **Salaire** : *Quel est le montant actuel du SMIG a Monaco et comment est-il revalorise ?*
 
-## 11. Mise a jour 2026-03-09
+## 12. Screenshot gallery
 
-* Migration du sparse retrieval de `rank-bm25` vers **`bm25s` + `PyStemmer`**
-* Stockage natif de l'index sparse dans `data/index/bm25s_index/`
-* Retuning RRF apres migration : **FAISS 0.3 / BM25 0.7** (`eval.tune_rrf`)
-* Rebuild local possible depuis `chunks_map.jsonl` si les artifacts bm25s sont absents
-* Nouveau comparatif 4-way : baseline hybrid vs prompt v2 vs bm25s vs bm25s + prompt v2
+### Evaluation dashboards
+
+![Overview bars](eval/charts/bm25s-prompt/1_overview_bars.png)
+![Radar](eval/charts/bm25s-prompt/2_radar.png)
+![KW vs F1](eval/charts/bm25s-prompt/3_kw_f1_tradeoff.png)
+![Latency](eval/charts/bm25s-prompt/4_latency_box.png)
+![Topic heatmap](eval/charts/bm25s-prompt/5_topic_heatmap.png)
+
+### Solon comparison
+
+![Solon vs baseline](eval/charts/solon-comparison/solon_vs_baseline.png)
+
+## 13. Mise a jour 2026-03-09
+
+- Migration du sparse retrieval de `rank-bm25` vers **`bm25s` + `PyStemmer`**
+- Stockage natif de l'index sparse dans `data/index/bm25s_index/`
+- Retuning RRF apres migration : **FAISS 0.3 / BM25 0.7** (`eval.tune_rrf`)
+- Rebuild local possible depuis `chunks_map.jsonl` si les artifacts bm25s sont absents
+- Nouveau comparatif 4-way : baseline hybrid vs prompt v2 vs bm25s vs bm25s + prompt v2
 
 | Config | KW Recall | Word F1 | Cit. Faith | Ctx Cov | Latence |
 | --- | --- | --- | --- | --- | --- |
@@ -193,7 +221,7 @@ Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 
 Les graphes correspondants sont generes dans `eval/charts/bm25s-prompt/` via `python -m eval.plot_bm25s_prompt_comparison`.
 
-## 12. Licence
+## 14. Licence
 
 MIT pour le code. Les donnees publiques monegasques sont librement reutilisables pour usage non commercial.
 
