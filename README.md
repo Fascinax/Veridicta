@@ -200,6 +200,19 @@ LLM_BACKEND = "copilot"
 ![Latency](eval/charts/bm25s-prompt/4_latency_box.png)
 ![Topic heatmap](eval/charts/bm25s-prompt/5_topic_heatmap.png)
 
+### Phase 14 comparison (100Q)
+
+![Phase14 overview](eval/charts/phase14-comparison/1_overview_bars.png)
+![Phase14 tradeoff](eval/charts/phase14-comparison/2_tradeoff_scatter.png)
+![Phase14 delta](eval/charts/phase14-comparison/3_delta_vs_best_k8.png)
+![Phase14 table](eval/charts/phase14-comparison/4_summary_table.png)
+
+### Reranker tuning (30Q)
+
+![Reranker overview](eval/charts/reranker-30q/1_overview_bars.png)
+![Reranker delta](eval/charts/reranker-30q/2_delta_vs_baseline.png)
+![Reranker table](eval/charts/reranker-30q/3_summary_table.png)
+
 ### Solon comparison
 
 ![Solon vs baseline](eval/charts/solon-comparison/solon_vs_baseline.png)
