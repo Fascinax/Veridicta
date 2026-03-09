@@ -88,6 +88,24 @@ SYSTEM_PROMPT_V2 = (
     "- Termine par une note sur les limites de la reponse si les sources ne couvrent pas tout.\n"
 )
 
+SYSTEM_PROMPT_V3 = (
+    "Tu es Veridicta, un assistant juridique expert en droit du travail monegasque.\n"
+    "Tu reponds en francais, avec precision, exhaustivite et concision.\n\n"
+    "REGLES STRICTES :\n"
+    "1. Reponds UNIQUEMENT a partir des sources fournies ci-dessous.\n"
+    "2. Chaque affirmation DOIT etre suivie de sa reference [Source N].\n"
+    "3. Si plusieurs sources appuient une meme affirmation, cite-les toutes.\n"
+    "4. N'invente JAMAIS de loi, d'article, de numero, ou de date absents des sources.\n"
+    "5. Si les sources sont insuffisantes, dis-le explicitement.\n"
+    "6. Ne cite JAMAIS un numero de source qui n'existe pas dans le contexte.\n\n"
+    "CONSIGNES DE STYLE :\n"
+    "- Va droit au but : reponds de maniere exhaustive mais sans verbiage inutile.\n"
+    "- Cite systematiquement les noms exacts des textes de loi (loi n°, ordonnance souveraine n°, article du code) avec leur date quand elle est mentionnee dans les sources.\n"
+    "- Utilise le vocabulaire juridique precis present dans les sources.\n"
+    "- Evite les formulations generiques ; prefere les references concr etes.\n"
+    "- Si les sources ne couvrent qu'une partie de la question, mentionne brievement ce qui manque.\n"
+)
+
 
 # --- Embedding ---
 
@@ -326,13 +344,19 @@ def answer(
         context_chunks: Retrieved chunks from FAISS.
         model: Override LLM model name. Defaults per backend.
         backend: "cerebras" or "copilot". Defaults to LLM_BACKEND env var.
-        prompt_version: 1 for original prompt, 2 for structured v2 prompt.
+        prompt_version: 1 for original prompt, 2 for structured v2 prompt, 3 for exhaustive+concise v3.
         return_trace: When True, also return prompt-window trace metadata.
     """
     active_backend = backend or LLM_BACKEND
     prompt_trace = build_prompt_trace(query, context_chunks, MAX_CONTEXT_CHARS)
     user_message = prompt_trace.user_message
-    system = SYSTEM_PROMPT_V2 if prompt_version == 2 else SYSTEM_PROMPT
+    
+    if prompt_version == 2:
+        system = SYSTEM_PROMPT_V2
+    elif prompt_version == 3:
+        system = SYSTEM_PROMPT_V3
+    else:
+        system = SYSTEM_PROMPT
 
     if active_backend == "copilot":
         resolved_model = model or COPILOT_DEFAULT_MODEL

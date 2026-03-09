@@ -763,8 +763,8 @@ def _parse_args() -> argparse.Namespace:
         "--prompt-version",
         type=int,
         default=1,
-        choices=[1, 2],
-        help="System prompt version: 1 (original) or 2 (structured/exhaustive)  (default: 1)",
+        choices=[1, 2, 3],
+        help="System prompt version: 1 (original), 2 (structured/exhaustive), or 3 (exhaustive+concise)  (default: 1)",
     )
     parser.add_argument(
         "--ragas",

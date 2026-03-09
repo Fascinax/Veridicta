@@ -1,0 +1,119 @@
+[
+  {
+    "id": "monaco-001",
+    "question": "Quelles sont les indemnités de licenciement prévues par le droit monégasque ?",
+    "reference_answer": "En droit monégasque, le salarié licencié a droit à une indemnité de congédiement calculée en fonction de l'ancienneté, ainsi qu'à une indemnité compensatrice de préavis si ce dernier n'est pas effectué. En cas de licenciement abusif, des dommages et intérêts supplémentaires peuvent être accordés par le Tribunal du travail.",
+    "reference_keywords": [
+      "indemnité",
+      "congédiement",
+      "ancienneté",
+      "préavis",
+      "licenciement"
+    ]
+  },
+  {
+    "id": "monaco-002",
+    "question": "Quelle est la durée maximale de la période d'essai en droit du travail monégasque ?",
+    "reference_answer": "La période d'essai en droit monégasque varie selon la catégorie professionnelle du salarié. Elle est encadrée par la loi n° 729 et les conventions collectives applicables dans la Principauté de Monaco.",
+    "reference_keywords": [
+      "période d'essai",
+      "durée",
+      "catégorie",
+      "convention collective"
+    ]
+  },
+  {
+    "id": "monaco-003",
+    "question": "Quelles sont les conditions de validité d'un licenciement pour faute grave à Monaco ?",
+    "reference_answer": "Le licenciement pour faute grave à Monaco doit être justifié par un comportement rendant impossible le maintien du salarié dans l'entreprise. Il prive le salarié du droit au préavis et, selon les circonstances, de l'indemnité de congédiement. Le Tribunal du travail apprécie souverainement la gravité de la faute.",
+    "reference_keywords": [
+      "faute grave",
+      "licenciement",
+      "préavis",
+      "indemnité",
+      "tribunal du travail"
+    ]
+  },
+  {
+    "id": "monaco-004",
+    "question": "Comment est calculée l'indemnité compensatrice de préavis dans la jurisprudence monégasque ?",
+    "reference_answer": "L'indemnité compensatrice de préavis est calculée sur la base du salaire brut que le salarié aurait perçu s'il avait travaillé pendant la durée du préavis. Elle correspond au salaire de base augmenté des avantages contractuels.",
+    "reference_keywords": [
+      "indemnité compensatrice",
+      "préavis",
+      "salaire",
+      "calcul"
+    ]
+  },
+  {
+    "id": "monaco-005",
+    "question": "Quels sont les droits du salarié en cas de licenciement abusif devant le Tribunal du travail de Monaco ?",
+    "reference_answer": "En cas de licenciement abusif reconnu par le Tribunal du travail de Monaco, le salarié peut obtenir des dommages et intérêts pour réparer le préjudice subi. Le tribunal apprécie le montant en fonction de l'ancienneté, de l'âge, de la situation personnelle et des difficultés à retrouver un emploi.",
+    "reference_keywords": [
+      "licenciement abusif",
+      "dommages et intérêts",
+      "tribunal du travail",
+      "ancienneté",
+      "préjudice"
+    ]
+  },
+  {
+    "id": "monaco-006",
+    "question": "Quelles sont les obligations de l'employeur en cas de rupture du contrat de travail à Monaco ?",
+    "reference_answer": "En cas de rupture du contrat de travail à Monaco, l'employeur est tenu de respecter la procédure de licenciement, de donner congé en respectant le délai de préavis ou de verser l'indemnité compensatrice correspondante, et de remettre les documents de fin de contrat au salarié.",
+    "reference_keywords": [
+      "rupture",
+      "contrat de travail",
+      "procédure",
+      "préavis",
+      "documents"
+    ]
+  },
+  {
+    "id": "monaco-007",
+    "question": "Comment le Tribunal du travail de Monaco apprécie-t-il le licenciement pour motif personnel ?",
+    "reference_answer": "Le Tribunal du travail de Monaco apprécie le licenciement pour motif personnel en vérifiant que les faits reprochés au salarié sont réels, suffisamment graves et justifient la rupture du contrat. Il contrôle également le respect de la procédure contradictoire.",
+    "reference_keywords": [
+      "tribunal du travail",
+      "licenciement",
+      "motif personnel",
+      "faits",
+      "procédure"
+    ]
+  },
+  {
+    "id": "monaco-008",
+    "question": "Quelles indemnités peut obtenir un salarié dont le contrat à durée déterminée est rompu abusivement à Monaco ?",
+    "reference_answer": "Un salarié dont le CDD est rompu avant son terme sans motif légitime peut obtenir des dommages et intérêts correspondant au minimum aux rémunérations qu'il aurait perçues jusqu'à la fin du contrat, ainsi que les indemnités de fin de contrat prévues.",
+    "reference_keywords": [
+      "CDD",
+      "rupture",
+      "dommages et intérêts",
+      "rémunérations",
+      "indemnités"
+    ]
+  },
+  {
+    "id": "monaco-009",
+    "question": "Quel est le délai de prescription pour agir devant le Tribunal du travail de Monaco ?",
+    "reference_answer": "Les actions en paiement de salaires et indemnités devant le Tribunal du travail de Monaco sont soumises à des délais de prescription. Le salarié doit agir dans les délais impartis par la loi monégasque pour ne pas voir sa demande déclarée irrecevable.",
+    "reference_keywords": [
+      "prescription",
+      "délai",
+      "tribunal du travail",
+      "action",
+      "recevable"
+    ]
+  },
+  {
+    "id": "monaco-010",
+    "question": "Comment est défini le harcèlement moral dans la jurisprudence du Tribunal du travail de Monaco ?",
+    "reference_answer": "Le harcèlement moral est caractérisé par des agissements répétés ayant pour objet ou pour effet une dégradation des conditions de travail. Le Tribunal du travail de Monaco sanctionne ces comportements et peut accorder des dommages et intérêts significatifs à la victime.",
+    "reference_keywords": [
+      "harcèlement moral",
+      "agissements répétés",
+      "conditions de travail",
+      "dommages et intérêts"
+    ]
+  }
+]
