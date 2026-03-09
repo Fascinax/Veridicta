@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -106,6 +107,19 @@ COPILOT_MODELS = [
     "gpt-4.1",
 ]
 
+_QUERY_EXPANSION_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("licenciement", ("congediement", "preavis", "indemnite licenciement")),
+    ("faute grave", ("cause valable", "manquement grave", "rupture immediate")),
+    ("periode essai", ("renouvellement essai", "duree maximale essai")),
+    ("harcelement", ("harcelement moral", "atteinte dignite", "sante mentale")),
+    ("conges payes", ("indemnite compensatrice", "conge annuel")),
+    ("salaire minimum", ("salaire minima", "minimum legal")),
+    ("permis travail", ("autorisation embauchage", "travailleur etranger")),
+    ("temps partiel", ("duree hebdomadaire", "heures complementaires")),
+    ("greve", ("droit de greve", "service minimum")),
+    ("cdd", ("contrat duree determinee", "requalification cdi")),
+)
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -148,6 +162,11 @@ class EvalRunConfig:
     workers: int = 4
     stream_out: Path | None = None
     use_reranker: bool = False
+    reranker_candidate_multiplier: int = 4
+    reranker_min_score: float | None = None
+    hybrid_faiss_weight: float | None = None
+    hybrid_bm25_weight: float | None = None
+    query_expansion: bool = False
     prompt_version: int = 1
     ragas_evaluator: RagasEvaluator | None = None
 
@@ -161,6 +180,32 @@ def _tokenize(text: str) -> list[str]:
     """Lowercase and split on non-alphabetic characters."""
     text = text.lower()
     return re.findall(r"[a-zàâäéèêëîïôöùûüç]+", text)
+
+
+def _normalize_for_match(text: str) -> str:
+    lowered = text.lower()
+    normalized = unicodedata.normalize("NFKD", lowered)
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def _expand_query_legal_fr(question: str) -> str:
+    normalized_question = _normalize_for_match(question)
+    additions: list[str] = []
+    for trigger, synonyms in _QUERY_EXPANSION_RULES:
+        if trigger in normalized_question:
+            additions.extend(synonyms)
+
+    if not additions:
+        return question
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in additions:
+        if term not in seen:
+            seen.add(term)
+            deduped.append(term)
+
+    return f"{question} {' '.join(deduped[:8])}"
 
 
 def keyword_recall(prediction: str, keywords: list[str]) -> float:
@@ -278,6 +323,11 @@ def run_eval(
         bm25=bm25,
         neo4j_mgr=neo4j_mgr,
         use_reranker=config.use_reranker,
+        reranker_candidate_multiplier=config.reranker_candidate_multiplier,
+        reranker_min_score=config.reranker_min_score,
+        hybrid_faiss_weight=config.hybrid_faiss_weight,
+        hybrid_bm25_weight=config.hybrid_bm25_weight,
+        query_expansion=config.query_expansion,
     )
 
     if config.retrieval_only:
@@ -312,25 +362,46 @@ def _retrieve_contexts(
     bm25=None,
     neo4j_mgr=None,
     use_reranker: bool = False,
+    reranker_candidate_multiplier: int = 4,
+    reranker_min_score: float | None = None,
+    hybrid_faiss_weight: float | None = None,
+    hybrid_bm25_weight: float | None = None,
+    query_expansion: bool = False,
 ) -> list[list[dict]]:
     question_count = len(questions)
     retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr)
     print(f"  Retrieving context for {question_count} questions  [{retriever_label}] ...", flush=True)
 
-    retrieval_k = k * 4 if use_reranker else k
+    retrieval_k = k * max(1, reranker_candidate_multiplier) if use_reranker else k
+    def _retrieval_query(raw_question: str) -> str:
+        return _expand_query_legal_fr(raw_question) if query_expansion else raw_question
+
     if neo4j_mgr is not None:
         retrieved_all = [
-            graph_retrieve(question.question, index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
+            graph_retrieve(_retrieval_query(question.question), index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
             for question in questions
         ]
     elif bm25 is not None:
+        hybrid_kwargs: dict[str, float] = {}
+        if hybrid_faiss_weight is not None:
+            hybrid_kwargs["faiss_weight"] = hybrid_faiss_weight
+        if hybrid_bm25_weight is not None:
+            hybrid_kwargs["bm25_weight"] = hybrid_bm25_weight
         retrieved_all = [
-            hybrid_retrieve(question.question, index, bm25, chunks, embedder, k=retrieval_k)
+            hybrid_retrieve(
+                _retrieval_query(question.question),
+                index,
+                bm25,
+                chunks,
+                embedder,
+                k=retrieval_k,
+                **hybrid_kwargs,
+            )
             for question in questions
         ]
     else:
         retrieved_all = [
-            retrieve(question.question, index, chunks, embedder, k=retrieval_k)
+            retrieve(_retrieval_query(question.question), index, chunks, embedder, k=retrieval_k)
             for question in questions
         ]
 
@@ -339,7 +410,13 @@ def _retrieve_contexts(
 
     print(f"  Reranking {retrieval_k} -> {k} with FlashRank ...", flush=True)
     return [
-        rerank(question.question, retrieved, k=k, candidate_k=retrieval_k)
+        rerank(
+            question.question,
+            retrieved,
+            k=k,
+            candidate_k=retrieval_k,
+            min_score=reranker_min_score,
+        )
         for question, retrieved in zip(questions, retrieved_all)
     ]
 
@@ -760,6 +837,35 @@ def _parse_args() -> argparse.Namespace:
         help="Apply FlashRank reranking after retrieval (over-retrieves 4x then reranks to k)",
     )
     parser.add_argument(
+        "--reranker-candidate-multiplier",
+        type=int,
+        default=4,
+        help="Over-retrieval multiplier before reranking (default: 4 => k*4 candidates)",
+    )
+    parser.add_argument(
+        "--reranker-min-score",
+        type=float,
+        default=None,
+        help="Optional minimum FlashRank score threshold (default: disabled)",
+    )
+    parser.add_argument(
+        "--hybrid-faiss-weight",
+        type=float,
+        default=None,
+        help="Override FAISS RRF weight for hybrid retriever (default: module setting)",
+    )
+    parser.add_argument(
+        "--hybrid-bm25-weight",
+        type=float,
+        default=None,
+        help="Override BM25 RRF weight for hybrid retriever (default: module setting)",
+    )
+    parser.add_argument(
+        "--query-expansion",
+        action="store_true",
+        help="Enable lightweight French legal query expansion before retrieval (default: disabled)",
+    )
+    parser.add_argument(
         "--prompt-version",
         type=int,
         default=1,
@@ -821,11 +927,17 @@ def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tupl
 def _build_cli_retriever_label(args: argparse.Namespace) -> str:
     retriever_label = args.retriever
     if args.reranker:
-        retriever_label += "+reranker"
+        retriever_label += f"+rerankerx{args.reranker_candidate_multiplier}"
+        if args.reranker_min_score is not None:
+            retriever_label += f"-min{args.reranker_min_score:.2f}"
     if args.prompt_version == 2:
         retriever_label += "+promptv2"
     elif args.prompt_version == 3:
         retriever_label += "+promptv3"
+    if args.hybrid_faiss_weight is not None and args.hybrid_bm25_weight is not None:
+        retriever_label += f"-w{args.hybrid_faiss_weight:.2f}-{args.hybrid_bm25_weight:.2f}"
+    if args.query_expansion:
+        retriever_label += "+qexp"
     return retriever_label
 
 
@@ -869,6 +981,11 @@ def _build_run_config(
         workers=args.workers,
         stream_out=stream_out,
         use_reranker=args.reranker,
+        reranker_candidate_multiplier=args.reranker_candidate_multiplier,
+        reranker_min_score=args.reranker_min_score,
+        hybrid_faiss_weight=args.hybrid_faiss_weight,
+        hybrid_bm25_weight=args.hybrid_bm25_weight,
+        query_expansion=args.query_expansion,
         prompt_version=args.prompt_version,
         ragas_evaluator=ragas_evaluator,
     )
@@ -943,6 +1060,19 @@ def _run_single_evaluation(
 
 def main() -> None:
     args = _parse_args()
+
+    if args.reranker_candidate_multiplier < 1:
+        sys.exit("ERROR: --reranker-candidate-multiplier must be >= 1")
+
+    one_weight_missing = (args.hybrid_faiss_weight is None) != (args.hybrid_bm25_weight is None)
+    if one_weight_missing:
+        sys.exit("ERROR: Provide both --hybrid-faiss-weight and --hybrid-bm25-weight together")
+
+    if args.hybrid_faiss_weight is not None and args.hybrid_bm25_weight is not None:
+        if args.hybrid_faiss_weight < 0 or args.hybrid_bm25_weight < 0:
+            sys.exit("ERROR: hybrid weights must be >= 0")
+        if args.hybrid_faiss_weight + args.hybrid_bm25_weight == 0:
+            sys.exit("ERROR: hybrid weights sum must be > 0")
 
     questions_path = Path(args.questions)
     if not questions_path.exists():
