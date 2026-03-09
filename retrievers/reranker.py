@@ -62,6 +62,7 @@ def rerank(
     candidates: list[dict],
     k: int = 5,
     candidate_k: int = RERANKER_CANDIDATE_K,
+    min_score: float | None = None,
 ) -> list[dict]:
     """Re-score candidates with FlashRank and return top-k.
 
@@ -70,6 +71,7 @@ def rerank(
         candidates: List of chunk dicts (must have "text" key).
         k: Number of final results.
         candidate_k: How many candidates to feed FlashRank (from top of initial list).
+        min_score: Optional minimum FlashRank score threshold.
 
     Returns:
         Top-k chunk dicts sorted by FlashRank score, with rerank metadata added.
@@ -84,6 +86,15 @@ def rerank(
     reranked_passages = model.rerank(
         RerankRequest(query=query, passages=_build_passages(pool))
     )
+
+    if min_score is not None:
+        filtered = [
+            passage
+            for passage in reranked_passages
+            if float(passage.get("score", 0.0)) >= min_score
+        ]
+        if filtered:
+            reranked_passages = filtered
 
     results: list[dict] = []
     for rerank_rank, passage in enumerate(reranked_passages[:k], 1):
