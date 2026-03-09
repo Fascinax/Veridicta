@@ -704,8 +704,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--k",
         type=int,
-        default=5,
-        help="Number of chunks to retrieve per question  (default: 5)",
+        default=8,
+        help="Number of chunks to retrieve per question  (default: 8, optimized for quality/latency balance)",
     )
     parser.add_argument(
         "--out",

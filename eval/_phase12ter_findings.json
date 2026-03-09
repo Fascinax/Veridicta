@@ -1,0 +1,46 @@
+{
+  "phase": "12ter",
+  "date": "2026-03-09",
+  "goal": "Tune k value to reach KW ≥ 0.55, CtxCov ≥ 0.60",
+  "results": {
+    "3": {
+      "kw_recall": 0.391,
+      "word_f1": 0.2579,
+      "citation_faith": 0.99,
+      "context_coverage": 0.5037,
+      "hallucination_risk": 0.4963,
+      "latency_s": 22.76
+    },
+    "5": {
+      "kw_recall": 0.395,
+      "word_f1": 0.2463,
+      "citation_faith": 1.0,
+      "context_coverage": 0.5359,
+      "hallucination_risk": 0.4641,
+      "latency_s": 18.9
+    },
+    "8": {
+      "kw_recall": 0.399,
+      "word_f1": 0.2478,
+      "citation_faith": 1.0,
+      "context_coverage": 0.5267,
+      "hallucination_risk": 0.4733,
+      "latency_s": 14.33
+    },
+    "10": {
+      "kw_recall": 0.387,
+      "word_f1": 0.2476,
+      "citation_faith": 1.0,
+      "context_coverage": 0.5377,
+      "hallucination_risk": 0.4623,
+      "latency_s": 13.33
+    }
+  },
+  "recommendation": "Use k=8 (KW=0.399, latency=14.33s)",
+  "kpi_status": "Not met (KW=0.399 vs target 0.55)",
+  "next_steps": [
+    "Adopt k=8 as default",
+    "Test reranker optimization (Phase 13bis)",
+    "Consider corpus expansion or fine-tuning for deeper gains"
+  ]
+}
