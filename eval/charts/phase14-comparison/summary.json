@@ -1,0 +1,38 @@
+{
+  "Graph\n(k=5)": {
+    "keyword_recall": 0.341,
+    "word_f1": 0.26693034154817263,
+    "citation_faithfulness": 0.92,
+    "context_coverage": 0.4646329999999999,
+    "hallucination_risk": 0.5353670000000001,
+    "latency_s": 9.881300000000003,
+    "question_count": 100.0
+  },
+  "Hybrid\nBaseline k=5": {
+    "keyword_recall": 0.363,
+    "word_f1": 0.26689184990452036,
+    "citation_faithfulness": 0.99,
+    "context_coverage": 0.5172329999999997,
+    "hallucination_risk": 0.4827670000000001,
+    "latency_s": 8.984399999999999,
+    "question_count": 100.0
+  },
+  "Hybrid\nBest k=8": {
+    "keyword_recall": 0.3809999999999999,
+    "word_f1": 0.24128010555439477,
+    "citation_faithfulness": 0.99,
+    "context_coverage": 0.5298350000000001,
+    "hallucination_risk": 0.47016499999999994,
+    "latency_s": 13.389000000000003,
+    "question_count": 100.0
+  },
+  "Hybrid\nBest k=8 + qexp": {
+    "keyword_recall": 0.38550000000000006,
+    "word_f1": 0.24690241013837014,
+    "citation_faithfulness": 0.98,
+    "context_coverage": 0.5343880000000003,
+    "hallucination_risk": 0.46561199999999986,
+    "latency_s": 13.183799999999993,
+    "question_count": 100.0
+  }
+}

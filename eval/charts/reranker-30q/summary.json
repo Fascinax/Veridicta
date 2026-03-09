@@ -1,0 +1,47 @@
+{
+  "Hybrid k=8\n(no rerank)": {
+    "keyword_recall": 0.3966666666666667,
+    "word_f1": 0.23386653993938802,
+    "citation_faithfulness": 1.0,
+    "context_coverage": 0.52328,
+    "hallucination_risk": 0.47672,
+    "latency_s": 13.337666666666667,
+    "question_count": 30.0
+  },
+  "Rerank m4\n(default)": {
+    "keyword_recall": 0.35666666666666663,
+    "word_f1": 0.23628088271874598,
+    "citation_faithfulness": 1.0,
+    "context_coverage": 0.5378999999999999,
+    "hallucination_risk": 0.46210000000000007,
+    "latency_s": 13.66,
+    "question_count": 30.0
+  },
+  "Rerank m6\n(default)": {
+    "keyword_recall": 0.3516666666666666,
+    "word_f1": 0.24171669709085272,
+    "citation_faithfulness": 0.9666666666666667,
+    "context_coverage": 0.5426099999999999,
+    "hallucination_risk": 0.45739,
+    "latency_s": 12.260666666666667,
+    "question_count": 30.0
+  },
+  "Rerank m6\n(w20-80)": {
+    "keyword_recall": 0.35263157894736846,
+    "word_f1": 0.23304954906444636,
+    "citation_faithfulness": 1.0,
+    "context_coverage": 0.5209736842105265,
+    "hallucination_risk": 0.4790263157894736,
+    "latency_s": 12.803684210526317,
+    "question_count": 19.0
+  },
+  "Rerank m6\n(w20-80, w1)": {
+    "keyword_recall": 0.3633333333333334,
+    "word_f1": 0.23126094340623957,
+    "citation_faithfulness": 0.9333333333333333,
+    "context_coverage": 0.49526000000000003,
+    "hallucination_risk": 0.50474,
+    "latency_s": 13.758333333333335,
+    "question_count": 30.0
+  }
+}
