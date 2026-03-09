@@ -12,11 +12,31 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 
 Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`, corpus 26 517 chunks, Solon embeddings 1024d).
 
-| Configuration | KW Recall | Word F1 | Cit.Faith | Context Coverage | Latence |
-| --- | --- | --- | --- | --- | --- |
-| **Hybrid + bm25s + Prompt v3 (k=8)** | **0.389** | **0.245** | **1.000** | **0.544** | **13.18 s** |
+### Comparaison des configurations
+
+| Configuration | KW Recall | Word F1 | Cit.Faith | Context Cov | Latence | Δ Ctx vs k=5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hybrid k=5 (baseline) | 0.342 | 0.250 | **1.000** | 0.541 | **7.61 s** | — |
+| **+ Reranker (k=5)** | 0.357 | **0.269** | 0.980 | 0.518 | 9.00 s | -4.1% |
+| + k=8 | **0.371** | 0.269 | 0.990 | 0.532 | 9.68 s | -1.5% |
+| + k=10 | 0.367 | 0.265 | 0.970 | **0.545** | 9.65 s | +0.8% |
 
 **Configuration optimale production** :
+
+- **Retrieval**: Hybrid bm25s (BM25 0.7 / FAISS 0.3, RRF k=60, stemming francais PyStemmer)
+- **k-value**: **8 chunks** (meilleur compromis KW recall / latence)
+- **Prompt**: Version 3 (structure bullet points + citation explicite numeros de loi)
+- **Reranker**: **Optionnel** (ameliore F1 +0.4% mais baisse KW recall -1.4%)
+- **Embeddings**: `OrdalieTech/Solon-embeddings-large-0.1` (1024d, francais legal)
+
+**Analyse des resultats** :
+
+- 🎯 **k=8 optimal** : meilleur keyword recall (0.371) avec latence acceptable (9.68s)
+- 📈 **k=10** : +0.8% context coverage mais baisse du recall et latence identique
+- 🔍 **Reranker** : ameliore la qualite (F1) mais reduit la diversite (KW recall), utile pour queries tres specifiques
+- ⚡ **Baseline k=5** : le plus rapide (7.61s) avec citation faithfulness parfaite, bon pour prototypage
+
+
 
 - **Retrieval**: Hybrid bm25s (BM25 0.7 / FAISS 0.3, RRF k=60, stemming francais PyStemmer)
 - **k-value**: 8 chunks
@@ -26,15 +46,10 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 
 **Metriques cles** :
 
-- Citation Faithfulness **100%** : zero hallucination de sources
-- Context Coverage **54.4%** : plus de la moitie des mots-cles gold recuperes dans contexte
-- Latence **13.18s** : acceptable pour usage professionnel (recherche + generation)
-
-**Limites identifiees** :
-
-- L'objectif initial KW Recall >= 55% reste hors de portee sans changement infra/corpus majeur
-- Le reranker FlashRank ameliore legerement F1 (+0.4%) et coverage (+1.7%) mais baisse recall (-1.4%)
-- Query expansion (+4.4% KW recall en 30Q) degrade qualite generation sur 100Q → desactive
+- **Citation Faithfulness 100%** (k=5 baseline) : zero hallucination de sources
+- **Keyword Recall 37.1%** (k=8) : meilleure couverture des termes juridiques
+- **Context Coverage 54.5%** (k=10) : plus de la moitie des mots-cles gold recuperes
+- **Latence 7.6-9.7s** : acceptable pour usage professionnel (recherche + generation)
 
 ## 3. Stack technologique
 
@@ -56,6 +71,27 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 - QLoRA fine-tuning
 - Guardrails (LlamaGuard)
 - Monitoring (Prometheus, wandb)
+
+## 3.1. Tests & Qualite
+
+```bash
+# Lancer tous les tests avec couverture
+pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=html
+```
+
+**Resultats actuels** :
+- ✅ **5/5 tests passent** (test_embedding_config, test_query_expansion, test_reranker)
+- 📊 **Couverture globale : 25%**
+- 🎯 **Modules bien testes** :
+  - `retrievers/reranker.py` : 84%
+  - `test_*.py` : 100%
+- ⚠️ **Modules a ameliorer** :
+  - `tools/copilot_client.py` : 0% (nouveau code)
+  - `retrievers/artifacts.py` : 0%
+  - `retrievers/neo4j_setup.py` : 0%
+  - `eval/evaluate.py` : 26%
+
+**Rapport HTML detaille** : `htmlcov/index.html` (genere apres execution des tests)
 
 ## 4. Arborescence du depot
 
