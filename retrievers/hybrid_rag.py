@@ -221,11 +221,13 @@ def hybrid_retrieve(
 
     top_k_ids = sorted(fused, key=fused.__getitem__, reverse=True)[:k]
     results: list[dict] = []
-    for idx in top_k_ids:
+    for rank, idx in enumerate(top_k_ids, 1):
         chunk = dict(chunks[idx])
         chunk["score"] = round(fused[idx], 6)
         chunk["faiss_rrf"] = round(faiss_rrf.get(idx, 0.0), 6)
         chunk["bm25_rrf"] = round(bm25_rrf.get(idx, 0.0), 6)
+        chunk["retrieval_rank"] = rank
+        chunk["retrieval_method"] = "hybrid_rrf"
         results.append(chunk)
     return results
 

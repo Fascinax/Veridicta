@@ -106,11 +106,13 @@ def graph_retrieve(
     distances, indices = index.search(query_vec, seed_k)
 
     seed_chunks: list[dict] = []
-    for score, idx in zip(distances[0], indices[0]):
+    for seed_rank, (score, idx) in enumerate(zip(distances[0], indices[0]), 1):
         if idx < 0 or idx >= len(chunks):
             continue
         chunk = dict(chunks[idx])
         chunk["score"] = float(score)
+        chunk["retrieval_method"] = "graph_seed"
+        chunk["seed_rank"] = seed_rank
         seed_chunks.append(chunk)
 
     # No Neo4j → return pure FAISS top-k
@@ -158,11 +160,16 @@ def graph_retrieve(
                 seen_chunk_ids.add(cid)
                 neighbor = dict(c)
                 neighbor["score"] = neighbor.get("score", 0.5) + boost
+                neighbor["retrieval_method"] = "graph_neighbor"
+                neighbor["graph_cite_boost"] = round(boost, 6)
                 pool.append(neighbor)
 
     # ── 4. Rank & return ──────────────────────────────────────────────────
     pool.sort(key=lambda c: c.get("score", 0.0), reverse=True)
-    return pool[:k]
+    top_chunks = pool[:k]
+    for rank, chunk in enumerate(top_chunks, 1):
+        chunk["retrieval_rank"] = rank
+    return top_chunks
 
 
 # ---------------------------------------------------------------------------

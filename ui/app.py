@@ -6,6 +6,7 @@ Run:
 
 from __future__ import annotations
 
+import html
 import os
 import re
 import sys
@@ -22,6 +23,7 @@ load_dotenv()
 _SECRET_KEYS = [
     "CEREBRAS_API_KEY", "GITHUB_PAT", "HF_API_TOKEN",
     "HUGGINGFACE_TOKEN", "LLM_BACKEND", "LLM_MODEL",
+    "VERIDICTA_AUDIT_ENABLED", "VERIDICTA_AUDIT_DIR", "VERIDICTA_AUDIT_INCLUDE_CONTENT",
 ]
 try:
     for _k in _SECRET_KEYS:
@@ -53,6 +55,16 @@ from retrievers.baseline_rag import (
     retrieve,
     _load_embedder,
 )
+from retrievers.traceability import (
+    append_audit_event,
+    build_prompt_trace,
+    get_audit_log_path,
+    new_trace_id,
+)
+
+FAISS_OPTION = "FAISS"
+HYBRID_OPTION = "Hybrid (BM25+FAISS)"
+GRAPH_OPTION = "Graph (Neo4j)"
 
 try:
     from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
@@ -195,6 +207,31 @@ def _get_neo4j():
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
+def _available_retriever_options() -> list[str]:
+    options = [FAISS_OPTION]
+    if _HYBRID_AVAILABLE:
+        options.append(HYBRID_OPTION)
+    if _GRAPH_AVAILABLE:
+        options.append(GRAPH_OPTION)
+    return options
+
+
+def _get_retriever_status_label(retriever: str) -> str:
+    if retriever == HYBRID_OPTION:
+        return "Hybrid BM25+FAISS"
+    if retriever == GRAPH_OPTION:
+        return "Graph Neo4j"
+    return FAISS_OPTION
+
+
+def _get_retriever_mode(use_graph: bool, use_hybrid: bool) -> str:
+    if use_graph:
+        return "graph"
+    if use_hybrid:
+        return "hybrid"
+    return "faiss"
+
+
 def _render_sidebar() -> tuple[int, bool, str, str, str]:
     with st.sidebar:
         st.markdown(
@@ -211,12 +248,8 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
 
         # Retriever selector
         if _HYBRID_AVAILABLE or _GRAPH_AVAILABLE:
-            retriever_options = ["FAISS"]
-            if _HYBRID_AVAILABLE:
-                retriever_options.append("Hybrid (BM25+FAISS)")
-            if _GRAPH_AVAILABLE:
-                retriever_options.append("Graph (Neo4j)")
-            default_retriever_idx = 1 if _HYBRID_AVAILABLE else 0
+            retriever_options = _available_retriever_options()
+            default_retriever_idx = retriever_options.index(HYBRID_OPTION) if HYBRID_OPTION in retriever_options else 0
             retriever = st.radio(
                 "Moteur de recherche",
                 retriever_options,
@@ -227,7 +260,7 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
                 ),
             )
         else:
-            retriever = "FAISS"
+            retriever = FAISS_OPTION
             st.caption("_bm25s / PyStemmer non installes — FAISS uniquement_")
 
         st.divider()
@@ -253,12 +286,7 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
             model = st.selectbox("Modele Cerebras", cerebras_models, index=default_cerebras)
 
         st.divider()
-        if retriever == "Hybrid (BM25+FAISS)":
-            retriever_label = "Hybrid BM25+FAISS"
-        elif retriever == "Graph (Neo4j)":
-            retriever_label = "Graph Neo4j"
-        else:
-            retriever_label = "FAISS"
+        retriever_label = _get_retriever_status_label(retriever)
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
             "Corpus : législation · jurisprudence · JOM<br>"
@@ -281,6 +309,8 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
 
 def _format_answer_with_citations(text: str) -> str:
     """Replace [Source N] with styled HTML badges."""
+    escaped_text = html.escape(text).replace("\n", "<br>")
+
     def _badge(match: re.Match) -> str:
         n = match.group(1)
         return (
@@ -289,7 +319,23 @@ def _format_answer_with_citations(text: str) -> str:
             f'margin:0 2px;font-weight:500;cursor:default" '
             f'title="Voir source {n}">[Source {n}]</span>'
         )
-    return re.sub(r"\[Source\s+(\d+)\]", _badge, text)
+    return re.sub(r"\[Source\s+(\d+)\]", _badge, escaped_text)
+
+
+def _chunk_meta_labels(chunk: dict) -> str:
+    metadata = chunk.get("metadata") or {}
+    labels: list[str] = []
+    if metadata.get("document_nature"):
+        labels.append(str(metadata["document_nature"]))
+    if metadata.get("document_number"):
+        labels.append(f"n° {metadata['document_number']}")
+    if metadata.get("jurisdiction"):
+        labels.append(str(metadata["jurisdiction"]))
+    if metadata.get("journal_number"):
+        labels.append(f"Journal {metadata['journal_number']}")
+    if chunk.get("chunk_id"):
+        labels.append(f"chunk {chunk['chunk_id']}")
+    return " · ".join(html.escape(label) for label in labels)
 
 
 # ── Source cards ──────────────────────────────────────────────────────────────
@@ -297,40 +343,315 @@ def _format_answer_with_citations(text: str) -> str:
 
 def _render_sources(chunks: list[dict]) -> None:
     for i, c in enumerate(chunks, 1):
-        score_pct = int(c["score"] * 100)
-        link = c.get("source", "#")
-        titre = c.get("titre", "Source inconnue")
+        score_pct = int(float(c.get("score", 0.0)) * 100)
+        title = html.escape(c.get("titre", "Source inconnue")[:80])
         doc_type = c.get("type", "")
-        date = c.get("date", "")
-        snippet = c["text"][:220].replace("\n", " ")
-        if len(c["text"]) > 220:
+        date = html.escape(c.get("date", ""))
+        snippet = html.escape(c.get("text", "")[:220].replace("\n", " "))
+        if len(c.get("text", "")) > 220:
             snippet += "…"
+        traceability_meta = _chunk_meta_labels(c)
 
         type_label_map = {
             "legislation": "Loi",
             "jurisprudence": "Jurisprudence",
             "journal_monaco": "Journal de Monaco",
         }
-        type_label = type_label_map.get(doc_type, doc_type.capitalize() if doc_type else "Source")
+        type_label = html.escape(
+            type_label_map.get(doc_type, doc_type.capitalize() if doc_type else "Source")
+        )
+        title_prefix = f"[Source {c['source_number']}]" if c.get("source_number") else f"{i}."
 
         st.markdown(
             f"""<div class="source-card">
               <div class="source-title">
-                {i}. {titre[:80]}
+                {title_prefix} {title}
                 <span class="score-badge">{score_pct}%</span>
               </div>
               <div class="source-meta">{type_label} · {date}</div>
+              <div class="source-meta">{traceability_meta}</div>
               <div>{snippet}</div>
             </div>""",
             unsafe_allow_html=True,
         )
 
 
+def _render_trace(trace: dict) -> None:
+    audit_log_path = trace.get("audit_log_path") or str(get_audit_log_path())
+    st.markdown(
+        "\n".join(
+            [
+                f"**Trace ID**: {html.escape(trace.get('trace_id', 'n/a'))}",
+                f"**Retriever**: {html.escape(trace.get('retriever', 'n/a'))}",
+                f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
+                f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
+                f"**Contexte**: {trace.get('context_chars', 0)} / {trace.get('max_context_chars', 0)} caractères",
+                f"**Audit log**: {html.escape(audit_log_path)}",
+            ]
+        )
+    )
+
+
+def _fallback_generation_trace(prompt: str, backend: str, model: str) -> dict:
+    return {
+        "prompt_trace": build_prompt_trace(prompt, [], 12_000),
+        "used_chunks": [],
+        "omitted_chunks": [],
+        "context_chars": 0,
+        "max_context_chars": 12_000,
+        "backend": backend,
+        "model": model,
+        "prompt_version": 1,
+    }
+
+
+def _retrieve_chunks(
+    prompt: str,
+    index_data,
+    chunks_map: list[dict],
+    embedder,
+    k: int,
+    use_graph: bool,
+    neo4j_mgr,
+    use_hybrid: bool,
+    bm25,
+) -> list[dict]:
+    if use_graph and neo4j_mgr is not None:
+        return graph_retrieve(
+            prompt,
+            index_data,
+            chunks_map,
+            embedder,
+            neo4j_manager=neo4j_mgr,
+            k=k,
+        )
+    if use_hybrid and bm25 is not None:
+        return hybrid_retrieve(prompt, index_data, bm25, chunks_map, embedder, k)
+    return retrieve(prompt, index_data, chunks_map, embedder, k)
+
+
+def _generate_response(prompt: str, retrieved: list[dict], backend: str, model: str) -> tuple[str, str, dict]:
+    trace_id = new_trace_id()
+    try:
+        response_text, generation_trace = answer(
+            prompt,
+            retrieved,
+            model=model,
+            backend=backend,
+            return_trace=True,
+        )
+    except EnvironmentError as exc:
+        response_text = f"⚠️ Clé API manquante : {exc}"
+        generation_trace = _fallback_generation_trace(prompt, backend, model)
+    except Exception as exc:
+        response_text = f"⚠️ Erreur : {exc}"
+        generation_trace = _fallback_generation_trace(prompt, backend, model)
+    return trace_id, response_text, generation_trace
+
+
+def _build_trace_payload(
+    trace_id: str,
+    retriever_label: str,
+    retrieved: list[dict],
+    generation_trace: dict,
+    audit_log_path,
+) -> dict:
+    used_chunks = generation_trace.get("used_chunks", [])
+    omitted_chunks = generation_trace.get("omitted_chunks", [])
+    return {
+        "trace_id": trace_id,
+        "retriever": retriever_label,
+        "backend": generation_trace.get("backend", "n/a"),
+        "model": generation_trace.get("model", "n/a"),
+        "retrieved_count": len(retrieved),
+        "used_count": len(used_chunks),
+        "omitted_count": len(omitted_chunks),
+        "context_chars": generation_trace.get("context_chars", 0),
+        "max_context_chars": generation_trace.get("max_context_chars", 0),
+        "audit_log_path": str(audit_log_path) if audit_log_path is not None else str(get_audit_log_path()),
+    }
+
+
+def _render_source_sections(show_sources: bool, used_chunks: list[dict], omitted_chunks: list[dict]) -> None:
+    if not show_sources or not used_chunks:
+        return
+    label = f"📄 {len(used_chunks)} source(s) injectée(s) au prompt"
+    if omitted_chunks:
+        label += f" (+{len(omitted_chunks)} tronquée(s))"
+    with st.expander(label):
+        _render_sources(used_chunks)
+    if omitted_chunks:
+        with st.expander(f"🧾 {len(omitted_chunks)} source(s) récupérée(s) mais non injectée(s)"):
+            _render_sources(omitted_chunks)
+
+
+def _render_empty_state() -> None:
+    st.markdown(
+        """
+        <div style="text-align:center;padding:3rem 1rem 2rem;color:#6b7694">
+          <div style="font-size:2.5rem;margin-bottom:0.5rem">⚖️</div>
+          <div style="font-size:1.1rem;color:#a0a9c0;font-weight:500;margin-bottom:0.5rem">
+            Bienvenue sur Veridicta
+          </div>
+          <div style="font-size:0.85rem;max-width:520px;margin:0 auto;line-height:1.6">
+            Posez une question sur le <strong style="color:#e8d5a3">droit du travail monégasque</strong> :
+            licenciement, congés, contrats, salaires, conventions collectives…
+          </div>
+          <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center">
+            <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Quelles sont les indemnités de licenciement ?</span>
+            <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Durée du préavis pour un CDI ?</span>
+            <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Congés payés en droit monégasque ?</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_history_message(msg: dict, show_sources: bool) -> None:
+    if msg["role"] == "assistant":
+        st.markdown(
+            _format_answer_with_citations(msg["content"]),
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(msg["content"])
+
+    if msg["role"] == "assistant" and show_sources and msg.get("sources"):
+        omitted_count = len(msg.get("omitted_sources", []))
+        label = f"📄 {len(msg['sources'])} source(s) injectée(s) au prompt"
+        if omitted_count:
+            label += f" (+{omitted_count} tronquée(s))"
+        with st.expander(label):
+            _render_sources(msg["sources"])
+        if msg.get("omitted_sources"):
+            with st.expander(f"🧾 {len(msg['omitted_sources'])} source(s) récupérée(s) mais non injectée(s)"):
+                _render_sources(msg["omitted_sources"])
+
+    if msg["role"] == "assistant" and msg.get("trace"):
+        with st.expander("🔎 Trace de requête"):
+            _render_trace(msg["trace"])
+
+
+def _render_history(show_sources: bool) -> None:
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            _render_history_message(msg, show_sources)
+
+
+def _resolve_runtime_dependencies(use_hybrid: bool, use_graph: bool):
+    bm25 = _get_bm25() if use_hybrid else None
+    if use_hybrid and bm25 is None:
+        st.warning(
+            "Index bm25s indisponible — passage en mode FAISS. "
+            "Installe `bm25s` + `PyStemmer` puis relance `python -m retrievers.hybrid_rag --build`."
+        )
+        use_hybrid = False
+
+    neo4j_mgr = _get_neo4j() if use_graph else None
+    if use_graph and neo4j_mgr is None:
+        st.warning(
+            "Neo4j inaccessible — passage en mode FAISS. "
+            "Vérifie `NEO4J_URI` dans ton .env et lance "
+            "`python -m retrievers.neo4j_setup --build`."
+        )
+        use_graph = False
+
+    return use_hybrid, use_graph, bm25, neo4j_mgr
+
+
+def _handle_prompt(
+    prompt: str,
+    index_data,
+    chunks_map: list[dict],
+    embedder,
+    k: int,
+    show_sources: bool,
+    backend: str,
+    model: str,
+    use_graph: bool,
+    neo4j_mgr,
+    use_hybrid: bool,
+    bm25,
+) -> None:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Recherche dans le corpus…"):
+            t0 = time.perf_counter()
+            retrieved = _retrieve_chunks(
+                prompt,
+                index_data,
+                chunks_map,
+                embedder,
+                k,
+                use_graph,
+                neo4j_mgr,
+                use_hybrid,
+                bm25,
+            )
+
+        response_placeholder = st.empty()
+        with st.spinner("Génération de la réponse…"):
+            trace_id, response_text, generation_trace = _generate_response(
+                prompt,
+                retrieved,
+                backend,
+                model,
+            )
+
+        elapsed = time.perf_counter() - t0
+        used_chunks = generation_trace.get("used_chunks", [])
+        omitted_chunks = generation_trace.get("omitted_chunks", [])
+        retriever_label = _get_retriever_mode(use_graph, use_hybrid)
+        audit_log_path = append_audit_event(
+            trace_id=trace_id,
+            query=prompt,
+            retrieved_chunks=retrieved,
+            prompt_trace=generation_trace["prompt_trace"],
+            response_text=response_text,
+            retriever=retriever_label,
+            backend=generation_trace.get("backend", backend),
+            model=generation_trace.get("model", model),
+            prompt_version=generation_trace.get("prompt_version", 1),
+            latency_s=elapsed,
+        )
+        trace_payload = _build_trace_payload(
+            trace_id,
+            retriever_label,
+            retrieved,
+            generation_trace,
+            audit_log_path,
+        )
+        response_placeholder.markdown(
+            _format_answer_with_citations(response_text),
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"_{len(used_chunks)} source(s) injectée(s) / {len(retrieved)} récupérée(s) · {elapsed:.1f}s · trace {trace_id}_"
+        )
+
+        _render_source_sections(show_sources, used_chunks, omitted_chunks)
+        with st.expander("🔎 Trace de requête"):
+            _render_trace(trace_payload)
+
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": response_text,
+            "sources": used_chunks,
+            "omitted_sources": omitted_chunks,
+            "trace": trace_payload,
+        }
+    )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
-    # Header
     st.markdown(
         '<div class="veridicta-title">⚖️ Veridicta</div>'
         '<div class="veridicta-tagline">Assistant juridique · Droit du travail de la Principauté de Monaco</div>',
@@ -338,8 +659,8 @@ def main() -> None:
     )
 
     k, show_sources, backend, model, retriever = _render_sidebar()
-    use_hybrid = retriever == "Hybrid (BM25+FAISS)"
-    use_graph = retriever == "Graph (Neo4j)"
+    use_hybrid = retriever == HYBRID_OPTION
+    use_graph = retriever == GRAPH_OPTION
 
     # Load index & embedder (cached after first load)
     try:
@@ -353,108 +674,33 @@ def main() -> None:
         )
         ready = False
 
-    bm25 = _get_bm25() if use_hybrid else None
-    if use_hybrid and bm25 is None:
-        st.warning(
-            "Index bm25s indisponible — passage en mode FAISS. "
-            "Installe `bm25s` + `PyStemmer` puis relance `python -m retrievers.hybrid_rag --build`."
-        )
-        use_hybrid = False
-    neo4j_mgr = _get_neo4j() if use_graph else None
-    if use_graph and neo4j_mgr is None:
-        st.warning(
-            "Neo4j inaccessible — passage en mode FAISS. "
-            "Vérifie `NEO4J_URI` dans ton .env et lance "
-            "`python -m retrievers.neo4j_setup --build`."
-        )
-        use_graph = False
-    # Chat history
+    use_hybrid, use_graph, bm25, neo4j_mgr = _resolve_runtime_dependencies(use_hybrid, use_graph)
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Empty state — welcome message
     if not st.session_state.messages:
-        st.markdown(
-            """
-            <div style="text-align:center;padding:3rem 1rem 2rem;color:#6b7694">
-              <div style="font-size:2.5rem;margin-bottom:0.5rem">⚖️</div>
-              <div style="font-size:1.1rem;color:#a0a9c0;font-weight:500;margin-bottom:0.5rem">
-                Bienvenue sur Veridicta
-              </div>
-              <div style="font-size:0.85rem;max-width:520px;margin:0 auto;line-height:1.6">
-                Posez une question sur le <strong style="color:#e8d5a3">droit du travail monégasque</strong> :
-                licenciement, congés, contrats, salaires, conventions collectives…
-              </div>
-              <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center">
-                <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Quelles sont les indemnités de licenciement ?</span>
-                <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Durée du préavis pour un CDI ?</span>
-                <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Congés payés en droit monégasque ?</span>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _render_empty_state()
 
-    # Replay history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            if msg["role"] == "assistant":
-                st.markdown(
-                    _format_answer_with_citations(msg["content"]),
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(msg["content"])
-            if msg["role"] == "assistant" and show_sources and msg.get("sources"):
-                with st.expander(f"📄 {len(msg['sources'])} source(s) utilisée(s)"):
-                    _render_sources(msg["sources"])
+    _render_history(show_sources)
 
-    # Input
     if not ready:
         return
 
     if prompt := st.chat_input("Posez votre question en droit du travail monégasque…"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Recherche dans le corpus…"):
-                t0 = time.perf_counter()
-                if use_graph and neo4j_mgr is not None:
-                    retrieved = graph_retrieve(
-                        prompt, index_data, chunks_map, embedder,
-                        neo4j_manager=neo4j_mgr, k=k,
-                    )
-                elif use_hybrid and bm25 is not None:
-                    retrieved = hybrid_retrieve(
-                        prompt, index_data, bm25, chunks_map, embedder, k
-                    )
-                else:
-                    retrieved = retrieve(prompt, index_data, chunks_map, embedder, k)
-
-            response_placeholder = st.empty()
-            with st.spinner("Génération de la réponse…"):
-                try:
-                    response_text = answer(prompt, retrieved, model=model, backend=backend)
-                except EnvironmentError as exc:
-                    response_text = f"⚠️ Clé API manquante : {exc}"
-                except Exception as exc:
-                    response_text = f"⚠️ Erreur : {exc}"
-
-            elapsed = time.perf_counter() - t0
-            response_placeholder.markdown(
-                _format_answer_with_citations(response_text),
-                unsafe_allow_html=True,
-            )
-            st.caption(f"_{len(retrieved)} source(s) · {elapsed:.1f}s_")
-
-            if show_sources and retrieved:
-                with st.expander(f"📄 {len(retrieved)} source(s) utilisée(s)"):
-                    _render_sources(retrieved)
-
-        st.session_state.messages.append(
-            {"role": "assistant", "content": response_text, "sources": retrieved}
+        _handle_prompt(
+            prompt,
+            index_data,
+            chunks_map,
+            embedder,
+            k,
+            show_sources,
+            backend,
+            model,
+            use_graph,
+            neo4j_mgr,
+            use_hybrid,
+            bm25,
         )
 
 

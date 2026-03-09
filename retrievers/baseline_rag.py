@@ -30,6 +30,8 @@ import numpy as np
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 
+from retrievers.traceability import append_audit_event, build_prompt_trace, new_trace_id
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -186,43 +188,20 @@ def retrieve(
     query_vec = _embed_query(query, embedder)
     scores, indices = index.search(query_vec, k)
     results = []
-    for score, idx in zip(scores[0], indices[0]):
+    for rank, (score, idx) in enumerate(zip(scores[0], indices[0]), 1):
         if 0 <= idx < len(chunks):
-            results.append({**chunks[idx], "score": float(score)})
+            results.append(
+                {
+                    **chunks[idx],
+                    "score": float(score),
+                    "retrieval_rank": rank,
+                    "retrieval_method": "faiss",
+                }
+            )
     return results
 
 
 # --- Generation ---
-
-
-def _format_context(chunks: list[dict]) -> str:
-    """Format retrieved chunks into a numbered context block capped at MAX_CONTEXT_CHARS."""
-    parts: list[str] = []
-    total_chars = 0
-    for i, chunk in enumerate(chunks, 1):
-        titre = chunk.get('titre', 'Source inconnue')
-        doc_type = chunk.get('type', '')
-        date = chunk.get('date', '')
-        header = f"[Source {i}] {titre} ({doc_type}, {date})"
-        entry = f"{header}\n{chunk['text']}"
-        if total_chars + len(entry) > MAX_CONTEXT_CHARS:
-            break
-        parts.append(entry)
-        total_chars += len(entry)
-    return "\n\n---\n\n".join(parts)
-
-
-def _build_user_message(query: str, context_chunks: list[dict]) -> str:
-    """Build the user message with numbered sources and the question."""
-    context = _format_context(context_chunks)
-    n_sources = min(len(context_chunks), MAX_CONTEXT_CHARS // 500)
-    return (
-        f"Voici {n_sources} sources numerotees :\n\n"
-        f"{context}\n\n"
-        f"---\n\n"
-        f"Question : {query}\n\n"
-        f"Reponds en citant [Source N] apres chaque affirmation."
-    )
 
 
 def _answer_cerebras(system: str, user: str, model: str) -> str:
@@ -235,15 +214,15 @@ def _answer_cerebras(system: str, user: str, model: str) -> str:
         raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
 
     client = Cerebras(api_key=api_key)
-    payload = dict(
-        model=model,
-        messages=[
+    payload = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        temperature=0.1,
-        max_tokens=1024,
-    )
+        "temperature": 0.1,
+        "max_tokens": 1024,
+    }
 
     for attempt in range(5):
         try:
@@ -271,7 +250,8 @@ def answer(
     model: str | None = None,
     backend: str | None = None,
     prompt_version: int = 1,
-) -> str:
+    return_trace: bool = False,
+) -> str | tuple[str, dict]:
     """Generate a grounded answer from retrieved context chunks.
 
     Args:
@@ -280,17 +260,33 @@ def answer(
         model: Override LLM model name. Defaults per backend.
         backend: "cerebras" or "copilot". Defaults to LLM_BACKEND env var.
         prompt_version: 1 for original prompt, 2 for structured v2 prompt.
+        return_trace: When True, also return prompt-window trace metadata.
     """
     active_backend = backend or LLM_BACKEND
-    user_message = _build_user_message(query, context_chunks)
+    prompt_trace = build_prompt_trace(query, context_chunks, MAX_CONTEXT_CHARS)
+    user_message = prompt_trace.user_message
     system = SYSTEM_PROMPT_V2 if prompt_version == 2 else SYSTEM_PROMPT
 
     if active_backend == "copilot":
         resolved_model = model or COPILOT_DEFAULT_MODEL
-        return _answer_copilot(system, user_message, resolved_model)
+        response_text = _answer_copilot(system, user_message, resolved_model)
+    else:
+        resolved_model = model or CEREBRAS_DEFAULT_MODEL
+        response_text = _answer_cerebras(system, user_message, resolved_model)
 
-    resolved_model = model or CEREBRAS_DEFAULT_MODEL
-    return _answer_cerebras(system, user_message, resolved_model)
+    if not return_trace:
+        return response_text
+
+    return response_text, {
+        "prompt_trace": prompt_trace,
+        "used_chunks": prompt_trace.used_chunks,
+        "omitted_chunks": prompt_trace.omitted_chunks,
+        "context_chars": prompt_trace.context_chars,
+        "max_context_chars": prompt_trace.max_context_chars,
+        "backend": active_backend,
+        "model": resolved_model,
+        "prompt_version": prompt_version,
+    }
 
 
 # --- CLI ---
@@ -356,11 +352,28 @@ def main() -> None:
 
     print("\nGenerating answer ...")
     try:
-        response_text = answer(args.query, results)
+        trace_id = new_trace_id()
+        started_at = time.perf_counter()
+        response_text, trace = answer(args.query, results, return_trace=True)
+        latency_s = time.perf_counter() - started_at
+        audit_path = append_audit_event(
+            trace_id=trace_id,
+            query=args.query,
+            retrieved_chunks=results,
+            prompt_trace=trace["prompt_trace"],
+            response_text=response_text,
+            retriever="faiss",
+            backend=trace["backend"],
+            model=trace["model"],
+            prompt_version=trace["prompt_version"],
+            latency_s=latency_s,
+        )
     except EnvironmentError as exc:
         logger.error(str(exc))
         sys.exit(1)
 
+    if audit_path is not None:
+        print(f"Trace ID: {trace_id}  |  audit: {audit_path}")
     print(f"\n{response_text}\n")
 
 

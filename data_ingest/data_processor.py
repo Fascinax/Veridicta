@@ -9,7 +9,7 @@ Writes:
   data/processed/chunks.jsonl
 
 Each chunk record: chunk_id, doc_id, chunk_index, total_chunks,
-titre, text, date, source, type, metadata.
+titre, text, date, source, type, metadata, ingestion.
 
 Usage:
     python -m data_ingest.data_processor
@@ -22,6 +22,7 @@ import argparse
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -35,6 +36,8 @@ CHUNK_SIZE = 1800
 CHUNK_OVERLAP = 200
 MIN_CHUNK_SIZE = 100
 HARD_MAX_CHUNK = 2200  # absolute ceiling — splits on spaces when no structure exists
+METADATA_SCHEMA_VERSION = "2026-03-traceability-v1"
+PROCESSING_STARTED_AT = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 RAW_FILES = ["legislation.jsonl", "jurisprudence.jsonl", "journal_monaco.jsonl"]
 OUTPUT_FILE = "chunks.jsonl"
@@ -48,6 +51,26 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
+def _split_oversized_paragraph(paragraph: str) -> list[str]:
+    if len(paragraph) <= HARD_MAX_CHUNK:
+        return [paragraph]
+
+    words = paragraph.split(" ")
+    segments: list[str] = []
+    current_words: list[str] = []
+    current_length = 0
+    for word in words:
+        if current_length + len(word) + 1 > HARD_MAX_CHUNK and current_words:
+            segments.append(" ".join(current_words))
+            current_words = []
+            current_length = 0
+        current_words.append(word)
+        current_length += len(word) + 1
+    if current_words:
+        segments.append(" ".join(current_words))
+    return segments
+
+
 def _split_into_paragraphs(text: str) -> list[str]:
     parts = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
     if len(parts) <= 1:
@@ -55,21 +78,7 @@ def _split_into_paragraphs(text: str) -> list[str]:
     # Hard-cap: break any paragraph that still exceeds HARD_MAX_CHUNK on word boundaries
     result = []
     for part in parts:
-        if len(part) <= HARD_MAX_CHUNK:
-            result.append(part)
-        else:
-            words = part.split(" ")
-            current = []
-            current_len = 0
-            for word in words:
-                if current_len + len(word) + 1 > HARD_MAX_CHUNK and current:
-                    result.append(" ".join(current))
-                    current = []
-                    current_len = 0
-                current.append(word)
-                current_len += len(word) + 1
-            if current:
-                result.append(" ".join(current))
+        result.extend(_split_oversized_paragraph(part))
     return result
 
 
@@ -113,6 +122,7 @@ class ChunkRecord:
     source: str
     type: str
     metadata: dict
+    ingestion: dict
 
     def to_dict(self) -> dict:
         return {
@@ -126,15 +136,59 @@ class ChunkRecord:
             "source": self.source,
             "type": self.type,
             "metadata": self.metadata,
+            "ingestion": self.ingestion,
         }
 
 
-def _document_to_chunks(doc: dict) -> list[ChunkRecord]:
+def _normalise_metadata(doc: dict) -> dict:
+    raw_metadata = dict(doc.get("metadata") or {})
+    normalised_metadata = {
+        "document_number": raw_metadata.get("numero", ""),
+        "document_nature": raw_metadata.get("nature", ""),
+        "jurisdiction": raw_metadata.get("juridiction", ""),
+        "case_id": raw_metadata.get("idbd", ""),
+        "journal_number": raw_metadata.get("journal_numero", ""),
+        "category": raw_metadata.get("category", ""),
+        "thematics": raw_metadata.get("thematic", []),
+        "article_titles": raw_metadata.get("article_titles", []),
+        "parties": raw_metadata.get("parties", ""),
+        "abstract": raw_metadata.get("abstract", ""),
+        "interest": raw_metadata.get("interest", ""),
+        "links": raw_metadata.get("liens", []),
+        "source_url": doc.get("source", ""),
+        "metadata_schema_version": METADATA_SCHEMA_VERSION,
+    }
+    merged_metadata = raw_metadata.copy()
+    merged_metadata.update(
+        {
+            key: value
+            for key, value in normalised_metadata.items()
+            if value not in (None, "", [], {})
+        }
+    )
+    return merged_metadata
+
+
+def _build_ingestion_metadata(source_filename: str) -> dict:
+    return {
+        "processed_at_utc": PROCESSING_STARTED_AT,
+        "pipeline": "data_ingest.data_processor",
+        "source_file": source_filename,
+        "chunk_size": CHUNK_SIZE,
+        "chunk_overlap": CHUNK_OVERLAP,
+        "hard_max_chunk": HARD_MAX_CHUNK,
+        "metadata_schema_version": METADATA_SCHEMA_VERSION,
+    }
+
+
+def _document_to_chunks(doc: dict, source_filename: str) -> list[ChunkRecord]:
     chunks = chunk_document(doc.get("text", ""))
     if not chunks:
         return []
     doc_id = doc.get("id", "")
     total = len(chunks)
+    normalised_metadata = _normalise_metadata(doc)
+    ingestion = _build_ingestion_metadata(source_filename)
     return [
         ChunkRecord(
             chunk_id=f"{doc_id}-{i}",
@@ -146,13 +200,14 @@ def _document_to_chunks(doc: dict) -> list[ChunkRecord]:
             date=doc.get("date", ""),
             source=doc.get("source", ""),
             type=doc.get("type", ""),
-            metadata=doc.get("metadata", {}),
+            metadata=normalised_metadata,
+            ingestion=ingestion,
         )
         for i, chunk in enumerate(chunks)
     ]
 
 
-def _iter_raw_documents(raw_dir: Path) -> Iterator[dict]:
+def _iter_raw_documents(raw_dir: Path) -> Iterator[tuple[str, dict]]:
     for filename in RAW_FILES:
         path = raw_dir / filename
         if not path.exists():
@@ -160,7 +215,7 @@ def _iter_raw_documents(raw_dir: Path) -> Iterator[dict]:
             continue
         with jsonlines.open(path) as reader:
             for doc in reader:
-                yield doc
+                yield filename, doc
 
 
 def process(raw_dir: Path, output_path: Path) -> int:
@@ -170,9 +225,9 @@ def process(raw_dir: Path, output_path: Path) -> int:
     total_chunks = 0
     skipped = 0
     with jsonlines.open(output_path, mode="w") as writer:
-        for doc in tqdm(_iter_raw_documents(raw_dir), desc="Processing docs"):
+        for source_filename, doc in tqdm(_iter_raw_documents(raw_dir), desc="Processing docs"):
             total_docs += 1
-            chunk_records = _document_to_chunks(doc)
+            chunk_records = _document_to_chunks(doc, source_filename)
             if not chunk_records:
                 skipped += 1
                 continue
