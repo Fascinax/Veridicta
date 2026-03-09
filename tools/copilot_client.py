@@ -25,6 +25,14 @@ _BRIDGE_SCRIPT = Path(__file__).resolve().parent.parent / "copilot-bridge.mjs"
 
 COPILOT_DEFAULT_MODEL = "gpt-4.1"
 
+_MOJIBAKE_MARKERS = (
+    "Ã",
+    "Â",
+    "â€™",
+    "â€œ",
+    "â€",
+)
+
 
 class BridgeError(Exception):
     """Raised when the Node.js copilot-bridge.mjs subprocess fails."""
@@ -45,6 +53,33 @@ class CopilotClient:
     def model(self) -> str:
         return self._model
 
+    @staticmethod
+    def _mojibake_score(text: str) -> int:
+        return sum(text.count(marker) for marker in _MOJIBAKE_MARKERS)
+
+    @classmethod
+    def _repair_mojibake(cls, text: str) -> str:
+        baseline_score = cls._mojibake_score(text)
+        if baseline_score == 0:
+            return text
+
+        repaired_candidates: list[str] = []
+        for source_encoding in ("latin-1", "cp1252"):
+            try:
+                repaired = text.encode(source_encoding).decode("utf-8")
+            except UnicodeError:
+                continue
+            repaired_candidates.append(repaired)
+
+        if not repaired_candidates:
+            return text
+
+        best_candidate = min(repaired_candidates, key=cls._mojibake_score)
+        if cls._mojibake_score(best_candidate) < baseline_score:
+            logger.warning("Detected mojibake in Copilot response; repaired output text.")
+            return best_candidate
+        return text
+
     def chat(
         self,
         *,
@@ -62,6 +97,8 @@ class CopilotClient:
                 input=payload,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout_seconds,
                 env={**os.environ},
             )
@@ -86,9 +123,9 @@ class CopilotClient:
 
         try:
             data = json.loads(raw)
-            return data.get("content", raw)
+            return self._repair_mojibake(data.get("content", raw))
         except json.JSONDecodeError:
-            return raw
+            return self._repair_mojibake(raw)
 
     def close(self) -> None:
         """No persistent resources to release."""
