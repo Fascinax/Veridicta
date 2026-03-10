@@ -485,6 +485,13 @@ def _render_source_sections(show_sources: bool, used_chunks: list[dict], omitted
             _render_sources(omitted_chunks)
 
 
+_EXAMPLE_CHIPS = [
+    "Quelles sont les indemnités de licenciement ?",
+    "Durée du préavis pour un CDI ?",
+    "Congés payés en droit monégasque ?",
+]
+
+
 def _render_empty_state() -> None:
     st.markdown(
         """
@@ -497,15 +504,16 @@ def _render_empty_state() -> None:
             Posez une question sur le <strong style="color:#e8d5a3">droit du travail monégasque</strong> :
             licenciement, congés, contrats, salaires, conventions collectives…
           </div>
-          <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center">
-            <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Quelles sont les indemnités de licenciement ?</span>
-            <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Durée du préavis pour un CDI ?</span>
-            <span style="background:#1a1d2e;border:1px solid #2a2f47;border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;color:#c9d1e0">Congés payés en droit monégasque ?</span>
-          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    cols = st.columns(len(_EXAMPLE_CHIPS))
+    for col, chip in zip(cols, _EXAMPLE_CHIPS):
+        with col:
+            if st.button(chip, use_container_width=True, key=f"chip_{chip[:15]}"):
+                st.session_state["_chip_query"] = chip
+                st.rerun()
 
 
 def _render_history_message(msg: dict, show_sources: bool) -> None:
@@ -679,6 +687,8 @@ def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    chip_prompt = st.session_state.pop("_chip_query", None)
+
     if not st.session_state.messages:
         _render_empty_state()
 
@@ -687,7 +697,10 @@ def main() -> None:
     if not ready:
         return
 
-    if prompt := st.chat_input("Posez votre question en droit du travail monégasque…"):
+    chat_input = st.chat_input("Posez votre question en droit du travail monégasque…")
+    prompt = chip_prompt or chat_input
+
+    if prompt:
         _handle_prompt(
             prompt,
             index_data,
