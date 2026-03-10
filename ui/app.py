@@ -65,6 +65,7 @@ from retrievers.traceability import (
 FAISS_OPTION = "FAISS"
 HYBRID_OPTION = "Hybrid (BM25+FAISS)"
 GRAPH_OPTION = "Graph (Neo4j)"
+HYBRID_GRAPH_OPTION = "Hybrid+Graph (BM25+FAISS+Neo4j)"
 
 try:
     from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
@@ -77,6 +78,12 @@ try:
     _GRAPH_AVAILABLE = True
 except ImportError:
     _GRAPH_AVAILABLE = False
+
+try:
+    from retrievers.hybrid_graph_rag import hybrid_graph_retrieve
+    _HYBRID_GRAPH_AVAILABLE = _HYBRID_AVAILABLE and _GRAPH_AVAILABLE
+except ImportError:
+    _HYBRID_GRAPH_AVAILABLE = False
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
@@ -213,6 +220,8 @@ def _available_retriever_options() -> list[str]:
         options.append(HYBRID_OPTION)
     if _GRAPH_AVAILABLE:
         options.append(GRAPH_OPTION)
+    if _HYBRID_GRAPH_AVAILABLE:
+        options.append(HYBRID_GRAPH_OPTION)
     return options
 
 
@@ -221,10 +230,14 @@ def _get_retriever_status_label(retriever: str) -> str:
         return "Hybrid BM25+FAISS"
     if retriever == GRAPH_OPTION:
         return "Graph Neo4j"
+    if retriever == HYBRID_GRAPH_OPTION:
+        return "Hybrid+Graph"
     return FAISS_OPTION
 
 
 def _get_retriever_mode(use_graph: bool, use_hybrid: bool) -> str:
+    if use_graph and use_hybrid:
+        return "hybrid_graph"
     if use_graph:
         return "graph"
     if use_hybrid:
@@ -256,7 +269,8 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
                 index=default_retriever_idx,
                 help=(
                     "Hybrid : sémantique (FAISS) + lexical (BM25) via RRF.\n"
-                    "Graph : FAISS + expansion via liens loi↔décision (Neo4j)."
+                    "Graph : FAISS + expansion via liens loi↔décision (Neo4j).\n"
+                    "Hybrid+Graph : BM25+FAISS seeds + expansion Neo4j (meilleur des deux)."
                 ),
             )
         else:
@@ -416,6 +430,16 @@ def _retrieve_chunks(
     use_hybrid: bool,
     bm25,
 ) -> list[dict]:
+    if use_graph and use_hybrid and neo4j_mgr is not None and bm25 is not None:
+        return hybrid_graph_retrieve(
+            prompt,
+            index_data,
+            bm25,
+            chunks_map,
+            embedder,
+            neo4j_manager=neo4j_mgr,
+            k=k,
+        )
     if use_graph and neo4j_mgr is not None:
         return graph_retrieve(
             prompt,
@@ -667,8 +691,8 @@ def main() -> None:
     )
 
     k, show_sources, backend, model, retriever = _render_sidebar()
-    use_hybrid = retriever == HYBRID_OPTION
-    use_graph = retriever == GRAPH_OPTION
+    use_hybrid = retriever in (HYBRID_OPTION, HYBRID_GRAPH_OPTION)
+    use_graph = retriever in (GRAPH_OPTION, HYBRID_GRAPH_OPTION)
 
     # Load index & embedder (cached after first load)
     try:

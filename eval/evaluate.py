@@ -62,6 +62,12 @@ except ImportError:
     _GRAPH_AVAILABLE = False
 
 try:
+    from retrievers.hybrid_graph_rag import hybrid_graph_retrieve
+    _HYBRID_GRAPH_AVAILABLE = True
+except ImportError:
+    _HYBRID_GRAPH_AVAILABLE = False
+
+try:
     from retrievers.reranker import rerank
     _RERANKER_AVAILABLE = True
 except ImportError:
@@ -345,6 +351,8 @@ def run_eval(
 
 
 def _retriever_label(bm25=None, neo4j_mgr=None) -> str:
+    if neo4j_mgr is not None and bm25 is not None:
+        return "Hybrid+Graph (BM25+FAISS+Neo4j)"
     if neo4j_mgr is not None:
         return "Graph (Neo4j)"
     if bm25 is not None:
@@ -376,7 +384,20 @@ def _retrieve_contexts(
     def _retrieval_query(raw_question: str) -> str:
         return _expand_query_legal_fr(raw_question) if query_expansion else raw_question
 
-    if neo4j_mgr is not None:
+    if neo4j_mgr is not None and bm25 is not None:
+        retrieved_all = [
+            hybrid_graph_retrieve(
+                _retrieval_query(question.question),
+                index,
+                bm25,
+                chunks,
+                embedder,
+                neo4j_manager=neo4j_mgr,
+                k=retrieval_k,
+            )
+            for question in questions
+        ]
+    elif neo4j_mgr is not None:
         retrieved_all = [
             graph_retrieve(_retrieval_query(question.question), index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
             for question in questions
@@ -825,10 +846,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--retriever",
         default="faiss",
-        choices=["faiss", "hybrid", "graph"],
+        choices=["faiss", "hybrid", "graph", "hybrid_graph"],
         help=(
             "Retriever to use: faiss (dense only), hybrid (BM25+FAISS), "
-            "or graph (FAISS+Neo4j CITE expansion)  (default: faiss)"
+            "graph (FAISS+Neo4j), or hybrid_graph (BM25+FAISS+Neo4j)  (default: faiss)"
         ),
     )
     parser.add_argument(
@@ -898,7 +919,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tuple[object | None, object | None]:
     bm25 = None
-    if args.retriever == "hybrid":
+    if args.retriever in ("hybrid", "hybrid_graph"):
         if not _HYBRID_AVAILABLE:
             sys.exit("ERROR: hybrid retriever unavailable. Run: pip install bm25s PyStemmer")
         print("Loading BM25 index ...")
@@ -908,7 +929,7 @@ def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tupl
             sys.exit(f"ERROR: {exc}")
 
     neo4j_mgr = None
-    if args.retriever == "graph":
+    if args.retriever in ("graph", "hybrid_graph"):
         if not _GRAPH_AVAILABLE:
             sys.exit("ERROR: graph_rag module unavailable. Check retrievers/graph_rag.py.")
         print("Connecting to Neo4j ...")
