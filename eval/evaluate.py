@@ -78,6 +78,12 @@ except ImportError:
     _LANCEDB_AVAILABLE = False
 
 try:
+    from retrievers.lancedb_graph_rag import lancedb_graph_retrieve
+    _LANCEDB_GRAPH_AVAILABLE = True
+except ImportError:
+    _LANCEDB_GRAPH_AVAILABLE = False
+
+try:
     from retrievers.reranker import rerank
     _RERANKER_AVAILABLE = True
 except ImportError:
@@ -363,6 +369,8 @@ def run_eval(
 
 
 def _retriever_label(bm25=None, neo4j_mgr=None, lancedb_table=None) -> str:
+    if lancedb_table is not None and neo4j_mgr is not None:
+        return "LanceDB+Graph (vector+FTS+Neo4j)"
     if lancedb_table is not None:
         return "LanceDB (vector+FTS+RRF)"
     if neo4j_mgr is not None and bm25 is not None:
@@ -399,7 +407,18 @@ def _retrieve_contexts(
     def _retrieval_query(raw_question: str) -> str:
         return _expand_query_legal_fr(raw_question) if query_expansion else raw_question
 
-    if lancedb_table is not None:
+    if lancedb_table is not None and neo4j_mgr is not None and _LANCEDB_GRAPH_AVAILABLE:
+        retrieved_all = [
+            lancedb_graph_retrieve(
+                _retrieval_query(question.question),
+                lancedb_table,
+                embedder,
+                neo4j_manager=neo4j_mgr,
+                k=retrieval_k,
+            )
+            for question in questions
+        ]
+    elif lancedb_table is not None:
         retrieved_all = [
             lancedb_hybrid_retrieve(
                 _retrieval_query(question.question),
@@ -871,7 +890,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--retriever",
         default="faiss",
-        choices=["faiss", "hybrid", "graph", "hybrid_graph", "lancedb"],
+        choices=["faiss", "hybrid", "graph", "hybrid_graph", "lancedb", "lancedb_graph"],
         help=(
             "Retriever to use: faiss (dense only), hybrid (BM25+FAISS), "
             "graph (FAISS+Neo4j), hybrid_graph (BM25+FAISS+Neo4j), "
@@ -955,7 +974,7 @@ def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tupl
             sys.exit(f"ERROR: {exc}")
 
     neo4j_mgr = None
-    if args.retriever in ("graph", "hybrid_graph"):
+    if args.retriever in ("graph", "hybrid_graph", "lancedb_graph"):
         if not _GRAPH_AVAILABLE:
             sys.exit("ERROR: graph_rag module unavailable. Check retrievers/graph_rag.py.")
         print("Connecting to Neo4j ...")
@@ -969,7 +988,7 @@ def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tupl
         print(f"  Graph connected: {stats}")
 
     lancedb_table = None
-    if args.retriever == "lancedb":
+    if args.retriever in ("lancedb", "lancedb_graph"):
         if not _LANCEDB_AVAILABLE:
             sys.exit("ERROR: lancedb retriever unavailable. Run: pip install lancedb")
         print("Loading LanceDB table ...")
@@ -1149,7 +1168,7 @@ def main() -> None:
 
     bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(args, index_dir)
 
-    if args.retriever == "lancedb":
+    if args.retriever in ("lancedb", "lancedb_graph"):
         from retrievers.lancedb_rag import _table_to_chunks
         index = None
         chunks = _table_to_chunks(lancedb_table)

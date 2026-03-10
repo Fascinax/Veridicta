@@ -68,6 +68,7 @@ HYBRID_OPTION = "Hybrid (BM25+FAISS)"
 GRAPH_OPTION = "Graph (Neo4j)"
 HYBRID_GRAPH_OPTION = "Hybrid+Graph (BM25+FAISS+Neo4j)"
 LANCEDB_OPTION = "LanceDB (vector+FTS)"
+LANCEDB_GRAPH_OPTION = "LanceDB+Graph (vector+FTS+Neo4j)"
 
 try:
     from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
@@ -92,6 +93,12 @@ try:
     _LANCEDB_AVAILABLE = True
 except ImportError:
     _LANCEDB_AVAILABLE = False
+
+try:
+    from retrievers.lancedb_graph_rag import lancedb_graph_retrieve
+    _LANCEDB_GRAPH_AVAILABLE = _LANCEDB_AVAILABLE and _GRAPH_AVAILABLE
+except ImportError:
+    _LANCEDB_GRAPH_AVAILABLE = False
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
@@ -242,6 +249,8 @@ def _available_retriever_options() -> list[str]:
         options.append(HYBRID_GRAPH_OPTION)
     if _LANCEDB_AVAILABLE:
         options.append(LANCEDB_OPTION)
+    if _LANCEDB_GRAPH_AVAILABLE:
+        options.append(LANCEDB_GRAPH_OPTION)
     return options
 
 
@@ -254,10 +263,14 @@ def _get_retriever_status_label(retriever: str) -> str:
         return "Hybrid+Graph"
     if retriever == LANCEDB_OPTION:
         return "LanceDB vector+FTS"
+    if retriever == LANCEDB_GRAPH_OPTION:
+        return "LanceDB+Graph"
     return FAISS_OPTION
 
 
 def _get_retriever_mode(use_lancedb: bool, use_graph: bool, use_hybrid: bool) -> str:
+    if use_lancedb and use_graph:
+        return "lancedb_graph"
     if use_lancedb:
         return "lancedb"
     if use_graph and use_hybrid:
@@ -286,7 +299,9 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
         # Retriever selector
         if _HYBRID_AVAILABLE or _GRAPH_AVAILABLE or _LANCEDB_AVAILABLE:
             retriever_options = _available_retriever_options()
-            if LANCEDB_OPTION in retriever_options:
+            if LANCEDB_GRAPH_OPTION in retriever_options:
+                default_retriever_idx = retriever_options.index(LANCEDB_GRAPH_OPTION)
+            elif LANCEDB_OPTION in retriever_options:
                 default_retriever_idx = retriever_options.index(LANCEDB_OPTION)
             elif HYBRID_OPTION in retriever_options:
                 default_retriever_idx = retriever_options.index(HYBRID_OPTION)
@@ -297,6 +312,7 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
                 retriever_options,
                 index=default_retriever_idx,
                 help=(
+                    "LanceDB+Graph : LanceDB seed + expansion Neo4j (meilleur KW+F1).\n"
                     "LanceDB : vector dense + FTS Tantivy, RRF fusion (meilleur KW recall).\n"
                     "Hybrid : sémantique (FAISS) + lexical (BM25) via RRF.\n"
                     "Graph : FAISS + expansion via liens loi↔décision (Neo4j).\n"
@@ -511,6 +527,8 @@ def _retrieve_chunks(
     use_lancedb: bool = False,
     lancedb_table=None,
 ) -> list[dict]:
+    if use_lancedb and use_graph and neo4j_mgr is not None and lancedb_table is not None:
+        return lancedb_graph_retrieve(prompt, lancedb_table, embedder, neo4j_manager=neo4j_mgr, k=k)
     if use_lancedb and lancedb_table is not None:
         return lancedb_hybrid_retrieve(prompt, lancedb_table, embedder, k)
     if use_graph and use_hybrid and neo4j_mgr is not None and bm25 is not None:
@@ -816,8 +834,8 @@ def main() -> None:
 
     k, show_sources, backend, model, retriever = _render_sidebar()
     use_hybrid = retriever in (HYBRID_OPTION, HYBRID_GRAPH_OPTION)
-    use_graph = retriever in (GRAPH_OPTION, HYBRID_GRAPH_OPTION)
-    use_lancedb = _LANCEDB_AVAILABLE and retriever == LANCEDB_OPTION
+    use_graph = retriever in (GRAPH_OPTION, HYBRID_GRAPH_OPTION, LANCEDB_GRAPH_OPTION)
+    use_lancedb = _LANCEDB_AVAILABLE and retriever in (LANCEDB_OPTION, LANCEDB_GRAPH_OPTION)
 
     # Load index & embedder (cached after first load)
     try:
