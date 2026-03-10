@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 from collections import OrderedDict
+from collections.abc import Iterator
 import json
 import logging
 import os
@@ -359,12 +360,45 @@ def _answer_cerebras(system: str, user: str, model: str) -> str:
     raise RuntimeError("Cerebras rate limit: max retries exceeded.")
 
 
+def _answer_cerebras_stream(system: str, user: str, model: str) -> Iterator[str]:
+    """Stream token deltas from Cerebras Cloud API."""
+    from cerebras.cloud.sdk import Cerebras
+
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
+
+    client = Cerebras(api_key=api_key)
+    stream = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.1,
+        max_tokens=1024,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+
+
 def _answer_copilot(system: str, user: str, model: str) -> str:
     """Call GitHub Copilot via the Node.js bridge."""
     from tools.copilot_client import CopilotClient
 
     with CopilotClient(model=model) as client:
         return client.chat(system=system, user=user)
+
+
+def _answer_copilot_stream(system: str, user: str, model: str) -> Iterator[str]:
+    """Stream token deltas from GitHub Copilot via the Node.js bridge."""
+    from tools.copilot_client import CopilotClient
+
+    with CopilotClient(model=model) as client:
+        yield from client.chat_stream(system=system, user=user)
 
 
 def answer(
@@ -424,6 +458,67 @@ def answer(
         "model": resolved_model,
         "prompt_version": prompt_version,
     }
+
+
+def answer_stream(
+    query: str,
+    context_chunks: list[dict],
+    model: str | None = None,
+    backend: str | None = None,
+    prompt_version: int = 3,
+    *,
+    conversation_history: list[dict] | None = None,
+) -> tuple[Iterator[str], dict]:
+    """Build prompt context eagerly, then return a (token_generator, trace_dict) tuple.
+
+    The token generator streams text from the LLM without blocking.
+    The trace_dict is available immediately (before iterating the generator).
+
+    Args:
+        query: User question.
+        context_chunks: Retrieved chunks from FAISS / hybrid / graph.
+        model: Override LLM model name.
+        backend: "cerebras" or "copilot".
+        prompt_version: Prompt variant (default: 3 for exhaustive+concise).
+        conversation_history: Prior {role, content} messages for multi-turn context.
+
+    Returns:
+        (token_iterator, trace_metadata_dict)
+    """
+    active_backend = backend or LLM_BACKEND
+    prompt_trace = build_prompt_trace(
+        query,
+        context_chunks,
+        MAX_CONTEXT_CHARS,
+        conversation_history=conversation_history,
+    )
+    user_message = prompt_trace.user_message
+
+    if prompt_version == 2:
+        system = SYSTEM_PROMPT_V2
+    elif prompt_version == 3:
+        system = SYSTEM_PROMPT_V3
+    else:
+        system = SYSTEM_PROMPT
+
+    if active_backend == "copilot":
+        resolved_model = model or COPILOT_DEFAULT_MODEL
+        token_gen: Iterator[str] = _answer_copilot_stream(system, user_message, resolved_model)
+    else:
+        resolved_model = model or CEREBRAS_DEFAULT_MODEL
+        token_gen = _answer_cerebras_stream(system, user_message, resolved_model)
+
+    trace = {
+        "prompt_trace": prompt_trace,
+        "used_chunks": prompt_trace.used_chunks,
+        "omitted_chunks": prompt_trace.omitted_chunks,
+        "context_chars": prompt_trace.context_chars,
+        "max_context_chars": prompt_trace.max_context_chars,
+        "backend": active_backend,
+        "model": resolved_model,
+        "prompt_version": prompt_version,
+    }
+    return token_gen, trace
 
 
 # --- CLI ---

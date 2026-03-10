@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
 
@@ -126,6 +127,53 @@ class CopilotClient:
             return self._repair_mojibake(data.get("content", raw))
         except json.JSONDecodeError:
             return self._repair_mojibake(raw)
+
+    def chat_stream(self, *, system: str, user: str) -> Iterator[str]:
+        """Stream token deltas from Copilot via the bridge in --stream mode.
+
+        Yields incremental text chunks as they arrive from the model.
+        """
+        payload = json.dumps({"system": system, "user": user})
+        try:
+            proc = subprocess.Popen(
+                ["node", str(_BRIDGE_SCRIPT), self._model, "--stream"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env={**os.environ},
+            )
+        except FileNotFoundError as exc:
+            raise BridgeError(
+                "Node.js not found. Install Node.js 18+ to use the Copilot backend."
+            ) from exc
+
+        proc.stdin.write(payload)
+        proc.stdin.close()
+
+        for raw_line in proc.stdout:
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                data = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            delta = data.get("partial", "")
+            if delta:
+                yield self._repair_mojibake(delta)
+
+        proc.stdout.close()
+        stderr_output = proc.stderr.read()
+        proc.stderr.close()
+        proc.wait()
+        if proc.returncode != 0:
+            raise BridgeError(
+                f"Copilot bridge exited with code {proc.returncode}.\n"
+                f"{(stderr_output or '').strip()}"
+            )
 
     def close(self) -> None:
         """No persistent resources to release."""

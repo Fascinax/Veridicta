@@ -3,9 +3,15 @@
  *
  * Uses @github/copilot-sdk for proper Copilot authentication and chat completions.
  *
- * Usage:  node copilot-bridge.mjs [model]
+ * Usage:  node copilot-bridge.mjs [model] [--stream]
  * Reads JSON from stdin:  { "system": "...", "user": "..." }
- * Outputs JSON to stdout: { "content": "..." }
+ *
+ * Non-streaming (default):
+ *   Outputs single JSON to stdout: { "content": "..." }
+ *
+ * Streaming (--stream flag):
+ *   Outputs JSONL lines to stdout: { "partial": "<deltaContent>" }
+ *   One line per token chunk. EOF signals end of stream.
  *
  * Authentication: GITHUB_PAT env var, or `gh auth login` fallback.
  */
@@ -13,6 +19,7 @@
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
 
 const model = process.argv[2] || "gpt-4.1";
+const streamMode = process.argv.includes("--stream");
 
 const chunks = [];
 for await (const chunk of process.stdin) {
@@ -71,27 +78,41 @@ try {
     onPermissionRequest: approveAll,
   });
 
-  const response = await session.sendAndWait(
-    { prompt: input.user },
-    180_000,
-  );
+  if (streamMode) {
+    // Stream mode: subscribe to incremental deltas, output as JSONL
+    session.on("assistant.message_delta", (event) => {
+      const delta = event.data.deltaContent;
+      if (delta) {
+        process.stdout.write(JSON.stringify({ partial: delta }) + "\n");
+      }
+    });
 
-  const text = extractText(response);
-
-  if (!text) {
-    process.stderr.write(
-      JSON.stringify({
-        debug: "empty_response",
-        type: typeof response,
-        keys:
-          response && typeof response === "object"
-            ? Object.keys(response)
-            : null,
-      }) + "\n",
+    // sendAndWait waits for session.idle; delta handlers fire during this
+    await session.sendAndWait({ prompt: input.user }, 180_000);
+  } else {
+    // Non-streaming mode: output single JSON object
+    const response = await session.sendAndWait(
+      { prompt: input.user },
+      180_000,
     );
-  }
 
-  process.stdout.write(JSON.stringify({ content: text }));
+    const text = extractText(response);
+
+    if (!text) {
+      process.stderr.write(
+        JSON.stringify({
+          debug: "empty_response",
+          type: typeof response,
+          keys:
+            response && typeof response === "object"
+              ? Object.keys(response)
+              : null,
+        }) + "\n",
+      );
+    }
+
+    process.stdout.write(JSON.stringify({ content: text }));
+  }
 
   await session.destroy?.();
   await client.stop();

@@ -51,6 +51,7 @@ from retrievers.baseline_rag import (
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
     answer,
+    answer_stream,
     load_index,
     retrieve,
     _load_embedder,
@@ -670,14 +671,26 @@ def _handle_prompt(
             )
 
         response_placeholder = st.empty()
-        with st.spinner("Génération de la réponse…"):
-            trace_id, response_text, generation_trace = _generate_response(
+        trace_id = new_trace_id()
+        response_text = ""
+        generation_trace = _fallback_generation_trace(prompt, backend, model)
+        try:
+            token_gen, generation_trace = answer_stream(
                 prompt,
                 retrieved,
-                backend,
-                model,
+                model=model,
+                backend=backend,
                 conversation_history=conversation_history,
             )
+            for token in token_gen:
+                response_text += token
+                response_placeholder.markdown(
+                    _format_answer_with_citations(response_text) + " ▌",
+                    unsafe_allow_html=True,
+                )
+        except Exception as exc:
+            err_suffix = f"\n\n⚠️ Erreur de génération : {exc}"
+            response_text = (response_text + err_suffix) if response_text else f"⚠️ Erreur : {exc}"
 
         elapsed = time.perf_counter() - t0
         used_chunks = generation_trace.get("used_chunks", [])
@@ -702,6 +715,7 @@ def _handle_prompt(
             generation_trace,
             audit_log_path,
         )
+        # Final render: remove the streaming cursor ▌
         response_placeholder.markdown(
             _format_answer_with_citations(response_text),
             unsafe_allow_html=True,
