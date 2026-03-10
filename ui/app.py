@@ -406,6 +406,39 @@ def _render_trace(trace: dict) -> None:
     )
 
 
+_MAX_HISTORY_TURNS = 3
+_FOLLOWUP_MAX_CHARS = 100
+
+
+def _collect_conversation_history(messages: list[dict]) -> list[dict]:
+    """Return the last _MAX_HISTORY_TURNS user/assistant pairs from session state."""
+    history: list[dict] = []
+    pairs_collected = 0
+    i = len(messages) - 1
+    while i >= 1 and pairs_collected < _MAX_HISTORY_TURNS:
+        if messages[i]["role"] == "assistant" and messages[i - 1]["role"] == "user":
+            history.insert(0, {"role": "user", "content": messages[i - 1]["content"]})
+            history.insert(1, {"role": "assistant", "content": messages[i]["content"]})
+            pairs_collected += 1
+            i -= 2
+        else:
+            i -= 1
+    return history
+
+
+def _build_retrieval_query(current_query: str, conversation_history: list[dict]) -> str:
+    """For short follow-up queries, prepend the prior user question to aid retrieval."""
+    if not conversation_history or len(current_query.strip()) > _FOLLOWUP_MAX_CHARS:
+        return current_query
+    prior_user = next(
+        (m["content"] for m in reversed(conversation_history) if m["role"] == "user"),
+        None,
+    )
+    if prior_user is None:
+        return current_query
+    return f"{prior_user} {current_query}"
+
+
 def _fallback_generation_trace(prompt: str, backend: str, model: str) -> dict:
     return {
         "prompt_trace": build_prompt_trace(prompt, [], 12_000),
@@ -454,7 +487,14 @@ def _retrieve_chunks(
     return retrieve(prompt, index_data, chunks_map, embedder, k)
 
 
-def _generate_response(prompt: str, retrieved: list[dict], backend: str, model: str) -> tuple[str, str, dict]:
+def _generate_response(
+    prompt: str,
+    retrieved: list[dict],
+    backend: str,
+    model: str,
+    *,
+    conversation_history: list[dict] | None = None,
+) -> tuple[str, str, dict]:
     trace_id = new_trace_id()
     try:
         response_text, generation_trace = answer(
@@ -463,6 +503,7 @@ def _generate_response(prompt: str, retrieved: list[dict], backend: str, model: 
             model=model,
             backend=backend,
             return_trace=True,
+            conversation_history=conversation_history,
         )
     except EnvironmentError as exc:
         response_text = f"⚠️ Clé API manquante : {exc}"
@@ -606,15 +647,18 @@ def _handle_prompt(
     use_hybrid: bool,
     bm25,
 ) -> None:
+    conversation_history = _collect_conversation_history(st.session_state.messages)
+
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        retrieval_query = _build_retrieval_query(prompt, conversation_history)
         with st.spinner("Recherche dans le corpus…"):
             t0 = time.perf_counter()
             retrieved = _retrieve_chunks(
-                prompt,
+                retrieval_query,
                 index_data,
                 chunks_map,
                 embedder,
@@ -632,6 +676,7 @@ def _handle_prompt(
                 retrieved,
                 backend,
                 model,
+                conversation_history=conversation_history,
             )
 
         elapsed = time.perf_counter() - t0

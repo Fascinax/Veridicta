@@ -17,6 +17,9 @@ DEFAULT_AUDIT_DIR = Path("data/audit")
 DEFAULT_AUDIT_FILENAME = "queries.jsonl"
 PREVIEW_LIMIT = 240
 
+MAX_HISTORY_TURNS = 3
+MAX_ASSISTANT_SNIPPET_CHARS = 600
+
 
 def _read_bool_env(name: str, default: bool) -> bool:
     raw_value = os.getenv(name)
@@ -82,10 +85,39 @@ class PromptTrace:
     max_context_chars: int
 
 
+def _format_history_block(conversation_history: list[dict]) -> str:
+    """Format recent conversation turns into a compact history block for the prompt."""
+    turns: list[str] = []
+    messages = list(conversation_history)
+    i = 0
+    while i < len(messages) - 1:
+        if messages[i]["role"] == "user" and messages[i + 1]["role"] == "assistant":
+            user_content = messages[i]["content"]
+            assistant_content = messages[i + 1]["content"]
+            if len(assistant_content) > MAX_ASSISTANT_SNIPPET_CHARS:
+                assistant_content = assistant_content[:MAX_ASSISTANT_SNIPPET_CHARS] + "…"
+            turns.append(f"Q : {user_content}\nR : {assistant_content}")
+            i += 2
+        else:
+            i += 1
+    if not turns:
+        return ""
+    history_text = "\n\n".join(
+        f"[Échange {j + 1}]\n{t}" for j, t in enumerate(turns)
+    )
+    return (
+        f"=== Historique de la conversation ({len(turns)} échange(s) précédent(s)) ===\n"
+        f"{history_text}\n"
+        f"=== Fin de l'historique ===\n\n"
+    )
+
+
 def build_prompt_trace(
     query: str,
     retrieved_chunks: list[dict],
     max_context_chars: int,
+    *,
+    conversation_history: list[dict] | None = None,
 ) -> PromptTrace:
     parts: list[str] = []
     used_chunks: list[dict] = []
@@ -109,8 +141,11 @@ def build_prompt_trace(
         used_chunks.append(annotated_chunk)
         total_chars += len(entry)
 
+    history_block = _format_history_block(conversation_history) if conversation_history else ""
+
     context = "\n\n---\n\n".join(parts)
     user_message = (
+        f"{history_block}"
         f"Voici {len(used_chunks)} sources numerotees :\n\n"
         f"{context}\n\n"
         f"---\n\n"

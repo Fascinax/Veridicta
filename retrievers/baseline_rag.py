@@ -105,8 +105,10 @@ SYSTEM_PROMPT_V3 = (
     "- Va droit au but : reponds de maniere exhaustive mais sans verbiage inutile.\n"
     "- Cite systematiquement les noms exacts des textes de loi (loi n°, ordonnance souveraine n°, article du code) avec leur date quand elle est mentionnee dans les sources.\n"
     "- Utilise le vocabulaire juridique precis present dans les sources.\n"
-    "- Evite les formulations generiques ; prefere les references concr etes.\n"
+    "- Evite les formulations generiques ; prefere les references concretes.\n"
     "- Si les sources ne couvrent qu'une partie de la question, mentionne brievement ce qui manque.\n"
+    "- En cas de question de suivi, relie ta reponse au contexte des echanges precedents fournis, "
+    "tout en fondant chaque affirmation sur les sources du contexte actuel.\n"
 )
 
 
@@ -372,6 +374,8 @@ def answer(
     backend: str | None = None,
     prompt_version: int = 1,
     return_trace: bool = False,
+    *,
+    conversation_history: list[dict] | None = None,
 ) -> str | tuple[str, dict]:
     """Generate a grounded answer from retrieved context chunks.
 
@@ -382,9 +386,15 @@ def answer(
         backend: "cerebras" or "copilot". Defaults to LLM_BACKEND env var.
         prompt_version: 1 for original prompt, 2 for structured v2 prompt, 3 for exhaustive+concise v3.
         return_trace: When True, also return prompt-window trace metadata.
+        conversation_history: Optional list of prior {role, content} messages for multi-turn context.
     """
     active_backend = backend or LLM_BACKEND
-    prompt_trace = build_prompt_trace(query, context_chunks, MAX_CONTEXT_CHARS)
+    prompt_trace = build_prompt_trace(
+        query,
+        context_chunks,
+        MAX_CONTEXT_CHARS,
+        conversation_history=conversation_history,
+    )
     user_message = prompt_trace.user_message
     
     if prompt_version == 2:
