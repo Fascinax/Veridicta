@@ -17,9 +17,10 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 | Architecture | KW Recall | Word F1 | Cit.Faith | Context Cov | Latence |
 | --- | --- | --- | --- | --- | --- |
 | Hybrid k=5 (baseline) | 0.363 | 0.267 | 0.990 | 0.517 | 8.98 s |
-| Hybrid k=8 (Solon+bm25s+v3) | **0.608** | 0.318 | **1.000** | **0.733** | 15.10 s |
+| Hybrid k=8 (Solon+bm25s+v3) | 0.608 | 0.318 | **1.000** | **0.733** | 15.10 s |
 | Graph RAG (LightRAG) | 0.481 | 0.256 | 0.470 | 0.449 | 7.70 s |
 | **Hybrid+Graph k=5** | 0.552 | **0.338** | **1.000** | 0.742 | 23.4 s |
+| **LanceDB k=5 (vector+FTS+RRF)** | **0.676** | 0.263 | 0.990 | 0.733 | **9.28 s** |
 
 **Configuration optimale production** :
 
@@ -35,8 +36,8 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 
 | Indicateur | Cible | Resultat | Statut |
 | --- | --- | --- | --- |
-| Keyword Recall | >= 55 % | **60.8 %** | Atteint |
-| Word F1 | >= 28 % | **31.8 %** | Atteint |
+| Keyword Recall | >= 55 % | **67.6 %** (LanceDB) / 60.8 % (Hybrid k=8) | Atteint |
+| Word F1 | >= 28 % | **31.8 %** (Hybrid k=8) / 26.3 % (LanceDB) | Atteint |
 | Citation Faithfulness | >= 99 % | **100 %** | Atteint |
 | Context Coverage | >= 60 % | **73.3 %** | Atteint |
 | Cout variable | 0 EUR | **0 EUR** | Atteint |
