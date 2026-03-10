@@ -18,6 +18,9 @@ neo4j>=5.0.0
 # LLM (Cerebras Cloud API — inference ultra-rapide, gratuit)
 cerebras-cloud-sdk>=1.0.0
 
+# LLM (GitHub Copilot — official Python SDK)
+github-copilot-sdk>=0.1.32
+
 # UI
 streamlit>=1.28.0
 

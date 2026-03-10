@@ -1,28 +1,27 @@
 """Copilot SDK client — GitHub Copilot LLM backend for Veridicta.
 
-Calls ``copilot-bridge.mjs`` as a Node.js subprocess, passing system + user
-prompt as JSON on stdin and reading the generated content from stdout.
+Uses the official ``github-copilot-sdk`` Python package (``copilot``) which
+communicates with the bundled Copilot CLI via JSON-RPC.
 
 This lets Veridicta use GitHub Copilot models (gpt-4.1, claude-sonnet-4, o3-mini, etc.)
-via the @github/copilot-sdk — requires a GitHub PAT with ``copilot`` scope
-or ``gh auth login``.
+— requires a GitHub PAT with ``copilot`` scope or ``gh auth login``.
 
 Activate via ``LLM_BACKEND=copilot`` in ``.env``.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import os
-import subprocess
+import queue
+import threading
 from collections.abc import Iterator
-from pathlib import Path
 from types import TracebackType
 
-logger = logging.getLogger(__name__)
+from copilot import CopilotClient as _SdkClient, PermissionHandler
 
-_BRIDGE_SCRIPT = Path(__file__).resolve().parent.parent / "copilot-bridge.mjs"
+logger = logging.getLogger(__name__)
 
 COPILOT_DEFAULT_MODEL = "gpt-4.1"
 
@@ -34,21 +33,42 @@ _MOJIBAKE_MARKERS = (
     "â€",
 )
 
+_SENTINEL = object()
+
+_TOKEN_ENV_KEYS = (
+    "GITHUB_PAT",
+    "COPILOT_GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+)
+
 
 class BridgeError(Exception):
-    """Raised when the Node.js copilot-bridge.mjs subprocess fails."""
+    """Raised when the Copilot SDK call fails."""
+
+
+def _resolve_token() -> str | None:
+    for key in _TOKEN_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return value
+    return None
+
+
+def _build_sdk_client() -> _SdkClient:
+    token = _resolve_token()
+    opts: dict = {"log_level": "warning"}
+    if token:
+        opts["github_token"] = token
+        opts["use_logged_in_user"] = False
+    return _SdkClient(opts)
 
 
 class CopilotClient:
-    """LLM client that delegates to the Node.js copilot-bridge.mjs subprocess."""
+    """LLM client backed by the official ``github-copilot-sdk`` Python package."""
 
     def __init__(self, model: str = COPILOT_DEFAULT_MODEL) -> None:
         self._model = model
-        if not _BRIDGE_SCRIPT.exists():
-            raise BridgeError(
-                f"Bridge script not found: {_BRIDGE_SCRIPT}\n"
-                "Run 'npm install' in the project root first."
-            )
 
     @property
     def model(self) -> str:
@@ -89,91 +109,104 @@ class CopilotClient:
         temperature: float = 0.1,
     ) -> str:
         """Send a system + user prompt to Copilot and return the response text."""
-        payload = json.dumps({"system": system, "user": user})
-        timeout_seconds = 300
+
+        async def _run() -> str:
+            client = _build_sdk_client()
+            await client.start()
+            try:
+                session = await client.create_session({
+                    "model": self._model,
+                    "system_message": {"mode": "replace", "content": system},
+                    "available_tools": [],
+                    "infinite_sessions": {"enabled": False},
+                    "on_permission_request": PermissionHandler.approve_all,
+                })
+                done = asyncio.Event()
+                result_parts: list[str] = []
+
+                def on_event(event):
+                    if event.type.value == "assistant.message":
+                        result_parts.append(event.data.content or "")
+                    elif event.type.value == "session.idle":
+                        done.set()
+
+                session.on(on_event)
+                await session.send({"prompt": user})
+                await asyncio.wait_for(done.wait(), timeout=300)
+                await session.disconnect()
+                return "".join(result_parts)
+            finally:
+                await client.stop()
 
         try:
-            result = subprocess.run(
-                ["node", str(_BRIDGE_SCRIPT), self._model],
-                input=payload,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_seconds,
-                env={**os.environ},
-            )
-        except FileNotFoundError as exc:
-            raise BridgeError(
-                "Node.js not found. Install Node.js 18+ to use the Copilot backend."
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            raise BridgeError(
-                f"Copilot bridge timed out after {timeout_seconds}s."
-            ) from exc
+            raw = asyncio.run(_run())
+        except asyncio.TimeoutError as exc:
+            raise BridgeError("Copilot SDK timed out after 300s.") from exc
+        except Exception as exc:
+            raise BridgeError(f"Copilot SDK error: {exc}") from exc
 
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            raise BridgeError(
-                f"Copilot bridge exited with code {result.returncode}.\n{stderr}"
-            )
-
-        raw = result.stdout.strip()
         if not raw:
-            raise BridgeError("Copilot bridge returned empty output.")
-
-        try:
-            data = json.loads(raw)
-            return self._repair_mojibake(data.get("content", raw))
-        except json.JSONDecodeError:
-            return self._repair_mojibake(raw)
+            raise BridgeError("Copilot SDK returned empty output.")
+        return self._repair_mojibake(raw)
 
     def chat_stream(self, *, system: str, user: str) -> Iterator[str]:
-        """Stream token deltas from Copilot via the bridge in --stream mode.
+        """Stream token deltas from Copilot via the Python SDK.
 
         Yields incremental text chunks as they arrive from the model.
         """
-        payload = json.dumps({"system": system, "user": user})
-        try:
-            proc = subprocess.Popen(
-                ["node", str(_BRIDGE_SCRIPT), self._model, "--stream"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env={**os.environ},
-            )
-        except FileNotFoundError as exc:
-            raise BridgeError(
-                "Node.js not found. Install Node.js 18+ to use the Copilot backend."
-            ) from exc
+        token_queue: queue.Queue[object] = queue.Queue()
 
-        proc.stdin.write(payload)
-        proc.stdin.close()
-
-        for raw_line in proc.stdout:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
+        async def _stream() -> None:
+            client = _build_sdk_client()
+            await client.start()
             try:
-                data = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            delta = data.get("partial", "")
-            if delta:
-                yield self._repair_mojibake(delta)
+                session = await client.create_session({
+                    "model": self._model,
+                    "system_message": {"mode": "replace", "content": system},
+                    "streaming": True,
+                    "available_tools": [],
+                    "infinite_sessions": {"enabled": False},
+                    "on_permission_request": PermissionHandler.approve_all,
+                })
+                done = asyncio.Event()
 
-        proc.stdout.close()
-        stderr_output = proc.stderr.read()
-        proc.stderr.close()
-        proc.wait()
-        if proc.returncode != 0:
-            raise BridgeError(
-                f"Copilot bridge exited with code {proc.returncode}.\n"
-                f"{(stderr_output or '').strip()}"
-            )
+                def on_event(event):
+                    if event.type.value == "assistant.message_delta":
+                        delta = event.data.delta_content or ""
+                        if delta:
+                            token_queue.put(delta)
+                    elif event.type.value == "session.idle":
+                        done.set()
+
+                session.on(on_event)
+                await session.send({"prompt": user})
+                await asyncio.wait_for(done.wait(), timeout=300)
+                await session.disconnect()
+            finally:
+                await client.stop()
+                token_queue.put(_SENTINEL)
+
+        error_holder: list[Exception] = []
+
+        def _run_in_thread() -> None:
+            try:
+                asyncio.run(_stream())
+            except Exception as exc:
+                error_holder.append(exc)
+                token_queue.put(_SENTINEL)
+
+        thread = threading.Thread(target=_run_in_thread, daemon=True)
+        thread.start()
+
+        while True:
+            token = token_queue.get()
+            if token is _SENTINEL:
+                break
+            yield self._repair_mojibake(token)
+
+        thread.join(timeout=5)
+        if error_holder:
+            raise BridgeError(f"Copilot SDK stream error: {error_holder[0]}") from error_holder[0]
 
     def close(self) -> None:
         """No persistent resources to release."""

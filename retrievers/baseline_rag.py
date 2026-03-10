@@ -5,7 +5,7 @@ Pipeline:
     Query -> embed -> FAISS search -> top-k chunks -> LLM -> answer
 
 LLM backends (set LLM_BACKEND in .env):
-    copilot   — GitHub Copilot via @github/copilot-sdk Node.js bridge (default)
+    copilot   — GitHub Copilot via github-copilot-sdk Python package (default)
     cerebras  — Cerebras Cloud API (optional, free, ultra-fast)
 
 Build index:
