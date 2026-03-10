@@ -8,7 +8,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from retrievers.artifacts import _hf_token, ensure_artifacts, _ARTIFACTS, _OPTIONAL_ARTIFACTS
+from retrievers.artifacts import (
+    HF_REPO_ID,
+    HF_REPO_TYPE,
+    _hf_token,
+    ensure_artifacts,
+    upload_artifacts,
+    _ARTIFACTS,
+    _OPTIONAL_ARTIFACTS,
+)
 
 
 class TestHfTokenResolution:
@@ -182,3 +190,70 @@ class TestArtifactConstants:
         # All optional artifacts should be bm25s-related
         for optional in _OPTIONAL_ARTIFACTS:
             assert "bm25s" in optional
+
+    def test_hf_repo_constants(self) -> None:
+        assert HF_REPO_ID == "Fascinax/veridicta-index"
+        assert HF_REPO_TYPE == "dataset"
+
+
+class TestUploadArtifacts:
+    """Test artifact upload logic."""
+
+    @patch("huggingface_hub.HfApi")
+    @patch("retrievers.artifacts._hf_token", return_value="test_token")
+    def test_upload_creates_repo_and_uploads_existing_files(
+        self,
+        mock_token: MagicMock,
+        mock_api_class: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_api = MagicMock()
+        mock_api_class.return_value = mock_api
+
+        # Create two artifacts on disk
+        for i, (local, remote) in enumerate(_ARTIFACTS.items()):
+            if i >= 2:
+                break
+            dest = tmp_path / local
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text("fake content")
+
+        upload_artifacts(root=tmp_path, token="explicit_token")
+
+        mock_api.create_repo.assert_called_once_with(
+            repo_id=HF_REPO_ID,
+            repo_type=HF_REPO_TYPE,
+            exist_ok=True,
+            token="explicit_token",
+        )
+        assert mock_api.upload_file.call_count == 2
+
+    @patch("huggingface_hub.HfApi")
+    @patch("retrievers.artifacts._hf_token", return_value="test_token")
+    def test_upload_skips_missing_files(
+        self,
+        mock_token: MagicMock,
+        mock_api_class: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_api = MagicMock()
+        mock_api_class.return_value = mock_api
+
+        upload_artifacts(root=tmp_path, token="tok")
+
+        mock_api.upload_file.assert_not_called()
+
+    @patch("huggingface_hub.HfApi")
+    @patch("retrievers.artifacts._hf_token", return_value=None)
+    def test_upload_raises_if_repo_creation_fails(
+        self,
+        mock_token: MagicMock,
+        mock_api_class: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_api = MagicMock()
+        mock_api.create_repo.side_effect = RuntimeError("403 Forbidden")
+        mock_api_class.return_value = mock_api
+
+        with pytest.raises(RuntimeError, match="Cannot create HF repo"):
+            upload_artifacts(root=tmp_path)

@@ -88,7 +88,7 @@
 
 | Indicateur | Cible MVP | Resultat actuel (copilot/gpt-4.1, 100Q) | Cible v1.x | Resultat final v1.x (Solon+bm25s+v3, k=8) | Phase de controle |
 | --- | --- | --- | --- | --- | --- |
-| Latence p95 (256 tokens) | < 3 s | 8.98 s hybrid k=5 / 9.68 s hybrid k=8 | < 5 s (Solon embeddings + bm25s) | 15.10s copilot/gpt-4.1 (Cerebras non dispo) | Phase 12/16 |
+| Latence p95 (256 tokens) | < 3 s | 8.98 s hybrid k=5 / 9.68 s hybrid k=8 | < 5 s (Solon embeddings + bm25s) | 15.10s copilot/gpt-4.1 (Cerebras non dispo) — latence liee aux workers paralleles sequentiels, non representative d'une requete isolee | Phase 12/16 |
 | Keyword Recall (test Q) | >= 60 % | 36.3 % hybrid k=5 / **42.3 % hybrid+promptv2** ✅ | >= 55 % (bm25s FR stemming + Solon) | **60.8 % ✅ CIBLE ATTEINTE** | Phase 12/12bis/13bis-v2/18/19 |
 | Word F1 (test set) | >= 15 % | 26.7 % hybrid k=5 / 17.8 % hybrid+promptv2 ✅ | >= 28 % (Solon embeddings) | **31.8 % ✅ CIBLE ATTEINTE** | Phase 18/19 |
 | Citation Faithfulness | >= 90 % | 99.0 % hybrid / 98.0 % hybrid+promptv2 ✅ | >= 99 % | **100 % ✅** | Phase 12bis |
@@ -170,4 +170,4 @@
 
 ---
 
-Derniere mise a jour : 2026-03-09 — **MVP v1.x COMPLETE** — validation KPI finale Solon+bm25s+promptv3 (100Q) : KW=60.8 % / F1=31.8 % / CitFaith=100 % / CtxCov=73.3 %
+Derniere mise a jour : 2026-03-10 — **MVP v1.x COMPLETE** — validation KPI finale Solon+bm25s+promptv3 (100Q) : KW=60.8 % / F1=31.8 % / CitFaith=100 % / CtxCov=73.3 %
