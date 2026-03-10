@@ -71,11 +71,11 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=html
 ```
 
-**Resultats actuels** (121 tests, 1 skipped) :
+**Resultats actuels** (135 tests, 1 skipped) :
 - 📊 **Modules couverts** :
   - `tools/copilot_client.py` : **98%** (SDK Python natif)
   - `retrievers/reranker.py` : **84%**
-  - `retrievers/artifacts.py` : **82%** (download + upload HF Hub)
+  - `retrievers/artifacts.py` : **82%** (download + upload HF Hub + dir artifacts LanceDB)
   - `retrievers/lancedb_rag.py` : 16 tests (vector, hybrid, FTS, build-from-FAISS)
   - `retrievers/neo4j_setup.py` : **41%** (extracteurs regex + guard clauses)
 - ⚠️ **Modules a ameliorer** :

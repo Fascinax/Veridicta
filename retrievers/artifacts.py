@@ -41,6 +41,14 @@ _OPTIONAL_ARTIFACTS = {
     "data/index/bm25s_index/vocab.index.json",
 }
 
+# Map: local relative directory path -> HF Hub path prefix (for directory artifacts)
+_DIR_ARTIFACTS: dict[str, str] = {
+    "data/index/lancedb": "index/lancedb",
+}
+
+# Optional directory artifacts — download failure is non-fatal
+_OPTIONAL_DIR_ARTIFACTS: set[str] = {"data/index/lancedb"}
+
 
 def _hf_token() -> str | None:
     """Resolve HuggingFace token from env or Streamlit secrets."""
@@ -54,6 +62,43 @@ def _hf_token() -> str | None:
         return None
 
 
+def _dir_artifact_present(root: Path, local_dir: str) -> bool:
+    """Return True if a directory artifact exists and contains at least one file."""
+    p = root / local_dir
+    return p.is_dir() and any(f for f in p.rglob("*") if f.is_file())
+
+
+def _download_dir_artifact(
+    root: Path,
+    local_dir: str,
+    remote_prefix: str,
+    token: str | None,
+) -> None:
+    """Download all files under *remote_prefix* in the HF Hub repo into *local_dir*."""
+    from huggingface_hub import hf_hub_download, list_repo_files  # noqa: PLC0415
+
+    remote_files = [
+        f
+        for f in list_repo_files(HF_REPO_ID, repo_type=HF_REPO_TYPE, token=token)
+        if f.startswith(remote_prefix + "/")
+    ]
+    if not remote_files:
+        raise FileNotFoundError(
+            f"No files found under '{remote_prefix}' in {HF_REPO_ID}. "
+            "Upload the LanceDB index first: python -m retrievers.artifacts --upload"
+        )
+    for remote_file in remote_files:
+        logger.info("Downloading %s from HuggingFace Hub ...", remote_file)
+        hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=remote_file,
+            repo_type=HF_REPO_TYPE,
+            token=token,
+            local_dir=str(root / "data"),
+        )
+    logger.info("Dir artifact '%s' ready (%d files).", local_dir, len(remote_files))
+
+
 def ensure_artifacts(root: str | Path = ".") -> None:
     """Download any missing artifacts from HuggingFace Hub.
 
@@ -61,12 +106,17 @@ def ensure_artifacts(root: str | Path = ".") -> None:
     Raises RuntimeError if a download fails and the file is still missing.
     """
     root = Path(root)
-    missing = [
+    missing_files = [
         (local, remote)
         for local, remote in _ARTIFACTS.items()
         if not (root / local).exists()
     ]
-    if not missing:
+    missing_dirs = [
+        (local_dir, remote_prefix)
+        for local_dir, remote_prefix in _DIR_ARTIFACTS.items()
+        if not _dir_artifact_present(root, local_dir)
+    ]
+    if not missing_files and not missing_dirs:
         logger.info("All artifacts present — skipping download.")
         return
 
@@ -85,7 +135,7 @@ def ensure_artifacts(root: str | Path = ".") -> None:
             HF_REPO_ID,
         )
 
-    for local, remote in missing:
+    for local, remote in missing_files:
         dest = root / local
         dest.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Downloading %s from HuggingFace Hub ...", remote)
@@ -110,6 +160,22 @@ def ensure_artifacts(root: str | Path = ".") -> None:
             raise RuntimeError(
                 f"Failed to download artifact '{remote}' from {HF_REPO_ID}: {exc}"
             ) from exc
+
+    for local_dir, remote_prefix in missing_dirs:
+        try:
+            _download_dir_artifact(root, local_dir, remote_prefix, token)
+        except Exception as exc:
+            if local_dir in _OPTIONAL_DIR_ARTIFACTS:
+                logger.warning(
+                    "Optional dir artifact missing on HF Hub: %s (%s). "
+                    "Build locally: python -m retrievers.lancedb_rag --build-from-faiss",
+                    remote_prefix,
+                    exc,
+                )
+            else:
+                raise RuntimeError(
+                    f"Failed to download dir artifact '{remote_prefix}' from {HF_REPO_ID}: {exc}"
+                ) from exc
 
     logger.info("All artifacts ready.")
 
@@ -150,6 +216,21 @@ def upload_artifacts(root: str | Path = ".", token: str | None = None) -> None:
         api.upload_file(
             path_or_fileobj=str(src),
             path_in_repo=remote,
+            repo_id=HF_REPO_ID,
+            repo_type=HF_REPO_TYPE,
+            token=token,
+        )
+        logger.info("  Done.")
+
+    for local_dir, remote_prefix in _DIR_ARTIFACTS.items():
+        src_dir = root / local_dir
+        if not src_dir.is_dir() or not any(src_dir.rglob("*")):
+            logger.warning("Skipping missing dir artifact: %s", src_dir)
+            continue
+        logger.info("Uploading dir %s -> %s ...", src_dir, remote_prefix)
+        api.upload_folder(
+            folder_path=str(src_dir),
+            path_in_repo=remote_prefix,
             repo_id=HF_REPO_ID,
             repo_type=HF_REPO_TYPE,
             token=token,

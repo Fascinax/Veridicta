@@ -16,6 +16,9 @@ from retrievers.artifacts import (
     upload_artifacts,
     _ARTIFACTS,
     _OPTIONAL_ARTIFACTS,
+    _DIR_ARTIFACTS,
+    _OPTIONAL_DIR_ARTIFACTS,
+    _dir_artifact_present,
 )
 
 
@@ -61,11 +64,16 @@ class TestEnsureArtifacts:
     def test_ensure_artifacts_skips_if_all_present(
         self, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        # Create all required artifacts
+        # Create all required file artifacts
         for local_path in _ARTIFACTS.keys():
             artifact = tmp_path / local_path
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text("fake")
+        # Create dir artifacts (lancedb) so missing_dirs is also empty
+        for local_dir in _DIR_ARTIFACTS:
+            d = tmp_path / local_dir / "chunks.lance"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "_latest.manifest").write_text("fake")
 
         ensure_artifacts(root=tmp_path)
 
@@ -257,3 +265,151 @@ class TestUploadArtifacts:
 
         with pytest.raises(RuntimeError, match="Cannot create HF repo"):
             upload_artifacts(root=tmp_path)
+
+
+class TestDirArtifacts:
+    """Test directory artifact handling for LanceDB."""
+
+    def test_dir_artifacts_dict_structure(self) -> None:
+        assert "data/index/lancedb" in _DIR_ARTIFACTS
+        assert _DIR_ARTIFACTS["data/index/lancedb"] == "index/lancedb"
+
+    def test_optional_dir_artifacts_subset_of_dir_artifacts(self) -> None:
+        for optional in _OPTIONAL_DIR_ARTIFACTS:
+            assert optional in _DIR_ARTIFACTS
+
+    def test_dir_artifact_present_false_when_missing(self, tmp_path: Path) -> None:
+        assert not _dir_artifact_present(tmp_path, "data/index/lancedb")
+
+    def test_dir_artifact_present_false_when_empty_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "data/index/lancedb").mkdir(parents=True)
+        assert not _dir_artifact_present(tmp_path, "data/index/lancedb")
+
+    def test_dir_artifact_present_true_when_has_files(self, tmp_path: Path) -> None:
+        d = tmp_path / "data/index/lancedb/chunks.lance"
+        d.mkdir(parents=True)
+        (d / "_latest.manifest").write_text("x")
+        assert _dir_artifact_present(tmp_path, "data/index/lancedb")
+
+    @patch("retrievers.artifacts._hf_token", return_value="test_token")
+    @patch("retrievers.artifacts._download_dir_artifact", side_effect=RuntimeError("not found"))
+    @patch("retrievers.artifacts.logger")
+    def test_ensure_artifacts_warns_on_optional_dir_failure(
+        self,
+        mock_logger: MagicMock,
+        mock_download_dir: MagicMock,
+        mock_token: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        # Create all file artifacts so the file loop is skipped
+        for local_path in _ARTIFACTS.keys():
+            artifact = tmp_path / local_path
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text("fake")
+        # lancedb dir absent → triggers optional dir download → fails → warn, not raise
+        ensure_artifacts(root=tmp_path)
+
+        warning_calls = [
+            c for c in mock_logger.warning.call_args_list
+            if "Optional dir artifact" in str(c)
+        ]
+        assert len(warning_calls) > 0
+
+    @patch("huggingface_hub.HfApi")
+    def test_upload_artifacts_calls_upload_folder_for_lancedb(
+        self,
+        mock_hf_api_class: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_api = MagicMock()
+        mock_hf_api_class.return_value = mock_api
+        mock_api.create_repo.return_value = None
+        mock_api.upload_file.return_value = None
+        mock_api.upload_folder.return_value = None
+        # Create file artifacts
+        for local_path in _ARTIFACTS.keys():
+            f = tmp_path / local_path
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("x")
+        # Create lancedb dir with at least one file
+        lancedb_dir = tmp_path / "data/index/lancedb/chunks.lance"
+        lancedb_dir.mkdir(parents=True)
+        (lancedb_dir / "_latest.manifest").write_text("x")
+
+        upload_artifacts(root=tmp_path, token="test_token")
+
+        mock_api.upload_folder.assert_called_once()
+
+
+class TestDirArtifacts:
+    """Test directory artifact handling for LanceDB."""
+
+    def test_dir_artifacts_dict_structure(self) -> None:
+        assert "data/index/lancedb" in _DIR_ARTIFACTS
+        assert _DIR_ARTIFACTS["data/index/lancedb"] == "index/lancedb"
+
+    def test_optional_dir_artifacts_subset_of_dir_artifacts(self) -> None:
+        for optional in _OPTIONAL_DIR_ARTIFACTS:
+            assert optional in _DIR_ARTIFACTS
+
+    def test_dir_artifact_present_false_when_missing(self, tmp_path: Path) -> None:
+        assert not _dir_artifact_present(tmp_path, "data/index/lancedb")
+
+    def test_dir_artifact_present_false_when_empty_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "data/index/lancedb").mkdir(parents=True)
+        assert not _dir_artifact_present(tmp_path, "data/index/lancedb")
+
+    def test_dir_artifact_present_true_when_has_files(self, tmp_path: Path) -> None:
+        d = tmp_path / "data/index/lancedb/chunks.lance"
+        d.mkdir(parents=True)
+        (d / "_latest.manifest").write_text("x")
+        assert _dir_artifact_present(tmp_path, "data/index/lancedb")
+
+    @patch("retrievers.artifacts._hf_token", return_value="test_token")
+    @patch("retrievers.artifacts._download_dir_artifact", side_effect=RuntimeError("not found"))
+    @patch("retrievers.artifacts.logger")
+    def test_ensure_artifacts_warns_on_optional_dir_failure(
+        self,
+        mock_logger: MagicMock,
+        mock_download_dir: MagicMock,
+        mock_token: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        # Create all file artifacts so the file download loop is skipped
+        for local_path in _ARTIFACTS.keys():
+            artifact = tmp_path / local_path
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text("fake")
+        # lancedb dir absent → triggers optional dir download → fails → warn, not raise
+        ensure_artifacts(root=tmp_path)
+
+        warning_calls = [
+            c for c in mock_logger.warning.call_args_list
+            if "Optional dir artifact" in str(c)
+        ]
+        assert len(warning_calls) > 0
+
+    @patch("huggingface_hub.HfApi")
+    def test_upload_artifacts_calls_upload_folder_for_lancedb(
+        self,
+        mock_hf_api_class: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_api = MagicMock()
+        mock_hf_api_class.return_value = mock_api
+        mock_api.create_repo.return_value = None
+        mock_api.upload_file.return_value = None
+        mock_api.upload_folder.return_value = None
+        # Create file artifacts
+        for local_path in _ARTIFACTS.keys():
+            f = tmp_path / local_path
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("x")
+        # Create lancedb dir with at least one file
+        lancedb_dir = tmp_path / "data/index/lancedb/chunks.lance"
+        lancedb_dir.mkdir(parents=True)
+        (lancedb_dir / "_latest.manifest").write_text("x")
+
+        upload_artifacts(root=tmp_path, token="test_token")
+
+        mock_api.upload_folder.assert_called_once()

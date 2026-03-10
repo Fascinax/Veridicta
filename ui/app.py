@@ -67,6 +67,7 @@ FAISS_OPTION = "FAISS"
 HYBRID_OPTION = "Hybrid (BM25+FAISS)"
 GRAPH_OPTION = "Graph (Neo4j)"
 HYBRID_GRAPH_OPTION = "Hybrid+Graph (BM25+FAISS+Neo4j)"
+LANCEDB_OPTION = "LanceDB (vector+FTS)"
 
 try:
     from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
@@ -85,6 +86,12 @@ try:
     _HYBRID_GRAPH_AVAILABLE = _HYBRID_AVAILABLE and _GRAPH_AVAILABLE
 except ImportError:
     _HYBRID_GRAPH_AVAILABLE = False
+
+try:
+    from retrievers.lancedb_rag import load_lancedb_index, lancedb_hybrid_retrieve
+    _LANCEDB_AVAILABLE = True
+except ImportError:
+    _LANCEDB_AVAILABLE = False
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
@@ -212,6 +219,16 @@ def _get_neo4j():
     except Exception:
         return None
 
+@st.cache_resource(show_spinner="Chargement de l'index LanceDB…")
+def _get_lancedb():
+    """Return loaded LanceDB table, or None if unavailable."""
+    if not _LANCEDB_AVAILABLE:
+        return None
+    try:
+        return load_lancedb_index()
+    except Exception:
+        return None
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
@@ -223,6 +240,8 @@ def _available_retriever_options() -> list[str]:
         options.append(GRAPH_OPTION)
     if _HYBRID_GRAPH_AVAILABLE:
         options.append(HYBRID_GRAPH_OPTION)
+    if _LANCEDB_AVAILABLE:
+        options.append(LANCEDB_OPTION)
     return options
 
 
@@ -233,10 +252,14 @@ def _get_retriever_status_label(retriever: str) -> str:
         return "Graph Neo4j"
     if retriever == HYBRID_GRAPH_OPTION:
         return "Hybrid+Graph"
+    if retriever == LANCEDB_OPTION:
+        return "LanceDB vector+FTS"
     return FAISS_OPTION
 
 
-def _get_retriever_mode(use_graph: bool, use_hybrid: bool) -> str:
+def _get_retriever_mode(use_lancedb: bool, use_graph: bool, use_hybrid: bool) -> str:
+    if use_lancedb:
+        return "lancedb"
     if use_graph and use_hybrid:
         return "hybrid_graph"
     if use_graph:
@@ -261,17 +284,23 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
         show_sources = st.toggle("Afficher les sources", value=True)
 
         # Retriever selector
-        if _HYBRID_AVAILABLE or _GRAPH_AVAILABLE:
+        if _HYBRID_AVAILABLE or _GRAPH_AVAILABLE or _LANCEDB_AVAILABLE:
             retriever_options = _available_retriever_options()
-            default_retriever_idx = retriever_options.index(HYBRID_OPTION) if HYBRID_OPTION in retriever_options else 0
+            if LANCEDB_OPTION in retriever_options:
+                default_retriever_idx = retriever_options.index(LANCEDB_OPTION)
+            elif HYBRID_OPTION in retriever_options:
+                default_retriever_idx = retriever_options.index(HYBRID_OPTION)
+            else:
+                default_retriever_idx = 0
             retriever = st.radio(
                 "Moteur de recherche",
                 retriever_options,
                 index=default_retriever_idx,
                 help=(
+                    "LanceDB : vector dense + FTS Tantivy, RRF fusion (meilleur KW recall).\n"
                     "Hybrid : sémantique (FAISS) + lexical (BM25) via RRF.\n"
                     "Graph : FAISS + expansion via liens loi↔décision (Neo4j).\n"
-                    "Hybrid+Graph : BM25+FAISS seeds + expansion Neo4j (meilleur des deux)."
+                    "Hybrid+Graph : BM25+FAISS seeds + expansion Neo4j."
                 ),
             )
         else:
@@ -302,10 +331,13 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
 
         st.divider()
         retriever_label = _get_retriever_status_label(retriever)
+        turn_count = len([m for m in st.session_state.get("messages", []) if m["role"] == "user"])
+        if turn_count:
+            st.caption(f"💬 {turn_count} échange(s) en cours")
         st.markdown(
             "<div style='font-size:0.75rem;color:#6b7694'>"
             "Corpus : législation · jurisprudence · JOM<br>"
-            "Index : 26 517 chunks MiniLM-L12<br>"
+            "Index : 49&nbsp;263 chunks · Solon-1024d<br>"
             f"Backend : {backend} ({model})<br>"
             f"Retriever : {retriever_label}"
             "</div>",
@@ -365,6 +397,18 @@ def _render_sources(chunks: list[dict]) -> None:
         snippet = html.escape(c.get("text", "")[:220].replace("\n", " "))
         if len(c.get("text", "")) > 220:
             snippet += "…"
+        full_text = html.escape(c.get("text", ""))
+        word_count = len(c.get("text", "").split())
+        full_text_details = ""
+        if len(c.get("text", "")) > 220:
+            full_text_details = (
+                f'<details style="margin-top:6px">'
+                f'<summary style="cursor:pointer;color:#8b9dc0;font-size:0.75rem;'
+                f'user-select:none;">Voir texte complet ({word_count} mots)</summary>'
+                f'<div style="margin-top:6px;white-space:pre-wrap;font-size:0.8rem;'
+                f'color:#a0a9c0;line-height:1.5">{full_text}</div>'
+                f'</details>'
+            )
         traceability_meta = _chunk_meta_labels(c)
 
         type_label_map = {
@@ -386,6 +430,7 @@ def _render_sources(chunks: list[dict]) -> None:
               <div class="source-meta">{type_label} · {date}</div>
               <div class="source-meta">{traceability_meta}</div>
               <div>{snippet}</div>
+              {full_text_details}
             </div>""",
             unsafe_allow_html=True,
         )
@@ -463,7 +508,11 @@ def _retrieve_chunks(
     neo4j_mgr,
     use_hybrid: bool,
     bm25,
+    use_lancedb: bool = False,
+    lancedb_table=None,
 ) -> list[dict]:
+    if use_lancedb and lancedb_table is not None:
+        return lancedb_hybrid_retrieve(prompt, lancedb_table, embedder, k)
     if use_graph and use_hybrid and neo4j_mgr is not None and bm25 is not None:
         return hybrid_graph_retrieve(
             prompt,
@@ -613,7 +662,7 @@ def _render_history(show_sources: bool) -> None:
             _render_history_message(msg, show_sources)
 
 
-def _resolve_runtime_dependencies(use_hybrid: bool, use_graph: bool):
+def _resolve_runtime_dependencies(use_hybrid: bool, use_graph: bool, use_lancedb: bool = False):
     bm25 = _get_bm25() if use_hybrid else None
     if use_hybrid and bm25 is None:
         st.warning(
@@ -631,7 +680,19 @@ def _resolve_runtime_dependencies(use_hybrid: bool, use_graph: bool):
         )
         use_graph = False
 
-    return use_hybrid, use_graph, bm25, neo4j_mgr
+    lancedb_table = _get_lancedb() if use_lancedb else None
+    if use_lancedb and lancedb_table is None:
+        st.warning(
+            "LanceDB indisponible — passage en mode Hybrid. "
+            "Lance `python -m retrievers.lancedb_rag --build-from-faiss`."
+        )
+        use_lancedb = False
+        if _HYBRID_AVAILABLE and not use_hybrid:
+            bm25 = _get_bm25()
+            if bm25 is not None:
+                use_hybrid = True
+
+    return use_hybrid, use_graph, use_lancedb, bm25, neo4j_mgr, lancedb_table
 
 
 def _handle_prompt(
@@ -647,6 +708,8 @@ def _handle_prompt(
     neo4j_mgr,
     use_hybrid: bool,
     bm25,
+    use_lancedb: bool = False,
+    lancedb_table=None,
 ) -> None:
     conversation_history = _collect_conversation_history(st.session_state.messages)
 
@@ -668,6 +731,8 @@ def _handle_prompt(
                 neo4j_mgr,
                 use_hybrid,
                 bm25,
+                use_lancedb,
+                lancedb_table,
             )
 
         response_placeholder = st.empty()
@@ -695,7 +760,7 @@ def _handle_prompt(
         elapsed = time.perf_counter() - t0
         used_chunks = generation_trace.get("used_chunks", [])
         omitted_chunks = generation_trace.get("omitted_chunks", [])
-        retriever_label = _get_retriever_mode(use_graph, use_hybrid)
+        retriever_label = _get_retriever_mode(use_lancedb, use_graph, use_hybrid)
         audit_log_path = append_audit_event(
             trace_id=trace_id,
             query=prompt,
@@ -752,6 +817,7 @@ def main() -> None:
     k, show_sources, backend, model, retriever = _render_sidebar()
     use_hybrid = retriever in (HYBRID_OPTION, HYBRID_GRAPH_OPTION)
     use_graph = retriever in (GRAPH_OPTION, HYBRID_GRAPH_OPTION)
+    use_lancedb = _LANCEDB_AVAILABLE and retriever == LANCEDB_OPTION
 
     # Load index & embedder (cached after first load)
     try:
@@ -765,7 +831,7 @@ def main() -> None:
         )
         ready = False
 
-    use_hybrid, use_graph, bm25, neo4j_mgr = _resolve_runtime_dependencies(use_hybrid, use_graph)
+    use_hybrid, use_graph, use_lancedb, bm25, neo4j_mgr, lancedb_table = _resolve_runtime_dependencies(use_hybrid, use_graph, use_lancedb)
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -797,6 +863,8 @@ def main() -> None:
             neo4j_mgr,
             use_hybrid,
             bm25,
+            use_lancedb,
+            lancedb_table,
         )
 
 
