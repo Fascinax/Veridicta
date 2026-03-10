@@ -56,6 +56,19 @@
 
 ---
 
+## Phases v2.x — UX et architecture avancee
+
+> Objectif : consolider l'architecture Hybrid+Graph, enrichir l'experience utilisateur et preparer le deploiement public.
+
+| Phase | Livrables cles | Priorite | Effort | Resultat |
+| --- | --- | --- | --- | --- |
+| **22. Hybrid+Graph** | `hybrid_graph_rag.py` : BM25+FAISS seed (seed_k=max(20,k×4)) → normalisation [0.5,1.0] → expansion 4 types d'aretes Neo4j → pool merge → ranking final ; boost CITE_ARTICLE=0.15, CITE=0.12, MODIFIE=0.10, VOIR_ARTICLE=0.08 ; integration UI + eval pipeline | **Done (2026-03-10)** | Moyen | **KW=0.552 / F1=0.338 / CitFaith=1.000 / Lat=23.4s** (copilot/gpt-4.1, 100Q, k=5) — **meilleur Word F1 de toute la table** ; normalisation hybride resolue le probleme de mismatch d'echelle RRF vs boosts graphe |
+| **23. Conversation multi-tour** | `traceability.py` : `MAX_HISTORY_TURNS=3`, `MAX_ASSISTANT_SNIPPET_CHARS=600`, `_format_history_block()` ; `baseline_rag.py` : `answer(conversation_history=)`, `SYSTEM_PROMPT_V3` mis a jour avec directive de suivi ; `app.py` : `_collect_conversation_history()`, `_build_retrieval_query()` (reedition de requete courte ≤100 chars) | **Done (2026-03-10)** | Moyen | Contexte des 3 derniers echanges injecte dans le prompt ; les questions courtes de suivi ("Et pour un CDI ?") sont enrichies avec la question precedente pour le retrieval ; commit `089b965` |
+| **24. Visualisations architecture** | `eval/plot_architectures.py` : 6 graphiques comparatifs en theme sombre — barres groupees (5 metriques × 6 configs), radar spider, qualite×latence bubble, scatter par question, barre progression vs FAISS baseline, heatmap KW par topic×architecture | **Done (2026-03-10)** | Faible | 6 charts PNG generes dans `eval/charts/architectures/` ; palette de 6 couleurs differenciee par architecture ; theme `#0f1117` coherent avec l'UI |
+| **25. Streaming des reponses** | `copilot-bridge.mjs` : mode `--stream` via `assistant.message_delta` SDK event → JSONL `{"partial":"..."}` ligne par ligne ; `tools/copilot_client.py` : `chat_stream()` generator via `Popen` ; `baseline_rag.py` : `_answer_cerebras_stream()`, `_answer_copilot_stream()`, `answer_stream()` retournant `(token_gen, trace_dict)` ; `ui/app.py` : affichage token-by-token avec curseur `▌` | **Done (2026-03-10)** | Faible | Cerebras : streaming natif via `stream=True` OpenAI-compatible ; Copilot : streaming via event `assistant.message_delta` du SDK `@github/copilot-sdk` v0.1.32 ; curseur `▌` disparait a fin de generation ; trace et audit preserves |
+
+---
+
 ## Hors scope (v2+)
 
 | Feature | Raison du report |
