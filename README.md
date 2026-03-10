@@ -10,67 +10,59 @@ Assistant conversationnel juridique specialise en **droit du travail monegasque*
 
 ## 2. Resultats
 
-Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`, corpus 26 517 chunks, Solon embeddings 1024d).
+Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`, corpus v3 49 263 chunks, Solon embeddings 1024d).
 
-### Comparaison des configurations
+### Comparaison des architectures
 
-| Configuration | KW Recall | Word F1 | Cit.Faith | Context Cov | Latence | Δ Ctx vs k=5 |
-| --- | --- | --- | --- | --- | --- | --- |
-| Hybrid k=5 (baseline) | 0.342 | 0.250 | **1.000** | 0.541 | **7.61 s** | — |
-| **+ Reranker (k=5)** | 0.357 | **0.269** | 0.980 | 0.518 | 9.00 s | -4.1% |
-| + k=8 | **0.371** | 0.269 | 0.990 | 0.532 | 9.68 s | -1.5% |
-| + k=10 | 0.367 | 0.265 | 0.970 | **0.545** | 9.65 s | +0.8% |
+| Architecture | KW Recall | Word F1 | Cit.Faith | Context Cov | Latence |
+| --- | --- | --- | --- | --- | --- |
+| Hybrid k=5 (baseline) | 0.363 | 0.267 | 0.990 | 0.517 | 8.98 s |
+| Hybrid k=8 (Solon+bm25s+v3) | **0.608** | 0.318 | **1.000** | **0.733** | 15.10 s |
+| Graph RAG (LightRAG) | 0.481 | 0.256 | 0.470 | 0.449 | 7.70 s |
+| **Hybrid+Graph k=5** | 0.552 | **0.338** | **1.000** | 0.742 | 23.4 s |
 
 **Configuration optimale production** :
 
-- **Retrieval**: Hybrid bm25s (BM25 0.7 / FAISS 0.3, RRF k=60, stemming francais PyStemmer)
-- **k-value**: **8 chunks** (meilleur compromis KW recall / latence)
+- **Retrieval**: Hybrid+Graph (`hybrid_graph_rag.py`) — BM25+FAISS seed → expansion Neo4j 4 types d'aretes
+- **k-value**: 5 chunks (meilleur F1 et CitFaith)
 - **Prompt**: Version 3 (structure bullet points + citation explicite numeros de loi)
-- **Reranker**: **Optionnel** (ameliore F1 +0.4% mais baisse KW recall -1.4%)
 - **Embeddings**: `OrdalieTech/Solon-embeddings-large-0.1` (1024d, francais legal)
+- **Knowledge Graph**: Neo4j 5 — 5 959 Doc / 49 263 Chunk / 5 255 Article / 4 types d'aretes
+- **Conversation**: Multi-tour (3 derniers echanges, reedition de requete courte)
+- **Streaming**: Token-by-token via SDK `@github/copilot-sdk` v0.1.32
 
-**Analyse des resultats** :
+**KPIs v1.x atteints** :
 
-- 🎯 **k=8 optimal** : meilleur keyword recall (0.371) avec latence acceptable (9.68s)
-- 📈 **k=10** : +0.8% context coverage mais baisse du recall et latence identique
-- 🔍 **Reranker** : ameliore la qualite (F1) mais reduit la diversite (KW recall), utile pour queries tres specifiques
-- ⚡ **Baseline k=5** : le plus rapide (7.61s) avec citation faithfulness parfaite, bon pour prototypage
-
-
-
-- **Retrieval**: Hybrid bm25s (BM25 0.7 / FAISS 0.3, RRF k=60, stemming francais PyStemmer)
-- **k-value**: 8 chunks
-- **Prompt**: Version 3 (structure bullet points + citation explicite numeros de loi)
-- **Reranker**: Desactive (degradation KW recall -1.4%)
-- **Embeddings**: `OrdalieTech/Solon-embeddings-large-0.1` (1024d, francais legal)
-
-**Metriques cles** :
-
-- **Citation Faithfulness 100%** (k=5 baseline) : zero hallucination de sources
-- **Keyword Recall 37.1%** (k=8) : meilleure couverture des termes juridiques
-- **Context Coverage 54.5%** (k=10) : plus de la moitie des mots-cles gold recuperes
-- **Latence 7.6-9.7s** : acceptable pour usage professionnel (recherche + generation)
+| Indicateur | Cible | Resultat | Statut |
+| --- | --- | --- | --- |
+| Keyword Recall | >= 55 % | **60.8 %** | Atteint |
+| Word F1 | >= 28 % | **31.8 %** | Atteint |
+| Citation Faithfulness | >= 99 % | **100 %** | Atteint |
+| Context Coverage | >= 60 % | **73.3 %** | Atteint |
+| Cout variable | 0 EUR | **0 EUR** | Atteint |
 
 ## 3. Stack technologique
 
 | Composant | Choix |
 | --------- | ----- |
-| **Langage** | Python 3.11 + Node.js 18+ (bridge Copilot) |
+| **Langage** | Python 3.11 |
 | **Embeddings** | `OrdalieTech/Solon-embeddings-large-0.1` (local, dim 1024) |
 | **Retrieval** | **Hybrid bm25s+FAISS** (RRF, k=60) -- FAISS 0.3 / BM25 0.7, stemming francais PyStemmer |
-| **LLM** | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) |
+| **LLM** | Cerebras Cloud (`gpt-oss-120b`) ou GitHub Copilot (`gpt-4.1`) via `github-copilot-sdk` Python natif |
 | **Artifacts** | HF Hub dataset `Fascinax/veridicta-index` -- FAISS+bm25s+chunks auto-telecharges (180 MB) |
 | **UI** | Streamlit (chat, sources cliquables, toggle FAISS/Hybrid) |
+| **Knowledge Graph** | Neo4j 5 (Docker local) — 5 959 Doc / 49 263 Chunk / 5 255 Article / 4 types d'aretes |
 | **Evaluation** | 100 questions gold standard, KW recall, F1, citation faithfulness, context coverage, hallucination risk + Ragas (`Faithfulness`, `ContextPrecision`) |
 | **Scraping** | API Elasticsearch LegiMonaco + Playwright Journal de Monaco |
 | **Deploy** | Streamlit Cloud (artifacts depuis HF Hub au boot, ~2 min) |
 
-### Hors scope MVP (v2)
+### Hors scope (v2+)
 
-- Neo4j / LightRAG (Knowledge Graph)
-- QLoRA fine-tuning
-- Guardrails (LlamaGuard)
-- Monitoring (Prometheus, wandb)
+- QLoRA fine-tuning (pas de GPU, prompt engineering d'abord)
+- Guardrails (LlamaGuard) — prompt-level guardrails suffisent
+- Monitoring (Prometheus, wandb) — logs fichier suffisent
+- Deploiement cloud full-prod (k8s)
+- Droit francais / droit civil monegasque
 
 ## 3.1. Tests & Qualite
 
@@ -79,17 +71,15 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=html
 ```
 
-**Resultats actuels** :
-- ✅ **5/5 tests passent** (test_embedding_config, test_query_expansion, test_reranker)
-- 📊 **Couverture globale : 25%**
-- 🎯 **Modules bien testes** :
-  - `retrievers/reranker.py` : 84%
-  - `test_*.py` : 100%
+**Resultats actuels** (105 tests, 1 skipped) :
+- 📊 **Modules couverts** :
+  - `tools/copilot_client.py` : **98%** (SDK Python natif)
+  - `retrievers/reranker.py` : **84%**
+  - `retrievers/artifacts.py` : **82%** (download + upload HF Hub)
+  - `retrievers/neo4j_setup.py` : **41%** (extracteurs regex + guard clauses)
 - ⚠️ **Modules a ameliorer** :
-  - `tools/copilot_client.py` : 0% (nouveau code)
-  - `retrievers/artifacts.py` : 0%
-  - `retrievers/neo4j_setup.py` : 0%
   - `eval/evaluate.py` : 26%
+  - `retrievers/neo4j_setup.py` : fonctions batch Neo4j non testees (besoin instance)
 
 **Rapport HTML detaille** : `htmlcov/index.html` (genere apres execution des tests)
 
@@ -159,22 +149,39 @@ Veridicta/
 +-- data_ingest/
 |   +-- legimonaco_scraper.py   # API Elasticsearch LegiMonaco (legislation + jurisprudence)
 |   +-- monaco_scraper.py       # Scraper Playwright du Journal de Monaco
+|   +-- monaco_integrator.py    # Deduplication et integration des corpus
 |   +-- data_processor.py       # Chunking 1800 chars + overlap -> JSONL
 +-- retrievers/
 |   +-- baseline_rag.py         # FAISS retrieval + LLM generation (Cerebras ou Copilot)
 |   +-- hybrid_rag.py           # bm25s + FAISS + RRF fusion (stemming francais PyStemmer)
+|   +-- graph_rag.py            # FAISS seed + expansion aretes Neo4j (CITE, CITE_ARTICLE, ...)
+|   +-- hybrid_graph_rag.py     # Hybrid+Graph : BM25+FAISS seed → Neo4j expansion → ranking
+|   +-- neo4j_setup.py          # Construction graphe Neo4j (Doc, Chunk, Article, aretes)
+|   +-- reranker.py             # FlashRank MultiBERT (ONNX, CPU-only, multilingue)
+|   +-- traceability.py         # Audit trail JSONL + trace prompt-window + multi-tour
 |   +-- artifacts.py            # Download/upload auto FAISS+bm25s+chunks depuis HF Hub
-|   +-- neo4j_setup.py          # [v2] Graphe de connaissances
++-- tools/
+|   +-- copilot_client.py       # Client GitHub Copilot via github-copilot-sdk (Python natif)
 +-- eval/
-|   +-- evaluate.py             # Metriques multi-modeles (--retriever faiss|hybrid)
-|   +-- test_questions.json     # 50 questions gold standard droit du travail MCO
+|   +-- evaluate.py             # Metriques multi-modeles (--retriever faiss|hybrid|graph|hybrid_graph)
+|   +-- ragas_support.py        # Metriques Ragas (Faithfulness, ContextPrecision)
+|   +-- plot_architectures.py   # 6 graphiques comparatifs des architectures
+|   +-- test_questions.json     # 100 questions gold standard droit du travail MCO
 |   +-- results/                # Resultats eval par backend/retriever
+|   +-- charts/                 # Graphiques de comparaison generes
++-- tests/
+|   +-- test_copilot_client.py  # 27 tests SDK client (98% coverage)
+|   +-- test_artifacts.py       # 16 tests download/upload HF Hub (82% coverage)
+|   +-- test_neo4j_setup.py     # 56 tests extracteurs + Neo4jManager (41% coverage)
+|   +-- test_reranker.py        # Tests FlashRank reranker (84% coverage)
+|   +-- test_performance.py     # Benchmarks pytest-benchmark
 +-- ui/
-|   +-- app.py                  # Interface Streamlit (chat + sources + toggle retriever)
+|   +-- app.py                  # Interface Streamlit (chat, sources, streaming, multi-tour)
 +-- data/
 |   +-- raw/                    # JSONL bruts (legislation, jurisprudence, journal_monaco)
 |   +-- processed/              # chunks.jsonl (corpus normalise)
 |   +-- index/                  # veridicta.faiss + bm25s_index/
+|   +-- audit/                  # queries.jsonl (audit trail)
 +-- .streamlit/
 |   +-- config.toml             # Config Streamlit Cloud
 +-- requirements.txt
@@ -189,16 +196,16 @@ Veridicta/
 | **LegiMonaco** | 149 textes + 762 decisions | Legislation et jurisprudence du travail (API ES) | `legimonaco_scraper.py` |
 | **Journal de Monaco** | 1 956 articles | Lois, ordonnances, arretes (bulletin officiel, 1947-2026) | `monaco_scraper.py` |
 
-**Corpus total** : 2 867 documents -> **26 517 chunks** indexes (FAISS + bm25s).
+**Corpus total v3** : 5 959 documents -> **49 263 chunks** indexes (FAISS + bm25s).
 
 ## 6. Pipeline
 
 ```text
 LegiMonaco (API ES)  ---+
-                        +-> data_processor.py -> chunks.jsonl -> MiniLM -> FAISS + bm25s
-Journal de Monaco ------+                                                       |
-                                                                                v
-              User query -> embed -> [FAISS top-k + bm25s top-k] -> RRF -> LLM -> Reponse + [Source N]
+                        +-> data_processor.py -> chunks.jsonl -> Solon (1024d) -> FAISS + bm25s
+Journal de Monaco ------+                                                             |
+                                                                                      v
+              User query -> embed -> [FAISS top-k + bm25s top-k] -> RRF -> Neo4j expansion -> LLM -> Reponse + [Source N]
 ```
 
 ## 7. Installation
@@ -223,7 +230,6 @@ echo "HF_API_TOKEN=votre_token_hf" >> .env   # pour les artifacts HF Hub
 echo "VERIDICTA_QUERY_EMBED_CACHE_SIZE=512" >> .env   # optionnel: cache LRU des embeddings de requetes
 
 # Backend Cerebras (optionnel)
-npm install
 echo "CEREBRAS_API_KEY=votre_cle_ici" >> .env
 ```
 
@@ -250,7 +256,10 @@ python -m retrievers.baseline_rag --build
 ## 9. Evaluation
 
 ```bash
-# Hybrid retriever (recommande)
+# Hybrid+Graph retriever (recommande)
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid_graph --prompt-version 3 --workers 4
+
+# Hybrid seul
 python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --prompt-version 3 --workers 4
 
 # FAISS seul
@@ -324,22 +333,24 @@ LLM_BACKEND = "copilot"
 
 ![Solon vs baseline](eval/charts/solon-comparison/solon_vs_baseline.png)
 
-## 13. Mise a jour 2026-03-09
+## 13. Changelog
 
-- Migration du sparse retrieval de `rank-bm25` vers **`bm25s` + `PyStemmer`**
-- Stockage natif de l'index sparse dans `data/index/bm25s_index/`
-- Retuning RRF apres migration : **FAISS 0.3 / BM25 0.7** (`eval.tune_rrf`)
-- Rebuild local possible depuis `chunks_map.jsonl` si les artifacts bm25s sont absents
-- Nouveau comparatif 4-way : baseline hybrid vs prompt v2 vs bm25s vs bm25s + prompt v2
+### 2026-03-10
 
-| Config | KW Recall | Word F1 | Cit. Faith | Ctx Cov | Latence |
-| --- | --- | --- | --- | --- | --- |
-| Hybrid baseline | 0.363 | **0.267** | 0.990 | 0.517 | **8.98 s** |
-| Hybrid + Prompt v2 | 0.423 | 0.178 | 0.980 | 0.482 | 9.67 s |
-| Hybrid + bm25s | 0.361 | 0.265 | **1.000** | **0.529** | 9.96 s |
-| **Hybrid + bm25s + Prompt v2** | **0.431** | 0.180 | 0.960 | 0.485 | 9.51 s |
+- **Hybrid+Graph RAG** (`hybrid_graph_rag.py`) : BM25+FAISS seed → Neo4j expansion → meilleur F1=0.338
+- **LightRAG schema enrichi** : `:Article` nodes + 4 types d'aretes (CITE_ARTICLE, MODIFIE, VOIR_ARTICLE, CONTENU_DANS)
+- **Corpus v3** : 49 263 chunks (+85% vs v2) via full crawl LegiMonaco
+- **Conversation multi-tour** : 3 derniers echanges + reedition de requete courte
+- **Streaming** : token-by-token via `github-copilot-sdk` Python natif (remplacement du bridge Node.js)
+- **Visualisations architecture** : 6 graphiques comparatifs dans `eval/charts/architectures/`
+- **Tests** : couverture copilot_client 98%, artifacts 82%, neo4j_setup 41% (105 tests)
 
-Les graphes correspondants sont generes dans `eval/charts/bm25s-prompt/` via `python -m eval.plot_bm25s_prompt_comparison`.
+### 2026-03-09
+
+- Migration sparse retrieval `rank-bm25` → **`bm25s` + `PyStemmer`**
+- Prompt engineering v2/v3, FlashRank reranker ONNX, query expansion
+- Solon embeddings (1024d), validation KPI finale, traceability + audit JSONL
+- Ragas (Faithfulness + ContextPrecision) integre dans le pipeline eval
 
 ## 14. Licence
 
@@ -347,4 +358,4 @@ MIT pour le code. Les donnees publiques monegasques sont librement reutilisables
 
 ---
 
-Derniere mise a jour : 2026-03-09
+Derniere mise a jour : 2026-03-10
