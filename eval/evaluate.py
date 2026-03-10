@@ -68,6 +68,16 @@ except ImportError:
     _HYBRID_GRAPH_AVAILABLE = False
 
 try:
+    from retrievers.lancedb_rag import (
+        load_lancedb_index,
+        lancedb_retrieve,
+        lancedb_hybrid_retrieve,
+    )
+    _LANCEDB_AVAILABLE = True
+except ImportError:
+    _LANCEDB_AVAILABLE = False
+
+try:
     from retrievers.reranker import rerank
     _RERANKER_AVAILABLE = True
 except ImportError:
@@ -319,6 +329,7 @@ def run_eval(
     config: EvalRunConfig,
     bm25=None,
     neo4j_mgr=None,
+    lancedb_table=None,
 ) -> list[EvalResult]:
     retrieved_all = _retrieve_contexts(
         questions,
@@ -328,6 +339,7 @@ def run_eval(
         k=config.k,
         bm25=bm25,
         neo4j_mgr=neo4j_mgr,
+        lancedb_table=lancedb_table,
         use_reranker=config.use_reranker,
         reranker_candidate_multiplier=config.reranker_candidate_multiplier,
         reranker_min_score=config.reranker_min_score,
@@ -350,7 +362,9 @@ def run_eval(
     return results
 
 
-def _retriever_label(bm25=None, neo4j_mgr=None) -> str:
+def _retriever_label(bm25=None, neo4j_mgr=None, lancedb_table=None) -> str:
+    if lancedb_table is not None:
+        return "LanceDB (vector+FTS+RRF)"
     if neo4j_mgr is not None and bm25 is not None:
         return "Hybrid+Graph (BM25+FAISS+Neo4j)"
     if neo4j_mgr is not None:
@@ -369,6 +383,7 @@ def _retrieve_contexts(
     k: int,
     bm25=None,
     neo4j_mgr=None,
+    lancedb_table=None,
     use_reranker: bool = False,
     reranker_candidate_multiplier: int = 4,
     reranker_min_score: float | None = None,
@@ -377,14 +392,24 @@ def _retrieve_contexts(
     query_expansion: bool = False,
 ) -> list[list[dict]]:
     question_count = len(questions)
-    retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr)
+    retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr, lancedb_table=lancedb_table)
     print(f"  Retrieving context for {question_count} questions  [{retriever_label}] ...", flush=True)
 
     retrieval_k = k * max(1, reranker_candidate_multiplier) if use_reranker else k
     def _retrieval_query(raw_question: str) -> str:
         return _expand_query_legal_fr(raw_question) if query_expansion else raw_question
 
-    if neo4j_mgr is not None and bm25 is not None:
+    if lancedb_table is not None:
+        retrieved_all = [
+            lancedb_hybrid_retrieve(
+                _retrieval_query(question.question),
+                lancedb_table,
+                embedder,
+                k=retrieval_k,
+            )
+            for question in questions
+        ]
+    elif neo4j_mgr is not None and bm25 is not None:
         retrieved_all = [
             hybrid_graph_retrieve(
                 _retrieval_query(question.question),
@@ -846,10 +871,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--retriever",
         default="faiss",
-        choices=["faiss", "hybrid", "graph", "hybrid_graph"],
+        choices=["faiss", "hybrid", "graph", "hybrid_graph", "lancedb"],
         help=(
             "Retriever to use: faiss (dense only), hybrid (BM25+FAISS), "
-            "graph (FAISS+Neo4j), or hybrid_graph (BM25+FAISS+Neo4j)  (default: faiss)"
+            "graph (FAISS+Neo4j), hybrid_graph (BM25+FAISS+Neo4j), "
+            "or lancedb (LanceDB vector+FTS+RRF)  (default: faiss)"
         ),
     )
     parser.add_argument(
@@ -917,7 +943,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tuple[object | None, object | None]:
+def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tuple[object | None, object | None, object | None]:
     bm25 = None
     if args.retriever in ("hybrid", "hybrid_graph"):
         if not _HYBRID_AVAILABLE:
@@ -942,7 +968,18 @@ def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tupl
         stats = neo4j_mgr.stats()
         print(f"  Graph connected: {stats}")
 
-    return bm25, neo4j_mgr
+    lancedb_table = None
+    if args.retriever == "lancedb":
+        if not _LANCEDB_AVAILABLE:
+            sys.exit("ERROR: lancedb retriever unavailable. Run: pip install lancedb")
+        print("Loading LanceDB table ...")
+        try:
+            lancedb_table = load_lancedb_index()
+        except FileNotFoundError as exc:
+            sys.exit(f"ERROR: {exc}")
+        print(f"  LanceDB: {lancedb_table.count_rows()} rows")
+
+    return bm25, neo4j_mgr, lancedb_table
 
 
 def _build_cli_retriever_label(args: argparse.Namespace) -> str:
@@ -1021,6 +1058,7 @@ def _run_all_models_evaluation(
     out_dir: Path,
     bm25,
     neo4j_mgr,
+    lancedb_table,
     ragas_evaluator: RagasEvaluator | None,
     retriever_label: str,
     active_backend: str,
@@ -1039,6 +1077,7 @@ def _run_all_models_evaluation(
             _build_run_config(args, ragas_evaluator=ragas_evaluator, model=model_name),
             bm25=bm25,
             neo4j_mgr=neo4j_mgr,
+            lancedb_table=lancedb_table,
         )
         print_report(results)
         save_results(results, out_dir / model_name.replace("/", "_"))
@@ -1055,6 +1094,7 @@ def _run_single_evaluation(
     out_dir: Path,
     bm25,
     neo4j_mgr,
+    lancedb_table,
     ragas_evaluator: RagasEvaluator | None,
     retriever_label: str,
     active_backend: str,
@@ -1074,6 +1114,7 @@ def _run_single_evaluation(
         _build_run_config(args, ragas_evaluator=ragas_evaluator, stream_out=stream_path),
         bm25=bm25,
         neo4j_mgr=neo4j_mgr,
+        lancedb_table=lancedb_table,
     )
     print_report(results)
     print(f"Results saved -> {stream_path}")
@@ -1106,13 +1147,20 @@ def main() -> None:
     questions = load_questions(questions_path)
     print(f"  {len(questions)} questions loaded from {questions_path}")
 
-    print("Loading FAISS index ...")
-    try:
-        index, chunks = load_index(index_dir)
-    except (FileNotFoundError, RuntimeError) as exc:
-        sys.exit(f"ERROR: {exc}")
-    print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
-    bm25, neo4j_mgr = _load_optional_retrievers(args, index_dir)
+    bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(args, index_dir)
+
+    if args.retriever == "lancedb":
+        from retrievers.lancedb_rag import _table_to_chunks
+        index = None
+        chunks = _table_to_chunks(lancedb_table)
+        print(f"  LanceDB chunks exported: {len(chunks)}")
+    else:
+        print("Loading FAISS index ...")
+        try:
+            index, chunks = load_index(index_dir)
+        except (FileNotFoundError, RuntimeError) as exc:
+            sys.exit(f"ERROR: {exc}")
+        print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
 
     print("Loading embedder ...")
     embedder = _load_embedder()
@@ -1135,6 +1183,7 @@ def main() -> None:
             out_dir,
             bm25,
             neo4j_mgr,
+            lancedb_table,
             ragas_evaluator,
             retriever_label,
             active_backend,
@@ -1150,6 +1199,7 @@ def main() -> None:
         out_dir,
         bm25,
         neo4j_mgr,
+        lancedb_table,
         ragas_evaluator,
         retriever_label,
         active_backend,

@@ -9,6 +9,7 @@ sentence-transformers>=2.2.2
 faiss-cpu>=1.7.4
 bm25s>=0.3.2
 PyStemmer>=2.2.0.3
+lancedb>=0.29.0
 huggingface_hub>=0.23.0
 flashrank>=0.2.10
 

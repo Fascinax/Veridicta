@@ -71,11 +71,12 @@ Resultats finaux valides (100 questions gold standard, backend Copilot `gpt-4.1`
 pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=html
 ```
 
-**Resultats actuels** (105 tests, 1 skipped) :
+**Resultats actuels** (121 tests, 1 skipped) :
 - 📊 **Modules couverts** :
   - `tools/copilot_client.py` : **98%** (SDK Python natif)
   - `retrievers/reranker.py` : **84%**
   - `retrievers/artifacts.py` : **82%** (download + upload HF Hub)
+  - `retrievers/lancedb_rag.py` : 16 tests (vector, hybrid, FTS, build-from-FAISS)
   - `retrievers/neo4j_setup.py` : **41%** (extracteurs regex + guard clauses)
 - ⚠️ **Modules a ameliorer** :
   - `eval/evaluate.py` : 26%
@@ -156,6 +157,7 @@ Veridicta/
 |   +-- hybrid_rag.py           # bm25s + FAISS + RRF fusion (stemming francais PyStemmer)
 |   +-- graph_rag.py            # FAISS seed + expansion aretes Neo4j (CITE, CITE_ARTICLE, ...)
 |   +-- hybrid_graph_rag.py     # Hybrid+Graph : BM25+FAISS seed → Neo4j expansion → ranking
+|   +-- lancedb_rag.py          # LanceDB vector+FTS+RRF (store unifie, remplace FAISS+bm25s)
 |   +-- neo4j_setup.py          # Construction graphe Neo4j (Doc, Chunk, Article, aretes)
 |   +-- reranker.py             # FlashRank MultiBERT (ONNX, CPU-only, multilingue)
 |   +-- traceability.py         # Audit trail JSONL + trace prompt-window + multi-tour
@@ -163,7 +165,7 @@ Veridicta/
 +-- tools/
 |   +-- copilot_client.py       # Client GitHub Copilot via github-copilot-sdk (Python natif)
 +-- eval/
-|   +-- evaluate.py             # Metriques multi-modeles (--retriever faiss|hybrid|graph|hybrid_graph)
+|   +-- evaluate.py             # Metriques multi-modeles (--retriever faiss|hybrid|graph|hybrid_graph|lancedb)
 |   +-- ragas_support.py        # Metriques Ragas (Faithfulness, ContextPrecision)
 |   +-- plot_architectures.py   # 6 graphiques comparatifs des architectures
 |   +-- test_questions.json     # 100 questions gold standard droit du travail MCO
@@ -173,6 +175,7 @@ Veridicta/
 |   +-- test_copilot_client.py  # 27 tests SDK client (98% coverage)
 |   +-- test_artifacts.py       # 16 tests download/upload HF Hub (82% coverage)
 |   +-- test_neo4j_setup.py     # 56 tests extracteurs + Neo4jManager (41% coverage)
+|   +-- test_lancedb_rag.py     # 16 tests LanceDB retriever (vector, hybrid, RRF, build)
 |   +-- test_reranker.py        # Tests FlashRank reranker (84% coverage)
 |   +-- test_performance.py     # Benchmarks pytest-benchmark
 +-- ui/
@@ -180,7 +183,7 @@ Veridicta/
 +-- data/
 |   +-- raw/                    # JSONL bruts (legislation, jurisprudence, journal_monaco)
 |   +-- processed/              # chunks.jsonl (corpus normalise)
-|   +-- index/                  # veridicta.faiss + bm25s_index/
+|   +-- index/                  # veridicta.faiss + bm25s_index/ + lancedb/
 |   +-- audit/                  # queries.jsonl (audit trail)
 +-- .streamlit/
 |   +-- config.toml             # Config Streamlit Cloud

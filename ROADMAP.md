@@ -66,6 +66,7 @@
 | **23. Conversation multi-tour** | `traceability.py` : `MAX_HISTORY_TURNS=3`, `MAX_ASSISTANT_SNIPPET_CHARS=600`, `_format_history_block()` ; `baseline_rag.py` : `answer(conversation_history=)`, `SYSTEM_PROMPT_V3` mis a jour avec directive de suivi ; `app.py` : `_collect_conversation_history()`, `_build_retrieval_query()` (reedition de requete courte ≤100 chars) | **Done (2026-03-10)** | Moyen | Contexte des 3 derniers echanges injecte dans le prompt ; les questions courtes de suivi ("Et pour un CDI ?") sont enrichies avec la question precedente pour le retrieval ; commit `089b965` |
 | **24. Visualisations architecture** | `eval/plot_architectures.py` : 6 graphiques comparatifs en theme sombre — barres groupees (5 metriques × 6 configs), radar spider, qualite×latence bubble, scatter par question, barre progression vs FAISS baseline, heatmap KW par topic×architecture | **Done (2026-03-10)** | Faible | 6 charts PNG generes dans `eval/charts/architectures/` ; palette de 6 couleurs differenciee par architecture ; theme `#0f1117` coherent avec l'UI |
 | **25. Streaming des reponses** | `copilot-bridge.mjs` : mode `--stream` via `assistant.message_delta` SDK event → JSONL `{"partial":"..."}` ligne par ligne ; `tools/copilot_client.py` : `chat_stream()` generator via `Popen` ; `baseline_rag.py` : `_answer_cerebras_stream()`, `_answer_copilot_stream()`, `answer_stream()` retournant `(token_gen, trace_dict)` ; `ui/app.py` : affichage token-by-token avec curseur `▌` | **Done (2026-03-10)** | Faible | Cerebras : streaming natif via `stream=True` OpenAI-compatible ; Copilot : streaming via event `assistant.message_delta` du SDK `@github/copilot-sdk` v0.1.32 ; curseur `▌` disparait a fin de generation ; trace et audit preserves |
+| **26. LanceDB retriever** | `retrievers/lancedb_rag.py` : store vectoriel+FTS unifie remplacant FAISS+bm25s+chunks_map ; `build_lancedb_from_faiss()` migration sans re-embedding ; deux recherches separees (vector + FTS Tantivy) + RRF fusion propre ; integration `evaluate.py --retriever lancedb` ; 16 tests `test_lancedb_rag.py` | **Done (2026-03-10)** | Moyen | **KW=0.657 CtxCov=1.000** (retrieval-only, 100Q, k=5) — +8% KW vs hybrid FAISS+bm25s ; un seul fichier `.lance` remplace 3 artefacts ; SDK Python v0.29.2 stable |
 
 ---
 
@@ -73,7 +74,7 @@
 
 | Feature | Raison du report |
 | --- | --- |
-| LanceDB | Refactoring massif (3 retrievers) pour un gain negligeable a notre echelle ; SDK Python encore en beta (v0.30.0-beta) ; FAISS + jsonl suffisent |
+| LanceDB | ~~Refactoring massif~~ → **Done (phase 26)** : `lancedb_rag.py` avec migration FAISS sans re-embedding ; SDK v0.29.2 stable |
 | LiteLLM | ROI trop faible : ~20 lignes de confort sur Cerebras, bridge `@github/copilot-sdk` reste necessaire de toute facon ; aucun gain perf/qualite mesurable |
 | QLoRA fine-tuning | Pas de GPU, prompt engineering + RAG d'abord |
 | LlamaGuard / Aporia guardrails | Prompt-level guardrails suffisent pour demo |
