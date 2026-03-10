@@ -1,15 +1,19 @@
 ﻿"""LegiMonaco scraper -- collects Monegasque labour law corpus via Elasticsearch API.
 
-Two document types are collected:
-- legislation: laws, ordinances, decrees with full body text
-- jurisprudence: Tribunal du Travail decisions with full body text
+Four document types are collected:
+- legislation   : lois avec corps de texte complet
+- jurisprudence : decisions Tribunal du Travail
+- regulation    : arretes ministeriels, ordonnances, decisions sur le droit social
+- jurisprudence_courts : decisions Cour d'appel, Cour de revision, Tribunal supreme
 
-Both are written to JSONL files under data/raw/.
+All files are written to JSONL under data/raw/.
 
 Usage:
-    python -m data_ingest.legimonaco_scraper
+    python -m data_ingest.legimonaco_scraper               # all (législation + jurisprudence + regulation + cross-court)
     python -m data_ingest.legimonaco_scraper --legislation-only
     python -m data_ingest.legimonaco_scraper --jurisprudence-only
+    python -m data_ingest.legimonaco_scraper --regulations-only
+    python -m data_ingest.legimonaco_scraper --cross-court-only
     python -m data_ingest.legimonaco_scraper --out data/raw
 """
 
@@ -41,12 +45,23 @@ LABOUR_THEMATICS: list[str] = [
     "social_protection_sociale",
     "social_conditions_de_travail",
     "social_contrats_de_travail",
+    "social_rupture_du_contrat_de_travail",
     "social_securite_au_travail",
     "social_relations_collectives_du_travail",
     "social_chomage_et_reclassement",
     "social_travailleurs_etrangers",
     "social_apprentissage_et_formation_professionnelle",
     "social_contentieux",
+    "social_social_general",
+]
+
+# Courts other than Tribunal du Travail that frequently rule on labour matters.
+CROSS_COURT_JURISDICTIONS: list[str] = [
+    "cour-appel",
+    "cour-revision",
+    "tribunal-supreme",
+    "tribunal-premiere-instance",
+    "cour-superieure-arbitrage",
 ]
 
 LEGISLATION_FIELDS: list[str] = [
@@ -58,6 +73,13 @@ JURISPRUDENCE_FIELDS: list[str] = [
     "path", "title", "date", "jurisdiction",
     "caseAbstract", "enBody", "parties", "idbd",
     "thematic", "interest", "lnks", "number",
+]
+
+# Regulation docs share most fields with legislation; additionally carry tncNature,
+# regulationAbrogated instead of legislationAbrogated.
+REGULATION_FIELDS: list[str] = [
+    "path", "title", "date", "enBody", "enTitle",
+    "thematic", "tncNature", "number", "regulationAbrogated", "lnks",
 ]
 
 
@@ -147,6 +169,28 @@ def _legislation_record(src: dict) -> CorpusRecord:
     )
 
 
+def _regulation_record(src: dict) -> CorpusRecord:
+    """Build a CorpusRecord for a regulation doc (arrete, ordonnance, decision)."""
+    raw_path = src.get("path", "")
+    path = _clean_path(raw_path)
+    return CorpusRecord(
+        id=_doc_id(path),
+        titre=src.get("title", ""),
+        text=src.get("enBody", ""),
+        date=src.get("date", ""),
+        source=BASE_URL + path if path else "",
+        type="regulation",
+        metadata={
+            "nature": src.get("tncNature", ""),
+            "numero": src.get("number", ""),
+            "abrogee": src.get("regulationAbrogated", ""),
+            "thematic": src.get("thematic", []),
+            "article_titles": src.get("enTitle", []),
+            "liens": src.get("lnks", []),
+        },
+    )
+
+
 def _jurisprudence_record(src: dict) -> CorpusRecord:
     path = src.get("path", "")
     return CorpusRecord(
@@ -203,6 +247,46 @@ def collect_jurisprudence(output_path: Path) -> int:
     return len(records)
 
 
+def collect_regulations(output_path: Path) -> int:
+    """Fetch arretes ministeriels, ordonnances, and other regulation texts
+    with labour thematics.  These include conventions collectives extensions,
+    salaire minimum orders, working-condition decrees, etc.
+    """
+    payload = {
+        "_source": REGULATION_FIELDS,
+        "query": {"bool": {"must": [
+            {"terms": {"type": ["regulation"]}},
+            {"terms": {"thematic": LABOUR_THEMATICS}},
+        ]}},
+        "sort": [{"date": "desc"}],
+    }
+    records = [_regulation_record(src) for src in _paginate_es(payload)]
+    # Drop records with empty body (some regulation stubs have no enBody)
+    records = [r for r in records if r.text.strip()]
+    _write_jsonl(records, output_path)
+    return len(records)
+
+
+def collect_cross_court_jurisprudence(output_path: Path) -> int:
+    """Fetch decisions from Cour d'appel, Cour de revision, Tribunal supreme, etc.
+    restricted to labour-related thematics.  Tribunal du Travail is excluded
+    because it is already covered by collect_jurisprudence().
+    """
+    payload = {
+        "_source": JURISPRUDENCE_FIELDS,
+        "query": {"bool": {"must": [
+            {"terms": {"type": ["case"]}},
+            {"terms": {"jurisdiction": CROSS_COURT_JURISDICTIONS}},
+            {"terms": {"thematic": LABOUR_THEMATICS}},
+        ]}},
+        "sort": [{"date": "desc"}],
+    }
+    records = [_jurisprudence_record(src) for src in _paginate_es(payload)]
+    records = [r for r in records if r.text.strip()]
+    _write_jsonl(records, output_path)
+    return len(records)
+
+
 # ---------------------------------------------------------------------------
 # Output helper
 # ---------------------------------------------------------------------------
@@ -223,22 +307,16 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Collect Monegasque labour law corpus from LegiMonaco."
     )
     group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--legislation-only",
-        action="store_true",
-        help="Only collect legislation.",
-    )
-    group.add_argument(
-        "--jurisprudence-only",
-        action="store_true",
-        help="Only collect jurisprudence.",
-    )
-    parser.add_argument(
-        "--out",
-        default="data/raw",
-        metavar="DIR",
-        help="Output directory (default: data/raw).",
-    )
+    group.add_argument("--legislation-only", action="store_true",
+                       help="Only collect legislation.")
+    group.add_argument("--jurisprudence-only", action="store_true",
+                       help="Only collect Tribunal du Travail jurisprudence.")
+    group.add_argument("--regulations-only", action="store_true",
+                       help="Only collect regulations (arretes, ordonnances).")
+    group.add_argument("--cross-court-only", action="store_true",
+                       help="Only collect cross-court jurisprudence.")
+    parser.add_argument("--out", default="data/raw", metavar="DIR",
+                        help="Output directory (default: data/raw).")
     return parser
 
 
@@ -246,13 +324,26 @@ def main() -> None:
     args = _build_parser().parse_args()
     out_dir = Path(args.out)
 
-    if not args.jurisprudence_only:
+    run_all = not any([
+        args.jurisprudence_only, args.legislation_only,
+        args.regulations_only, args.cross_court_only,
+    ])
+
+    if run_all or args.legislation_only:
         n = collect_legislation(out_dir / "legislation.jsonl")
         logger.info("Legislation: %d records collected.", n)
 
-    if not args.legislation_only:
+    if run_all or args.jurisprudence_only:
         n = collect_jurisprudence(out_dir / "jurisprudence.jsonl")
-        logger.info("Jurisprudence: %d records collected.", n)
+        logger.info("Jurisprudence (Tribunal du Travail): %d records collected.", n)
+
+    if run_all or args.regulations_only:
+        n = collect_regulations(out_dir / "regulations.jsonl")
+        logger.info("Regulations: %d records collected.", n)
+
+    if run_all or args.cross_court_only:
+        n = collect_cross_court_jurisprudence(out_dir / "jurisprudence_courts.jsonl")
+        logger.info("Cross-court jurisprudence: %d records collected.", n)
 
 
 if __name__ == "__main__":

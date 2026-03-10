@@ -39,7 +39,17 @@ HARD_MAX_CHUNK = 2200  # absolute ceiling — splits on spaces when no structure
 METADATA_SCHEMA_VERSION = "2026-03-traceability-v1"
 PROCESSING_STARTED_AT = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
-RAW_FILES = ["legislation.jsonl", "jurisprudence.jsonl", "journal_monaco.jsonl"]
+# Core LegiMonaco files (scraped by legimonaco_scraper.py)
+RAW_FILES = [
+    "legislation.jsonl",
+    "jurisprudence.jsonl",
+    "regulations.jsonl",               # arretes, ordonnances, conventions collectives (v2)
+    "jurisprudence_courts.jsonl",      # Cour d'appel, Cour de revision, etc. (v2)
+    "journal_monaco.jsonl",
+    # Pre-scraped legimonaco subdirectory (older corpus, 0 ID overlap with main)
+    "legimonaco/jurisprudence_travail.jsonl",
+    "legimonaco/legislation_travail.jsonl",
+]
 OUTPUT_FILE = "chunks.jsonl"
 
 
@@ -208,14 +218,29 @@ def _document_to_chunks(doc: dict, source_filename: str) -> list[ChunkRecord]:
 
 
 def _iter_raw_documents(raw_dir: Path) -> Iterator[tuple[str, dict]]:
+    """Yield (source_filename, doc) for every raw document, deduplicating by id."""
+    seen_ids: set[str] = set()
+    total_dupes = 0
     for filename in RAW_FILES:
         path = raw_dir / filename
         if not path.exists():
             logger.warning("Raw file not found, skipping: %s", path)
             continue
+        file_dupes = 0
         with jsonlines.open(path) as reader:
             for doc in reader:
+                doc_id = doc.get("id", "")
+                if doc_id and doc_id in seen_ids:
+                    file_dupes += 1
+                    total_dupes += 1
+                    continue
+                if doc_id:
+                    seen_ids.add(doc_id)
                 yield filename, doc
+        if file_dupes:
+            logger.info("Deduplication: skipped %d duplicate IDs from %s", file_dupes, filename)
+    if total_dupes:
+        logger.info("Total duplicates skipped across all files: %d", total_dupes)
 
 
 def process(raw_dir: Path, output_path: Path) -> int:
