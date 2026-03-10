@@ -51,6 +51,8 @@
 | **17. Ragas (eval complementaire)** | `Faithfulness` + `ContextPrecision` Ragas integres dans `evaluate.py` via `--ragas` ; juge Cerebras OpenAI-compatible ; adaptation des few-shots au francais via `prompt.adapt(target_language="french", llm=llm)` | **Done (2026-03-09)** | Moyen | Metriques LLM-as-judge actives a la demande ; resultats JSONL enrichis avec `ragas_faithfulness` et `ragas_context_precision` |
 | **18. Solon embeddings** | Remplacer `paraphrase-multilingual-MiniLM-L12-v2` (384d) par `OrdalieTech/Solon-embeddings-large-0.1` (1024d) ; re-encoder tous les chunks ; reconstruire index FAISS + BM25 | **Done (2026-03-09)** | Eleve | Rebuild T4 GPU fp16 (~5 min via Colab) ; artifacts upload HF Hub — **Eval solon-after hybrid 20Q : KW=0.285 F1=0.250 CitFaith=1.000 CtxCov=0.531** (+1.4% CtxCov vs MiniLM) ; fix artifacts.py local_dir bug |
 | **19. Validation KPI finale** | Eval 100Q combinee Solon + bm25s (stemming FR) + Prompt v3 (exhaustive+concise) + k=8 ; re-upload HF Hub avec index Solon + bm25s_index natif | **Done (2026-03-09)** | Moyen | **KW=60.8 % ✅ / F1=31.8 % ✅ / CitFaith=100 % ✅ / CtxCov=73.3 % ✅** — toutes les cibles v1.x atteintes ; artefacts `Fascinax/veridicta-index` mis a jour (FAISS 1024d + bm25s_index) |
+| **20. v3 Corpus — Legimonaco complet** | `legimonaco_scraper.py` full crawl (legislation + jurisprudence travail) ; `monaco_integrator.py` deduplication ; 49 263 chunks v3 (+85% vs v2) ; FAISS + bm25s rebuildes ; upload HF Hub | **Done (2026-03-10)** | Moyen | KW=0.570 F1=0.336 CitFaith=0.990 CtxCov=0.742 Lat=22.4s (copilot/gpt-4.1, 100Q, hybrid k=5) |
+| **21. LightRAG — schema enrichi** | `neo4j_setup.py` : `:Article` nodes + 4 types d'aretes : CITE_ARTICLE (jurisprudence→article specifique), MODIFIE (chaines d'amendement), VOIR_ARTICLE (renvois inter-legislation), CONTENU_DANS (article→loi) ; `graph_rag.py` : 4 boosts (CITE_ARTICLE=0.15, CITE=0.12, MODIFIE=0.10, VOIR_ARTICLE=0.08) | **Done (2026-03-10)** | Eleve | Graph v3 : 5 959 Doc / 49 263 Chunk / **5 255 Article** / 64 093 CITE / **49 644 CITE_ARTICLE** / 637 MODIFIE / **556 VOIR_ARTICLE** / 5 255 CONTENU_DANS ; Eval cerebras/llama3.1-8b 100Q graph : KW=0.481 F1=0.256 CitFaith=0.470 CtxCov=0.449 Lat=7.70s |
 
 ---
 
@@ -60,7 +62,6 @@
 | --- | --- |
 | LanceDB | Refactoring massif (3 retrievers) pour un gain negligeable a notre echelle ; SDK Python encore en beta (v0.30.0-beta) ; FAISS + jsonl suffisent |
 | LiteLLM | ROI trop faible : ~20 lignes de confort sur Cerebras, bridge `@github/copilot-sdk` reste necessaire de toute facon ; aucun gain perf/qualite mesurable |
-| LightRAG / PathRAG | Approche communautes de graphe, plus complexe que CITE simple |
 | QLoRA fine-tuning | Pas de GPU, prompt engineering + RAG d'abord |
 | LlamaGuard / Aporia guardrails | Prompt-level guardrails suffisent pour demo |
 | Prometheus / Grafana / wandb | Logs fichier suffisent, pas de prod |

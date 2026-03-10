@@ -1,14 +1,17 @@
-"""Graph-augmented retriever for Veridicta.
+"""Graph-augmented retriever for Veridicta — LightRAG enriched traversal.
 
 Retrieval strategy
 ------------------
 1. FAISS seed search -- retrieve top ``seed_k`` candidate chunks (dense).
-2. Graph expansion -- for each seed doc, traverse Neo4j CITE edges:
-       jurisprudence doc  --CITE-->  legislation doc  (outgoing)
-       legislation doc  <--CITE--   jurisprudence doc (incoming)
+2. Graph expansion -- for each seed doc, traverse all relation types in Neo4j:
+       CITE          : jurisprudence  ──►  legislation (doc-level)
+       CITE_ARTICLE  : jurisprudence  ──►  :Article ──► parent :Doc
+       MODIFIE       : legislation    ──►  older version (bidirectional)
+       VOIR_ARTICLE  : legislation    ──►  :Article in another doc
 3. Pool merge -- seed chunks + neighbor chunks, deduplicated.
 4. Scoring -- seed chunks keep their FAISS cosine score; neighbor chunks
-   receive a citation-count boost so frequently-cited legislation rises.
+   receive a relation-type boost so frequently-cited or directly-referenced
+   legislation rises.
 5. Return top-k from the ranked pool.
 
 Falls back gracefully to pure FAISS when Neo4j is unavailable.
@@ -35,6 +38,12 @@ logger = logging.getLogger(__name__)
 # CITE-edge boost applied to each neighbor doc chunk.
 # Additive: a chunk whose parent doc is cited by 2 seed docs gets +2*CITE_BOOST.
 CITE_BOOST = 0.12
+# Article-level citations are more precise → slightly higher boost.
+CITE_ARTICLE_BOOST = 0.15
+# Amendment relations (MODIFIE) bring relevant legislative context.
+MODIFIE_BOOST = 0.10
+# "Voir l'article" cross-references in legislation.
+VOIR_ARTICLE_BOOST = 0.08
 # How many candidate seed chunks to retrieve before graph expansion.
 SEED_MULTIPLIER = 4   # seed_k = max(20, k * SEED_MULTIPLIER)
 
@@ -122,20 +131,25 @@ def graph_retrieve(
     # ── 2. Graph expansion ────────────────────────────────────────────────
     seed_doc_ids = list({c["doc_id"] for c in seed_chunks if c.get("doc_id")})
 
-    # Outgoing: jurisprudence seeds cite which legislation?
-    cited_ids = neo4j_manager.get_cited_doc_ids(seed_doc_ids)
-    # Incoming: legislation seeds are cited by which jurisprudence?
-    citing_ids = neo4j_manager.get_citing_doc_ids(seed_doc_ids)
+    # Collect neighbor doc_ids and per-doc boost totals from all edge types
+    boost_score: dict[str, float] = {}
 
-    neighbor_doc_ids = set(cited_ids) | set(citing_ids)
-    neighbor_doc_ids -= set(seed_doc_ids)   # don't double-count seeds
+    def _add_boost(doc_ids: list[str], boost: float) -> None:
+        for doc_id in doc_ids:
+            if doc_id not in seed_doc_ids:
+                boost_score[doc_id] = boost_score.get(doc_id, 0.0) + boost
 
-    # Count how many seed docs point to / from each neighbor (citation weight)
-    citation_weight: dict[str, int] = {}
-    for doc_id in cited_ids:
-        citation_weight[doc_id] = citation_weight.get(doc_id, 0) + 1
-    for doc_id in citing_ids:
-        citation_weight[doc_id] = citation_weight.get(doc_id, 0) + 1
+    # CITE (outgoing + incoming, doc-level)
+    _add_boost(neo4j_manager.get_cited_doc_ids(seed_doc_ids), CITE_BOOST)
+    _add_boost(neo4j_manager.get_citing_doc_ids(seed_doc_ids), CITE_BOOST)
+    # CITE_ARTICLE (artikel-level: jurisprudence cites a specific article → parent doc)
+    _add_boost(neo4j_manager.get_cited_article_doc_ids(seed_doc_ids), CITE_ARTICLE_BOOST)
+    # MODIFIE (bidirectional: amending/amended legislation)
+    _add_boost(neo4j_manager.get_modifie_doc_ids(seed_doc_ids), MODIFIE_BOOST)
+    # VOIR_ARTICLE (legislation cross-refs → target doc)
+    _add_boost(neo4j_manager.get_voir_article_doc_ids(seed_doc_ids), VOIR_ARTICLE_BOOST)
+
+    neighbor_doc_ids = set(boost_score.keys())
 
     # ── 3. Pool merge ─────────────────────────────────────────────────────
     # Index the local chunk list by doc_id for fast lookup
@@ -153,15 +167,15 @@ def graph_retrieve(
             pool.append(c)
 
     for doc_id in neighbor_doc_ids:
-        boost = CITE_BOOST * citation_weight.get(doc_id, 1)
+        total_boost = boost_score.get(doc_id, CITE_BOOST)
         for c in chunks_by_doc.get(doc_id, []):
             cid = c.get("chunk_id", "")
             if cid not in seen_chunk_ids:
                 seen_chunk_ids.add(cid)
                 neighbor = dict(c)
-                neighbor["score"] = neighbor.get("score", 0.5) + boost
+                neighbor["score"] = neighbor.get("score", 0.5) + total_boost
                 neighbor["retrieval_method"] = "graph_neighbor"
-                neighbor["graph_cite_boost"] = round(boost, 6)
+                neighbor["graph_cite_boost"] = round(total_boost, 6)
                 pool.append(neighbor)
 
     # ── 4. Rank & return ──────────────────────────────────────────────────
