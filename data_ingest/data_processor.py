@@ -45,6 +45,8 @@ RAW_FILES = [
     "jurisprudence.jsonl",
     "regulations.jsonl",               # arretes, ordonnances, conventions collectives (v2)
     "jurisprudence_courts.jsonl",      # Cour d'appel, Cour de revision, etc. (v2)
+    "traites_internationaux.jsonl",    # conventions OIT + accords bilateraux (v3)
+    "projets_loi.jsonl",               # projets de loi droit social (v3)
     "journal_monaco.jsonl",
     # Pre-scraped legimonaco subdirectory (older corpus, 0 ID overlap with main)
     "legimonaco/jurisprudence_travail.jsonl",

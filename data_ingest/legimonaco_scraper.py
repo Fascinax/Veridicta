@@ -1,19 +1,23 @@
 ﻿"""LegiMonaco scraper -- collects Monegasque labour law corpus via Elasticsearch API.
 
-Four document types are collected:
-- legislation   : lois avec corps de texte complet
-- jurisprudence : decisions Tribunal du Travail
-- regulation    : arretes ministeriels, ordonnances, decisions sur le droit social
+Six document types are collected:
+- legislation        : lois avec corps de texte complet
+- jurisprudence      : decisions Tribunal du Travail
+- regulation         : arretes ministeriels, ordonnances, decisions sur le droit social
 - jurisprudence_courts : decisions Cour d'appel, Cour de revision, Tribunal supreme
+- traite_international : conventions et accords internationaux (type=tai) liés au droit social
+- projet_loi         : projets de loi (type=legislativeWork) liés au droit social
 
 All files are written to JSONL under data/raw/.
 
 Usage:
-    python -m data_ingest.legimonaco_scraper               # all (législation + jurisprudence + regulation + cross-court)
+    python -m data_ingest.legimonaco_scraper               # all types
     python -m data_ingest.legimonaco_scraper --legislation-only
     python -m data_ingest.legimonaco_scraper --jurisprudence-only
     python -m data_ingest.legimonaco_scraper --regulations-only
     python -m data_ingest.legimonaco_scraper --cross-court-only
+    python -m data_ingest.legimonaco_scraper --traites-only
+    python -m data_ingest.legimonaco_scraper --projets-loi-only
     python -m data_ingest.legimonaco_scraper --out data/raw
 """
 
@@ -80,6 +84,18 @@ JURISPRUDENCE_FIELDS: list[str] = [
 REGULATION_FIELDS: list[str] = [
     "path", "title", "date", "enBody", "enTitle",
     "thematic", "tncNature", "number", "regulationAbrogated", "lnks",
+]
+
+# Traités internationaux (type=tai) — accords bilatéraux / conventions OIT ratifiées
+TAI_FIELDS: list[str] = [
+    "path", "title", "date", "enBody", "enTitle",
+    "thematic", "tncNature", "number", "lnks",
+]
+
+# Projets de loi (type=legislativeWork)
+LEGISLATIVE_WORK_FIELDS: list[str] = [
+    "path", "title", "date", "enBody", "enTitle",
+    "thematic", "tncNature", "number", "lnks",
 ]
 
 
@@ -287,6 +303,80 @@ def collect_cross_court_jurisprudence(output_path: Path) -> int:
     return len(records)
 
 
+def _tai_record(src: dict) -> CorpusRecord:
+    """Build a CorpusRecord for a traité international (type=tai)."""
+    raw_path = src.get("path", "")
+    path = _clean_path(raw_path)
+    return CorpusRecord(
+        id=_doc_id(path),
+        titre=src.get("title", ""),
+        text=src.get("enBody", ""),
+        date=src.get("date", ""),
+        source=BASE_URL + path if path else "",
+        type="traite_international",
+        metadata={
+            "nature": src.get("tncNature", ""),
+            "numero": src.get("number", ""),
+            "thematic": src.get("thematic", []),
+            "article_titles": src.get("enTitle", []),
+            "liens": src.get("lnks", []),
+        },
+    )
+
+
+def _legislative_work_record(src: dict) -> CorpusRecord:
+    """Build a CorpusRecord for a projet de loi (type=legislativeWork)."""
+    raw_path = src.get("path", "")
+    path = _clean_path(raw_path)
+    return CorpusRecord(
+        id=_doc_id(path),
+        titre=src.get("title", ""),
+        text=src.get("enBody", ""),
+        date=src.get("date", ""),
+        source=BASE_URL + path if path else "",
+        type="projet_loi",
+        metadata={
+            "nature": src.get("tncNature", ""),
+            "numero": src.get("number", ""),
+            "thematic": src.get("thematic", []),
+            "article_titles": src.get("enTitle", []),
+            "liens": src.get("lnks", []),
+        },
+    )
+
+
+def collect_traites_internationaux(output_path: Path) -> int:
+    """Fetch conventions et accords internationaux (type=tai) liés au droit social."""
+    payload = {
+        "_source": TAI_FIELDS,
+        "query": {"bool": {"must": [
+            {"terms": {"type": ["tai"]}},
+            {"terms": {"thematic": LABOUR_THEMATICS}},
+        ]}},
+        "sort": [{"date": "desc"}],
+    }
+    records = [_tai_record(src) for src in _paginate_es(payload)]
+    records = [r for r in records if r.text.strip()]
+    _write_jsonl(records, output_path)
+    return len(records)
+
+
+def collect_projets_loi(output_path: Path) -> int:
+    """Fetch projets de loi (type=legislativeWork) liés au droit social."""
+    payload = {
+        "_source": LEGISLATIVE_WORK_FIELDS,
+        "query": {"bool": {"must": [
+            {"terms": {"type": ["legislativeWork"]}},
+            {"terms": {"thematic": LABOUR_THEMATICS}},
+        ]}},
+        "sort": [{"date": "desc"}],
+    }
+    records = [_legislative_work_record(src) for src in _paginate_es(payload)]
+    records = [r for r in records if r.text.strip()]
+    _write_jsonl(records, output_path)
+    return len(records)
+
+
 # ---------------------------------------------------------------------------
 # Output helper
 # ---------------------------------------------------------------------------
@@ -315,6 +405,10 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="Only collect regulations (arretes, ordonnances).")
     group.add_argument("--cross-court-only", action="store_true",
                        help="Only collect cross-court jurisprudence.")
+    group.add_argument("--traites-only", action="store_true",
+                       help="Only collect traités internationaux (tai).")
+    group.add_argument("--projets-loi-only", action="store_true",
+                       help="Only collect projets de loi (legislativeWork).")
     parser.add_argument("--out", default="data/raw", metavar="DIR",
                         help="Output directory (default: data/raw).")
     return parser
@@ -327,6 +421,7 @@ def main() -> None:
     run_all = not any([
         args.jurisprudence_only, args.legislation_only,
         args.regulations_only, args.cross_court_only,
+        args.traites_only, args.projets_loi_only,
     ])
 
     if run_all or args.legislation_only:
@@ -344,6 +439,14 @@ def main() -> None:
     if run_all or args.cross_court_only:
         n = collect_cross_court_jurisprudence(out_dir / "jurisprudence_courts.jsonl")
         logger.info("Cross-court jurisprudence: %d records collected.", n)
+
+    if run_all or args.traites_only:
+        n = collect_traites_internationaux(out_dir / "traites_internationaux.jsonl")
+        logger.info("Traités internationaux: %d records collected.", n)
+
+    if run_all or args.projets_loi_only:
+        n = collect_projets_loi(out_dir / "projets_loi.jsonl")
+        logger.info("Projets de loi: %d records collected.", n)
 
 
 if __name__ == "__main__":
