@@ -953,7 +953,11 @@ def main() -> None:
 
         chip_prompt = st.session_state.pop("_chip_query", None)
 
-        if not st.session_state.messages:
+        if st.session_state.messages:
+            if st.button("🗑 Nouvelle conversation", key="reset_chat_tab"):
+                st.session_state.messages = []
+                st.rerun()
+        else:
             _render_empty_state()
 
         _render_history(show_sources)
