@@ -1,0 +1,50 @@
+[run]
+source = .
+omit =
+    tests/*
+    */tests/*
+    .venv/*
+    venv/*
+    */site-packages/*
+    scripts/*
+    eval/analyze_k_tuning.py
+    */eval/analyze_k_tuning.py
+    eval/compare.py
+    */eval/compare.py
+    eval/compare_benchmarks.py
+    */eval/compare_benchmarks.py
+    eval/compare_prompts_samples.py
+    */eval/compare_prompts_samples.py
+    eval/plot_*.py
+    */eval/plot_*.py
+    eval/run_quickwins.py
+    */eval/run_quickwins.py
+    eval/tune_k_value.py
+    */eval/tune_k_value.py
+    eval/tune_rrf.py
+    */eval/tune_rrf.py
+
+[report]
+precision = 0
+show_missing = True
+skip_covered = False
+omit =
+    eval/analyze_k_tuning.py
+    */eval/analyze_k_tuning.py
+    eval/compare.py
+    */eval/compare.py
+    eval/compare_benchmarks.py
+    */eval/compare_benchmarks.py
+    eval/compare_prompts_samples.py
+    */eval/compare_prompts_samples.py
+    eval/plot_*.py
+    */eval/plot_*.py
+    eval/run_quickwins.py
+    */eval/run_quickwins.py
+    eval/tune_k_value.py
+    */eval/tune_k_value.py
+    eval/tune_rrf.py
+    */eval/tune_rrf.py
+
+[html]
+directory = htmlcov

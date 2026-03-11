@@ -187,15 +187,17 @@ class TestRetrievalPerformance:
 
     @pytest.mark.slow
     @pytest.mark.skipif(True, reason="Graph RAG requires Neo4j running")
-    def test_graph_retrieve_k5(self, benchmark, sample_queries):
+    def test_graph_retrieve_k5(self, benchmark, sample_queries, faiss_index_data, embedder):
         """Benchmark Graph retrieval (k=5, 5 queries)."""
         from retrievers.graph_rag import graph_retrieve
+
+        index, chunks = faiss_index_data
         
         def retrieve_all():
             results = []
             for q in sample_queries:
                 try:
-                    hit = graph_retrieve(q, k=5)
+                    hit = graph_retrieve(q, index, chunks, embedder, k=5)
                     results.append(hit)
                 except Exception:
                     pytest.skip("Neo4j connection failed")
@@ -285,12 +287,10 @@ class TestEndToEndLatency:
     """Benchmark full RAG pipeline latency."""
 
     @pytest.mark.slow
-    @patch("tools.copilot_client.subprocess.run")
-    @patch("tools.copilot_client._BRIDGE_SCRIPT")
+    @patch("tools.copilot_client.CopilotClient.chat")
     def test_e2e_rag_latency(
         self,
-        mock_bridge,
-        mock_subprocess,
+        mock_chat,
         benchmark,
         sample_queries,
         faiss_index_data,
@@ -301,12 +301,7 @@ class TestEndToEndLatency:
         from tools.copilot_client import CopilotClient
 
         # Mock LLM response
-        mock_bridge.exists.return_value = True
-        mock_subprocess.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"content": "Réponse générée par le système."}),
-            stderr="",
-        )
+        mock_chat.return_value = "Réponse générée par le système."
 
         index, chunks = faiss_index_data
         query = sample_queries[0]

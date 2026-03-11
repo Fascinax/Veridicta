@@ -12,6 +12,7 @@ These are slower than unit tests but validate the full system integration.
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -45,7 +46,7 @@ def sample_documents() -> list[dict]:
 
 
 @pytest.fixture
-def temp_workspace(sample_documents: list[dict]) -> Path:
+def temp_workspace(sample_documents: list[dict]) -> Iterator[Path]:
     """Create a temporary workspace with sample data."""
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
@@ -100,7 +101,7 @@ class TestIndexBuildingPipeline:
     @pytest.mark.slow
     def test_build_faiss_index_creates_index_file(self, temp_workspace: Path) -> None:
         from data_ingest.data_processor import process
-        from retrievers.baseline_rag import build_index
+        from retrievers.baseline_rag import FAISS_FILENAME, build_index
 
         # Create chunks
         chunks_path = temp_workspace / "data" / "processed" / "chunks.jsonl"
@@ -111,26 +112,23 @@ class TestIndexBuildingPipeline:
 
         # Build FAISS index
         index_dir = temp_workspace / "data" / "index"
-        index_path = index_dir / "test.faiss"
         index_dir.mkdir(parents=True)
 
-        with patch("retrievers.baseline_rag.FAISS_INDEX_PATH", index_path):
-            with patch("retrievers.baseline_rag.CHUNKS_PATH", chunks_path):
-                build_index(force=True)
+        build_index(chunks_path=chunks_path, index_dir=index_dir)
 
-        assert index_path.exists()
+        assert (index_dir / FAISS_FILENAME).exists()
 
 
 class TestRetrievalPipeline:
     """Test retrieval with pre-built index."""
 
     @pytest.mark.slow
-    @patch("retrievers.baseline_rag._get_embedding_model")
+    @patch("retrievers.baseline_rag._load_embedder")
     def test_faiss_retrieve_returns_relevant_chunks(
         self, mock_embedding: MagicMock, temp_workspace: Path
     ) -> None:
         from data_ingest.data_processor import process
-        from retrievers.baseline_rag import build_index, retrieve
+        from retrievers.baseline_rag import build_index, load_index, retrieve
 
         # Mock embedding model
         mock_model = MagicMock()
@@ -147,10 +145,9 @@ class TestRetrievalPipeline:
         index_path = temp_workspace / "data" / "index" / "test.faiss"
         index_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with patch("retrievers.baseline_rag.FAISS_INDEX_PATH", index_path):
-            with patch("retrievers.baseline_rag.CHUNKS_PATH", chunks_path):
-                build_index(force=True)
-                results = retrieve("contrat de travail", k=2)
+        build_index(chunks_path=chunks_path, index_dir=index_path.parent)
+        index, chunks = load_index(index_path.parent)
+        results = retrieve("contrat de travail", index, chunks, mock_model, k=2)
 
         assert len(results) <= 2
         for chunk in results:
@@ -162,23 +159,20 @@ class TestHybridRetrievalPipeline:
     """Test hybrid retrieval (FAISS + BM25)."""
 
     @pytest.mark.slow
-    @patch("retrievers.hybrid_rag._get_embedding_model")
-    @patch("retrievers.baseline_rag._get_embedding_model")
+    @patch("retrievers.baseline_rag._load_embedder")
     def test_hybrid_retrieve_combines_faiss_and_bm25(
         self,
         mock_baseline_embed: MagicMock,
-        mock_hybrid_embed: MagicMock,
         temp_workspace: Path,
     ) -> None:
         from data_ingest.data_processor import process
-        from retrievers.baseline_rag import build_index
-        from retrievers.hybrid_rag import build_bm25s_index, hybrid_retrieve
+        from retrievers.baseline_rag import build_index, load_index
+        from retrievers.hybrid_rag import build_bm25_index, hybrid_retrieve, load_bm25_index
 
         # Mock embedding models
-        for mock_model_fn in [mock_baseline_embed, mock_hybrid_embed]:
-            mock_model = MagicMock()
-            mock_model.encode.return_value = [[0.1] * 1024]
-            mock_model_fn.return_value = mock_model
+        mock_model = MagicMock()
+        mock_model.encode.return_value = [[0.1] * 1024]
+        mock_baseline_embed.return_value = mock_model
 
         # Create chunks and indexes
         chunks_path = temp_workspace / "data" / "processed" / "chunks.jsonl"
@@ -189,52 +183,46 @@ class TestHybridRetrievalPipeline:
 
         index_dir = temp_workspace / "data" / "index"
         index_dir.mkdir(parents=True, exist_ok=True)
-        faiss_path = index_dir / "test.faiss"
-        bm25s_dir = index_dir / "bm25s_index"
 
-        with patch("retrievers.baseline_rag.FAISS_INDEX_PATH", faiss_path):
-            with patch("retrievers.baseline_rag.CHUNKS_PATH", chunks_path):
-                with patch("retrievers.hybrid_rag.FAISS_INDEX_PATH", faiss_path):
-                    with patch("retrievers.hybrid_rag.CHUNKS_PATH", chunks_path):
-                        with patch("retrievers.hybrid_rag.BM25S_INDEX_DIR", bm25s_dir):
-                            build_index(force=True)
-                            build_bm25s_index(force=True)
+        build_index(chunks_path=chunks_path, index_dir=index_dir)
+        index, chunks = load_index(index_dir)
+        build_bm25_index(chunks, index_dir=index_dir)
+        bm25 = load_bm25_index(index_dir)
 
-                            results = hybrid_retrieve("contrat travail", k=2)
+        results = hybrid_retrieve(
+            "contrat travail",
+            faiss_index=index,
+            bm25=bm25,
+            chunks=chunks,
+            embedder=mock_model,
+            k=2,
+        )
 
         assert len(results) <= 2
         for chunk in results:
             assert "text" in chunk
-            assert "retrieval_metadata" in chunk
-            assert "rank_source" in chunk["retrieval_metadata"]
+            assert "retrieval_method" in chunk
+            assert chunk["retrieval_method"] == "hybrid_rrf"
 
 
 class TestEndToEndRAGPipeline:
     """Test complete RAG pipeline: retrieval + generation."""
 
     @pytest.mark.slow
-    @patch("retrievers.baseline_rag._get_embedding_model")
-    @patch("tools.copilot_client.subprocess.run")
-    @patch("tools.copilot_client._BRIDGE_SCRIPT")
+    @patch("retrievers.baseline_rag._load_embedder")
+    @patch("tools.copilot_client.CopilotClient.chat")
     def test_rag_pipeline_produces_answer_with_sources(
         self,
-        mock_bridge: MagicMock,
-        mock_subprocess: MagicMock,
+        mock_chat: MagicMock,
         mock_embedding: MagicMock,
         temp_workspace: Path,
     ) -> None:
         from data_ingest.data_processor import process
-        from retrievers.baseline_rag import build_index, retrieve
+        from retrievers.baseline_rag import build_index, load_index, retrieve
         from tools.copilot_client import CopilotClient
-        import json
 
         # Mock components
-        mock_bridge.exists.return_value = True
-        mock_subprocess.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"content": "Le contrat de travail est une convention légale."}),
-            stderr="",
-        )
+        mock_chat.return_value = "Le contrat de travail est une convention légale."
 
         mock_model = MagicMock()
         mock_model.encode.return_value = [[0.1] * 1024]
@@ -250,22 +238,20 @@ class TestEndToEndRAGPipeline:
         index_path = temp_workspace / "data" / "index" / "test.faiss"
         index_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with patch("retrievers.baseline_rag.FAISS_INDEX_PATH", index_path):
-            with patch("retrievers.baseline_rag.CHUNKS_PATH", chunks_path):
-                # Build index
-                build_index(force=True)
+        build_index(chunks_path=chunks_path, index_dir=index_path.parent)
+        index, chunks = load_index(index_path.parent)
 
-                # Retrieve
-                sources = retrieve("Qu'est-ce qu'un contrat de travail?", k=2)
-                assert len(sources) > 0
+        # Retrieve
+        sources = retrieve("Qu'est-ce qu'un contrat de travail?", index, chunks, mock_model, k=2)
+        assert len(sources) > 0
 
-                # Generate
-                context = "\n\n".join(chunk["text"] for chunk in sources)
-                client = CopilotClient()
-                answer = client.chat(
-                    system="Tu es un assistant juridique. Réponds en te basant sur le contexte.",
-                    user=f"Question: Qu'est-ce qu'un contrat de travail?\n\nContexte:\n{context}",
-                )
+        # Generate
+        context = "\n\n".join(chunk["text"] for chunk in sources)
+        client = CopilotClient()
+        answer = client.chat(
+            system="Tu es un assistant juridique. Réponds en te basant sur le contexte.",
+            user=f"Question: Qu'est-ce qu'un contrat de travail?\n\nContexte:\n{context}",
+        )
 
         assert isinstance(answer, str)
         assert len(answer) > 0
