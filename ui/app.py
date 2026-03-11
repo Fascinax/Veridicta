@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -822,6 +823,95 @@ def _handle_prompt(
     )
 
 
+# ── AutoEval Results Tab ──────────────────────────────────────────────────────
+
+_AUTOEVAL_TSV = Path(__file__).parent.parent / "autoeval" / "results.tsv"
+
+_KW_THRESHOLD = 0.67
+_F1_THRESHOLD = 0.30
+
+
+def _render_autoeval_tab() -> None:
+    """Dashboard displaying AutoEval experiment results from results.tsv."""
+    st.markdown("### 📊 AutoEval — Résultats d'optimisation autonome")
+
+    if not _AUTOEVAL_TSV.exists():
+        st.info(
+            "Aucun résultat disponible. Lance l'orchestrateur :\n\n"
+            "```bash\npython autoeval/orchestrator.py --pat <PAT> --full\n```"
+        )
+        return
+
+    df = pd.read_csv(_AUTOEVAL_TSV, sep="\t")
+    if df.empty:
+        st.warning("Le fichier results.tsv est vide.")
+        return
+
+    # Normalize column names (lowercase, strip)
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # ── Best experiment highlight ─────────────────────────────────────────
+    if "score" in df.columns:
+        best_idx = df["score"].idxmax()
+        best = df.loc[best_idx]
+        kw_val = best.get("kw", 0)
+        f1_val = best.get("f1", 0)
+        score_val = best.get("score", 0)
+        kw_ok = kw_val >= _KW_THRESHOLD if pd.notna(kw_val) else False
+        f1_ok = f1_val >= _F1_THRESHOLD if pd.notna(f1_val) else False
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Meilleur score", f"{score_val:.4f}", delta=f"exp {best.get('exp_id', '?')}")
+        col2.metric("KW Recall", f"{kw_val:.4f}", delta="✅" if kw_ok else "❌ < 0.67")
+        col3.metric("Word F1", f"{f1_val:.4f}" if pd.notna(f1_val) else "n/a", delta="✅" if f1_ok else "❌ < 0.30")
+        col4.metric("Expériences", str(len(df)))
+
+    st.divider()
+
+    # ── Metrics evolution charts ──────────────────────────────────────────
+    metric_cols = [c for c in ["kw", "f1", "score"] if c in df.columns]
+    if metric_cols and len(df) > 1:
+        st.markdown("#### Évolution des métriques")
+
+        chart_df = df[["exp_id"] + metric_cols].copy()
+        chart_df = chart_df.set_index("exp_id")
+
+        st.line_chart(chart_df, height=350)
+
+        # Threshold reference info
+        st.caption(
+            f"Seuils cibles : KW ≥ {_KW_THRESHOLD} · F1 ≥ {_F1_THRESHOLD} · "
+            f"Score composite = 0.5×KW + 0.5×F1"
+        )
+
+    # ── Parameter evolution ───────────────────────────────────────────────
+    param_cols = [c for c in ["k", "vector_w", "fts_w", "reranker", "query_exp"] if c in df.columns]
+    if param_cols and len(df) > 1:
+        with st.expander("🔧 Évolution des paramètres"):
+            param_df = df[["exp_id"] + param_cols].copy()
+            param_df = param_df.set_index("exp_id")
+            st.dataframe(param_df, use_container_width=True)
+
+    st.divider()
+
+    # ── Full results table ────────────────────────────────────────────────
+    st.markdown("#### Tableau complet des expériences")
+    display_cols = [c for c in [
+        "exp_id", "retriever", "k", "vector_w", "fts_w",
+        "reranker", "query_exp", "kw", "f1", "citfaith",
+        "lat", "score", "note",
+    ] if c in df.columns]
+    st.dataframe(
+        df[display_cols] if display_cols else df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # ── Refresh button ────────────────────────────────────────────────────
+    if st.button("🔄 Rafraîchir les résultats"):
+        st.rerun()
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
@@ -833,57 +923,64 @@ def main() -> None:
     )
 
     k, show_sources, backend, model, retriever = _render_sidebar()
-    use_hybrid = retriever in (HYBRID_OPTION, HYBRID_GRAPH_OPTION)
-    use_graph = retriever in (GRAPH_OPTION, HYBRID_GRAPH_OPTION, LANCEDB_GRAPH_OPTION)
-    use_lancedb = _LANCEDB_AVAILABLE and retriever in (LANCEDB_OPTION, LANCEDB_GRAPH_OPTION)
 
-    # Load index & embedder (cached after first load)
-    try:
-        index_data, chunks_map = _get_index()
-        embedder = _get_embedder()
-        ready = True
-    except FileNotFoundError:
-        st.error(
-            "Index non trouvé. Exécute d'abord : "
-            "`python -m retrievers.baseline_rag --build`"
-        )
-        ready = False
+    tab_chat, tab_autoeval = st.tabs(["💬 Chat", "📊 AutoEval"])
 
-    use_hybrid, use_graph, use_lancedb, bm25, neo4j_mgr, lancedb_table = _resolve_runtime_dependencies(use_hybrid, use_graph, use_lancedb)
+    with tab_autoeval:
+        _render_autoeval_tab()
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    with tab_chat:
+        use_hybrid = retriever in (HYBRID_OPTION, HYBRID_GRAPH_OPTION)
+        use_graph = retriever in (GRAPH_OPTION, HYBRID_GRAPH_OPTION, LANCEDB_GRAPH_OPTION)
+        use_lancedb = _LANCEDB_AVAILABLE and retriever in (LANCEDB_OPTION, LANCEDB_GRAPH_OPTION)
 
-    chip_prompt = st.session_state.pop("_chip_query", None)
+        # Load index & embedder (cached after first load)
+        try:
+            index_data, chunks_map = _get_index()
+            embedder = _get_embedder()
+            ready = True
+        except FileNotFoundError:
+            st.error(
+                "Index non trouvé. Exécute d'abord : "
+                "`python -m retrievers.baseline_rag --build`"
+            )
+            ready = False
 
-    if not st.session_state.messages:
-        _render_empty_state()
+        use_hybrid, use_graph, use_lancedb, bm25, neo4j_mgr, lancedb_table = _resolve_runtime_dependencies(use_hybrid, use_graph, use_lancedb)
 
-    _render_history(show_sources)
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-    if not ready:
-        return
+        chip_prompt = st.session_state.pop("_chip_query", None)
 
-    chat_input = st.chat_input("Posez votre question en droit du travail monégasque…")
-    prompt = chip_prompt or chat_input
+        if not st.session_state.messages:
+            _render_empty_state()
 
-    if prompt:
-        _handle_prompt(
-            prompt,
-            index_data,
-            chunks_map,
-            embedder,
-            k,
-            show_sources,
-            backend,
-            model,
-            use_graph,
-            neo4j_mgr,
-            use_hybrid,
-            bm25,
-            use_lancedb,
-            lancedb_table,
-        )
+        _render_history(show_sources)
+
+        if not ready:
+            return
+
+        chat_input = st.chat_input("Posez votre question en droit du travail monégasque…")
+        prompt = chip_prompt or chat_input
+
+        if prompt:
+            _handle_prompt(
+                prompt,
+                index_data,
+                chunks_map,
+                embedder,
+                k,
+                show_sources,
+                backend,
+                model,
+                use_graph,
+                neo4j_mgr,
+                use_hybrid,
+                bm25,
+                use_lancedb,
+                lancedb_table,
+            )
 
 
 if __name__ == "__main__":

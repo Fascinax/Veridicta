@@ -23,6 +23,8 @@ import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 AUTOEVAL_DIR = Path(__file__).resolve().parent
 EXPERIMENT_PY = AUTOEVAL_DIR / "experiment.py"
 PROGRAM_MD = AUTOEVAL_DIR / "program.md"

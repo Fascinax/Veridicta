@@ -172,6 +172,11 @@ Veridicta/
 |   +-- test_questions.json     # 100 questions gold standard droit du travail MCO
 |   +-- results/                # Resultats eval par backend/retriever
 |   +-- charts/                 # Graphiques de comparaison generes
++-- autoeval/
+|   +-- program.md              # Instructions agent (objectif, espace de parametres, regles)
+|   +-- experiment.py           # Parametres tunables + runner d'evaluation
+|   +-- orchestrator.py         # Boucle autonome LLM → params → eval → log → repeat
+|   +-- results.tsv             # Journal d'experiences (auto-genere, gitignore)
 +-- tests/
 |   +-- test_copilot_client.py  # 27 tests SDK client (98% coverage)
 |   +-- test_artifacts.py       # 16 tests download/upload HF Hub (82% coverage)
@@ -286,7 +291,62 @@ Produit un rapport JSONL par question avec keyword recall, F1, citation faithful
 Le juge Ragas utilise actuellement Cerebras en mode OpenAI-compatible et adapte ses few-shots au francais via `--ragas-language` (par defaut : `french`).
 Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 
-## 10. Deploiement Streamlit Cloud (demo)
+## 10. AutoEval — Optimisation autonome
+
+Systeme d'optimisation autonome inspire de [karpathy/autoresearch](https://github.com/karpathy/autoresearch), utilisant un LLM (GitHub Copilot) comme superviseur pour explorer automatiquement l'espace des hyperparametres du pipeline RAG.
+
+### Architecture (pattern 3 fichiers)
+
+```text
+autoeval/
++-- program.md          # Instructions de l'agent (objectif, espace de parametres, regles)
++-- experiment.py       # Parametres tunables + runner d'evaluation (modifie par l'agent)
++-- orchestrator.py     # Boucle autonome : LLM → params → eval → log → repeat
++-- results.tsv         # Journal d'experiences (auto-genere)
++-- .gitignore          # Exclut results.tsv du versioning
+```
+
+- **`program.md`** : Definit l'objectif d'optimisation (score composite = 0.5×KW + 0.5×F1), les contraintes (KW≥0.67, F1≥0.30, CitFaith≥0.95) et l'espace de parametres explorables.
+- **`experiment.py`** : Contient un bloc `TUNABLE PARAMETERS` au sommet du fichier. L'orchestrateur reecrit ce bloc avant chaque execution, puis lance `run()` qui execute l'evaluation et logue les resultats dans `results.tsv`.
+- **`orchestrator.py`** : Boucle autonome qui envoie `program.md` + historique `results.tsv` + parametres courants au LLM Copilot, parse la reponse JSON, valide les parametres et lance l'experiment.
+
+### Parametres explorables
+
+| Parametre | Type | Espace |
+|-----------|------|--------|
+| `retriever` | str | `lancedb`, `hybrid`, `hybrid_graph`, `lancedb_graph` |
+| `k` | int | 3–10 |
+| `vector_weight` | float | 0.0–1.0 (LanceDB RRF) |
+| `fts_weight` | float | 0.0–1.0 (LanceDB RRF) |
+| `use_reranker` | bool | FlashRank MultiBERT |
+| `reranker_candidate_multiplier` | int | 2–6 |
+| `query_expansion` | bool | Expansion de requete |
+| `prompt_version` | int | 1–3 |
+
+### Utilisation
+
+```bash
+# Lancer manuellement une seule experience
+python autoeval/experiment.py
+
+# Mode complet (retrieval + generation LLM)
+python autoeval/experiment.py --full
+
+# Lancer l'orchestrateur autonome (boucle LLM)
+python autoeval/orchestrator.py --pat <GITHUB_PAT> --full --model claude-sonnet-4.6
+
+# Limiter le nombre d'iterations
+python autoeval/orchestrator.py --pat <PAT> --max-iter 10 --full
+
+# Utiliser un autre modele Copilot
+python autoeval/orchestrator.py --pat <PAT> --model gpt-4.1
+```
+
+### Lecture des resultats
+
+Le fichier `results.tsv` contient une ligne par experience avec : `exp_id`, `retriever`, `k`, poids RRF, metriques (KW, F1, CitFaith, CtxCov, Lat), score composite et note descriptive. L'onglet **AutoEval** dans l'UI Streamlit offre un tableau interactif et des graphiques d'evolution.
+
+## 11. Deploiement Streamlit Cloud (demo)
 
 1. Pousser le repo sur GitHub (`main` a jour).
 2. Creer une app sur Streamlit Cloud depuis ce repo (`ui/app.py`).
@@ -302,7 +362,7 @@ LLM_BACKEND = "copilot"
 1. Deploy: les artifacts (`FAISS + bm25s + chunks`) sont telecharges automatiquement depuis `Fascinax/veridicta-index` au boot.
 2. Verifier dans les logs que l'index charge bien `26517 vectors` puis lancer les questions demo.
 
-## 11. Questions demo
+## 12. Questions demo
 
 1. **Licenciement** : *Quelles sont les indemnites de licenciement prevues par le droit monegasque ?*
 2. **CDD** : *Quelle est la duree maximale d'un contrat a duree determinee a Monaco ?*
@@ -310,7 +370,7 @@ LLM_BACKEND = "copilot"
 4. **Specificite MCO** : *Quelles sont les obligations de l'employeur envers les travailleurs frontaliers a Monaco ?*
 5. **Salaire** : *Quel est le montant actuel du SMIG a Monaco et comment est-il revalorise ?*
 
-## 12. Screenshot gallery
+## 13. Screenshot gallery
 
 ### Evaluation dashboards
 
@@ -337,7 +397,7 @@ LLM_BACKEND = "copilot"
 
 ![Solon vs baseline](eval/charts/solon-comparison/solon_vs_baseline.png)
 
-## 13. Changelog
+## 14. Changelog
 
 ### 2026-03-10
 
