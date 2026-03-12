@@ -1,0 +1,83 @@
+{
+  "n": 40,
+  "word_f1_avg": 0.2045,
+  "bertscore_f1_avg": 0.7919,
+  "avg_gap": 0.5874,
+  "pearson_word_vs_bert": 0.4141,
+  "metric_penalty_like_count": 36,
+  "metric_penalty_like_ratio": 0.9,
+  "top_gap_cases": [
+    {
+      "question_id": "monaco-077",
+      "word_f1": 0.13122171945701355,
+      "bertscore_f1": 0.782,
+      "gap": 0.6507782805429865
+    },
+    {
+      "question_id": "monaco-066",
+      "word_f1": 0.13670886075949368,
+      "bertscore_f1": 0.7811,
+      "gap": 0.6443911392405064
+    },
+    {
+      "question_id": "monaco-019",
+      "word_f1": 0.16020671834625322,
+      "bertscore_f1": 0.7869,
+      "gap": 0.6266932816537468
+    },
+    {
+      "question_id": "monaco-040",
+      "word_f1": 0.17283950617283952,
+      "bertscore_f1": 0.7981,
+      "gap": 0.6252604938271605
+    },
+    {
+      "question_id": "monaco-061",
+      "word_f1": 0.14538310412573677,
+      "bertscore_f1": 0.7705,
+      "gap": 0.6251168958742632
+    },
+    {
+      "question_id": "monaco-047",
+      "word_f1": 0.15212527964205816,
+      "bertscore_f1": 0.7765,
+      "gap": 0.6243747203579418
+    },
+    {
+      "question_id": "monaco-095",
+      "word_f1": 0.17457305502846301,
+      "bertscore_f1": 0.7961,
+      "gap": 0.621526944971537
+    },
+    {
+      "question_id": "monaco-065",
+      "word_f1": 0.16901408450704225,
+      "bertscore_f1": 0.7885,
+      "gap": 0.6194859154929577
+    },
+    {
+      "question_id": "monaco-071",
+      "word_f1": 0.1732283464566929,
+      "bertscore_f1": 0.7898,
+      "gap": 0.616571653543307
+    },
+    {
+      "question_id": "monaco-030",
+      "word_f1": 0.19047619047619047,
+      "bertscore_f1": 0.802,
+      "gap": 0.6115238095238096
+    },
+    {
+      "question_id": "monaco-089",
+      "word_f1": 0.18850574712643678,
+      "bertscore_f1": 0.7969,
+      "gap": 0.6083942528735633
+    },
+    {
+      "question_id": "monaco-088",
+      "word_f1": 0.18223234624145787,
+      "bertscore_f1": 0.7901,
+      "gap": 0.6078676537585421
+    }
+  ]
+}
