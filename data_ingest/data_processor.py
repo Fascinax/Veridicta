@@ -94,20 +94,34 @@ def _split_into_paragraphs(text: str) -> list[str]:
     return result
 
 
+def _overlap_tail(text: str, limit: int) -> str:
+    if limit <= 0 or len(text) <= limit:
+        return text
+
+    tail = text[-limit:]
+    boundary = re.search(r"\s+", tail)
+    if boundary is None:
+        return tail
+
+    safe_tail = tail[boundary.end():].lstrip()
+    return safe_tail or tail
+
+
 def _build_chunks(paragraphs: list[str]) -> list[str]:
     chunks: list[str] = []
     current_parts: list[str] = []
     current_len = 0
     for para in paragraphs:
-        if current_len + len(para) > CHUNK_SIZE and current_parts:
+        additional_len = len(para) if not current_parts else len(para) + 1
+        if current_len + additional_len > CHUNK_SIZE and current_parts:
             chunk_text = " ".join(current_parts).strip()
             if len(chunk_text) >= MIN_CHUNK_SIZE:
                 chunks.append(chunk_text)
-            overlap = chunk_text[-CHUNK_OVERLAP:]
-            current_parts = [overlap]
+            overlap = _overlap_tail(chunk_text, CHUNK_OVERLAP)
+            current_parts = [overlap] if overlap else []
             current_len = len(overlap)
         current_parts.append(para)
-        current_len += len(para)
+        current_len += len(para) if len(current_parts) == 1 else len(para) + 1
     if current_parts:
         final = " ".join(current_parts).strip()
         if len(final) >= MIN_CHUNK_SIZE:

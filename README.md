@@ -280,6 +280,12 @@ python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybr
 # Ajoute les metriques Ragas (juge Cerebras `llama3.1-8b` + prompts adaptes en francais)
 python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --prompt-version 3 --workers 2 --ragas --ragas-model llama3.1-8b
 
+# Ajoute BERTScore (compatible CPU; option GPU via --bertscore-device cuda:0)
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --prompt-version 3 --workers 2 --bertscore --bertscore-lang fr --bertscore-device cpu
+
+# Ajoute un juge LLM minimal (JSON score/verdict/reason)
+python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever lancedb_graph --prompt-version 3 --workers 4 --bertscore --judge --judge-backend copilot --judge-model gpt-4.1
+
 # Graphes de comparaison prompt v2 vs bm25s
 python -m eval.plot_bm25s_prompt_comparison
 
@@ -287,8 +293,10 @@ python -m eval.plot_bm25s_prompt_comparison
 python -m eval.tune_k_value
 ```
 
-Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk, latence et, si `--ragas` est active, `ragas_faithfulness` + `ragas_context_precision`.
+Produit un rapport JSONL par question avec keyword recall, F1, citation faithfulness, context coverage, hallucination risk, latence et, si `--ragas` est active, `ragas_faithfulness` + `ragas_context_precision`, si `--bertscore` est active, `bertscore_f1`, et si `--judge` est active, `judge_score` + `judge_label` + `judge_reason`.
 Le juge Ragas utilise actuellement Cerebras en mode OpenAI-compatible et adapte ses few-shots au francais via `--ragas-language` (par defaut : `french`).
+Par defaut, BERTScore utilise `distilbert-base-multilingual-cased` et fonctionne en CPU (`--bertscore-device cpu`).
+Le juge minimal force une sortie JSON courte et classe chaque reponse en `acceptable` ou `incorrect` avec un score entre 0 et 1.
 Les graphes de comparaison sont enregistres dans `eval/charts/bm25s-prompt/`.
 
 ## 10. AutoEval — Optimisation autonome

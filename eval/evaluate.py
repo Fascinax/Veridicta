@@ -27,11 +27,12 @@ import os
 import re
 import sys
 import time
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+import Stemmer
 
 # Make project root importable when running as `python -m eval.evaluate`
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,42 +47,37 @@ from retrievers.baseline_rag import (
     _load_embedder,
     answer,
     load_index,
-    retrieve,
+)
+from retrievers.config import default_model_for_backend, resolve_llm_backend
+from retrievers.pipeline import RetrievalPipeline
+from retrievers.query_expansion import (
+    expand_query_legal_fr as _expand_query_legal_fr,
+    normalize_for_match as _normalize_for_match,
 )
 
 try:
-    from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
+    from retrievers.hybrid_rag import load_bm25_index
     _HYBRID_AVAILABLE = True
 except ImportError:
     _HYBRID_AVAILABLE = False
 
 try:
-    from retrievers.graph_rag import graph_retrieve, load_neo4j_manager
+    from retrievers.graph_rag import load_neo4j_manager
     _GRAPH_AVAILABLE = True
 except ImportError:
     _GRAPH_AVAILABLE = False
 
-try:
-    from retrievers.hybrid_graph_rag import hybrid_graph_retrieve
-    _HYBRID_GRAPH_AVAILABLE = True
-except ImportError:
-    _HYBRID_GRAPH_AVAILABLE = False
+_HYBRID_GRAPH_AVAILABLE = _HYBRID_AVAILABLE and _GRAPH_AVAILABLE
 
 try:
     from retrievers.lancedb_rag import (
         load_lancedb_index,
-        lancedb_retrieve,
-        lancedb_hybrid_retrieve,
     )
     _LANCEDB_AVAILABLE = True
 except ImportError:
     _LANCEDB_AVAILABLE = False
 
-try:
-    from retrievers.lancedb_graph_rag import lancedb_graph_retrieve
-    _LANCEDB_GRAPH_AVAILABLE = True
-except ImportError:
-    _LANCEDB_GRAPH_AVAILABLE = False
+_LANCEDB_GRAPH_AVAILABLE = _LANCEDB_AVAILABLE and _GRAPH_AVAILABLE
 
 try:
     from retrievers.reranker import rerank
@@ -119,6 +115,15 @@ except ImportError:
     class RagasConfigurationError(RuntimeError):
         """Fallback error type when optional ragas dependencies are absent."""
 
+try:
+    from bert_score import score as bert_score
+    _BERTSCORE_AVAILABLE = True
+except ImportError:
+    _BERTSCORE_AVAILABLE = False
+
+    def bert_score(*args, **kwargs):  # type: ignore[override]
+        raise RuntimeError("bertscore dependency is unavailable")
+
 CEREBRAS_MODELS = [
     "llama3.1-8b",
     "gpt-oss-120b",
@@ -128,19 +133,6 @@ COPILOT_MODELS = [
     "gpt-4.1-mini",
     "gpt-4.1",
 ]
-
-_QUERY_EXPANSION_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("licenciement", ("congediement", "preavis", "indemnite licenciement")),
-    ("faute grave", ("cause valable", "manquement grave", "rupture immediate")),
-    ("periode essai", ("renouvellement essai", "duree maximale essai")),
-    ("harcelement", ("harcelement moral", "atteinte dignite", "sante mentale")),
-    ("conges payes", ("indemnite compensatrice", "conge annuel")),
-    ("salaire minimum", ("salaire minima", "minimum legal")),
-    ("permis travail", ("autorisation embauchage", "travailleur etranger")),
-    ("temps partiel", ("duree hebdomadaire", "heures complementaires")),
-    ("greve", ("droit de greve", "service minimum")),
-    ("cdd", ("contrat duree determinee", "requalification cdi")),
-)
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -167,11 +159,16 @@ class EvalResult:
     context_coverage: float
     ragas_faithfulness: float | None
     ragas_context_precision: float | None
+    bertscore_f1: float | None
+    judge_score: float | None
+    judge_label: str | None
+    judge_reason: str | None
     hallucination_risk: float
     latency_s: float
     n_retrieved: int
     answer: str
     ragas_error: str | None = None
+    judge_error: str | None = None
     sources_titles: list[str] = field(default_factory=list)
 
 
@@ -191,6 +188,22 @@ class EvalRunConfig:
     query_expansion: bool = False
     prompt_version: int = 1
     ragas_evaluator: RagasEvaluator | None = None
+    use_bertscore: bool = False
+    bertscore_model: str = "distilbert-base-multilingual-cased"
+    bertscore_lang: str = "fr"
+    bertscore_batch_size: int = 16
+    bertscore_device: str | None = None
+    use_judge: bool = False
+    judge_backend: str = "copilot"
+    judge_model: str | None = None
+
+
+@dataclass(frozen=True)
+class JudgeVerdict:
+    score: float | None
+    label: str | None
+    reason: str | None
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -204,38 +217,57 @@ def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-zàâäéèêëîïôöùûüç]+", text)
 
 
-def _normalize_for_match(text: str) -> str:
-    lowered = text.lower()
-    normalized = unicodedata.normalize("NFKD", lowered)
-    return "".join(char for char in normalized if not unicodedata.combining(char))
+_FRENCH_STEMMER = Stemmer.Stemmer("french")
 
 
-def _expand_query_legal_fr(question: str) -> str:
-    normalized_question = _normalize_for_match(question)
-    additions: list[str] = []
-    for trigger, synonyms in _QUERY_EXPANSION_RULES:
-        if trigger in normalized_question:
-            additions.extend(synonyms)
+def _canonical_keyword_token(token: str) -> str:
+    normalized_token = _normalize_for_match(token)
+    if not normalized_token:
+        return ""
 
-    if not additions:
-        return question
+    stemmed = _FRENCH_STEMMER.stemWord(normalized_token)
+    for suffix in ("issement", "ements", "ement", "ations", "ation", "itions", "ition", "ments"):
+        if stemmed.endswith(suffix) and len(stemmed) - len(suffix) >= 5:
+            return stemmed[: -len(suffix)]
+    return stemmed
 
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for term in additions:
-        if term not in seen:
-            seen.add(term)
-            deduped.append(term)
 
-    return f"{question} {' '.join(deduped[:8])}"
+def _canonical_keyword_tokens(text: str) -> list[str]:
+    return [canonical for token in _tokenize(text) if (canonical := _canonical_keyword_token(token))]
+
+
+def _tokens_match(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    shorter, longer = sorted((left, right), key=len)
+    return len(shorter) >= 5 and longer.startswith(shorter)
+
+
+def _contains_keyword_variant(prediction_tokens: list[str], keyword: str) -> bool:
+    keyword_tokens = _canonical_keyword_tokens(keyword)
+    if not keyword_tokens:
+        return True
+
+    window = len(keyword_tokens)
+    for start in range(len(prediction_tokens) - window + 1):
+        if all(
+            _tokens_match(prediction_tokens[start + offset], keyword_token)
+            for offset, keyword_token in enumerate(keyword_tokens)
+        ):
+            return True
+
+    return all(
+        any(_tokens_match(prediction_token, keyword_token) for prediction_token in prediction_tokens)
+        for keyword_token in keyword_tokens
+    )
 
 
 def keyword_recall(prediction: str, keywords: list[str]) -> float:
-    """Fraction of reference keywords present (case-insensitive) in prediction."""
+    """Fraction of reference keywords present with light French morphological matching."""
     if not keywords:
         return 1.0
-    pred_lower = prediction.lower()
-    hits = sum(1 for kw in keywords if kw.lower() in pred_lower)
+    prediction_tokens = _canonical_keyword_tokens(prediction)
+    hits = sum(1 for keyword in keywords if _contains_keyword_variant(prediction_tokens, keyword))
     return hits / len(keywords)
 
 
@@ -302,6 +334,163 @@ def context_coverage(answer: str, retrieved_chunks: list[dict]) -> float:
     return round(covered / len(significant), 4)
 
 
+_JUDGE_SYSTEM_PROMPT = """Tu es un juge d'evaluation RAG pour le droit du travail monegasque.
+Tu dois evaluer si la reponse generee est materiellement acceptable par rapport a la reference et au contexte.
+
+Regles:
+- Retourne uniquement un JSON valide.
+- Champs obligatoires: score, verdict, reason.
+- score: nombre entre 0.0 et 1.0.
+- verdict: acceptable ou incorrect.
+- acceptable: la reponse capture l'essentiel utile, meme si la formulation differe.
+- incorrect: la reponse manque une condition importante, contredit la reference, ou invente un element non soutenu.
+- reason: phrase courte, factuelle, sans markdown.
+"""
+
+
+def _format_judge_context(retrieved_chunks: list[dict], max_chunks: int = 5, max_chars: int = 2400) -> str:
+    context_sections: list[str] = []
+    budget = max_chars
+    for rank, chunk in enumerate(retrieved_chunks[:max_chunks], 1):
+        title = chunk.get("titre") or chunk.get("title") or chunk.get("source_type") or "source"
+        text = re.sub(r"\s+", " ", chunk.get("text", "")).strip()
+        if not text:
+            continue
+        prefix = f"[Source {rank}] {title}\n"
+        snippet_budget = max(120, budget - len(prefix))
+        snippet = text[:snippet_budget]
+        context_sections.append(prefix + snippet)
+        budget -= len(prefix) + len(snippet) + 2
+        if budget <= 0:
+            break
+    return "\n\n".join(context_sections)
+
+
+def _strip_json_fence(raw_text: str) -> str:
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip()
+
+
+def _parse_judge_response(raw_text: str) -> JudgeVerdict:
+    cleaned = _strip_json_fence(raw_text)
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if match is None:
+            return JudgeVerdict(None, None, None, error="Judge returned non-JSON output")
+        try:
+            payload = json.loads(match.group(0))
+        except json.JSONDecodeError as exc:
+            return JudgeVerdict(None, None, None, error=f"Judge JSON parse error: {exc}")
+
+    if not isinstance(payload, dict):
+        return JudgeVerdict(None, None, None, error="Judge payload is not a JSON object")
+
+    raw_score = payload.get("score")
+    try:
+        score = max(0.0, min(1.0, float(raw_score)))
+    except (TypeError, ValueError):
+        score = None
+
+    raw_verdict = str(payload.get("verdict", "")).strip().lower()
+    if raw_verdict in {"acceptable", "accept", "correct", "ok"}:
+        label = "acceptable"
+    elif raw_verdict in {"incorrect", "wrong", "reject", "bad"}:
+        label = "incorrect"
+    else:
+        label = None
+
+    reason = str(payload.get("reason", "")).strip() or None
+    if score is None or label is None:
+        return JudgeVerdict(score, label, reason, error="Judge JSON missing valid score/verdict")
+    return JudgeVerdict(round(score, 4), label, reason)
+
+
+def _call_judge_llm(system: str, user: str, *, backend: str, model: str) -> str:
+    if backend == "copilot":
+        from tools.copilot_client import CopilotClient
+
+        with CopilotClient(model=model) as client:
+            return client.chat(system=system, user=user, temperature=0.0)
+
+    if backend == "cerebras":
+        from cerebras.cloud.sdk import Cerebras
+        from cerebras.cloud.sdk import RateLimitError as CerebrasRateLimitError
+
+        api_key = os.getenv("CEREBRAS_API_KEY")
+        if not api_key:
+            raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
+
+        client = Cerebras(api_key=api_key)
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 256,
+            "response_format": {"type": "json_object"},
+        }
+
+        for attempt in range(5):
+            try:
+                completion = client.chat.completions.create(**payload)
+                return completion.choices[0].message.content
+            except CerebrasRateLimitError:
+                wait = 10 * (attempt + 1)
+                time.sleep(wait)
+
+        raise RuntimeError("Cerebras rate limit: max retries exceeded.")
+
+    raise ValueError(f"Unsupported judge backend: {backend!r}")
+
+
+def _apply_judge_scores(
+    results: list[EvalResult],
+    questions: list[EvalQuestion],
+    retrieved_all: list[list[dict]],
+    *,
+    backend: str,
+    model: str,
+) -> None:
+    total = len(results)
+    print(
+        f"  Scoring {total} answers with LLM judge  [backend={backend}, model={model}] ...",
+        flush=True,
+    )
+
+    for index, (result, question, retrieved) in enumerate(zip(results, questions, retrieved_all), 1):
+        judge_prompt = (
+            f"Question:\n{question.question}\n\n"
+            f"Reference answer:\n{question.reference_answer}\n\n"
+            f"Generated answer:\n{result.answer}\n\n"
+            f"Retrieved context excerpts:\n{_format_judge_context(retrieved)}\n\n"
+            "Return JSON only."
+        )
+        try:
+            verdict = _parse_judge_response(
+                _call_judge_llm(
+                    _JUDGE_SYSTEM_PROMPT,
+                    judge_prompt,
+                    backend=backend,
+                    model=model,
+                )
+            )
+        except Exception as exc:
+            verdict = JudgeVerdict(None, None, None, error=str(exc))
+
+        result.judge_score = verdict.score
+        result.judge_label = verdict.label
+        result.judge_reason = verdict.reason
+        result.judge_error = verdict.error
+        print(f"  [Judge {index:02d}/{total}] {question.id}", flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
@@ -342,16 +531,10 @@ def run_eval(
         index,
         chunks,
         embedder,
-        k=config.k,
+        config,
         bm25=bm25,
         neo4j_mgr=neo4j_mgr,
         lancedb_table=lancedb_table,
-        use_reranker=config.use_reranker,
-        reranker_candidate_multiplier=config.reranker_candidate_multiplier,
-        reranker_min_score=config.reranker_min_score,
-        hybrid_faiss_weight=config.hybrid_faiss_weight,
-        hybrid_bm25_weight=config.hybrid_bm25_weight,
-        query_expansion=config.query_expansion,
     )
 
     if config.retrieval_only:
@@ -361,6 +544,25 @@ def run_eval(
 
     if config.ragas_evaluator is not None:
         _apply_ragas_scores(results, questions, retrieved_all, config.ragas_evaluator)
+
+    if config.use_bertscore:
+        _apply_bertscore_scores(
+            results,
+            questions,
+            model_type=config.bertscore_model,
+            lang=config.bertscore_lang,
+            batch_size=config.bertscore_batch_size,
+            device=config.bertscore_device,
+        )
+
+    if config.use_judge:
+        _apply_judge_scores(
+            results,
+            questions,
+            retrieved_all,
+            backend=config.judge_backend,
+            model=config.judge_model or default_model_for_backend(config.judge_backend),
+        )
 
     if config.stream_out is not None:
         _write_results_file(results, config.stream_out)
@@ -387,102 +589,49 @@ def _retrieve_contexts(
     index,
     chunks: list[dict],
     embedder,
-    *,
-    k: int,
+    config: EvalRunConfig,
     bm25=None,
     neo4j_mgr=None,
     lancedb_table=None,
-    use_reranker: bool = False,
-    reranker_candidate_multiplier: int = 4,
-    reranker_min_score: float | None = None,
-    hybrid_faiss_weight: float | None = None,
-    hybrid_bm25_weight: float | None = None,
-    query_expansion: bool = False,
 ) -> list[list[dict]]:
     question_count = len(questions)
     retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr, lancedb_table=lancedb_table)
     print(f"  Retrieving context for {question_count} questions  [{retriever_label}] ...", flush=True)
 
-    retrieval_k = k * max(1, reranker_candidate_multiplier) if use_reranker else k
-    def _retrieval_query(raw_question: str) -> str:
-        return _expand_query_legal_fr(raw_question) if query_expansion else raw_question
-
     if lancedb_table is not None and neo4j_mgr is not None and _LANCEDB_GRAPH_AVAILABLE:
-        retrieved_all = [
-            lancedb_graph_retrieve(
-                _retrieval_query(question.question),
-                lancedb_table,
-                embedder,
-                neo4j_manager=neo4j_mgr,
-                k=retrieval_k,
-            )
-            for question in questions
-        ]
+        retriever_name = "lancedb_graph"
     elif lancedb_table is not None:
-        retrieved_all = [
-            lancedb_hybrid_retrieve(
-                _retrieval_query(question.question),
-                lancedb_table,
-                embedder,
-                k=retrieval_k,
-            )
-            for question in questions
-        ]
+        retriever_name = "lancedb"
     elif neo4j_mgr is not None and bm25 is not None:
-        retrieved_all = [
-            hybrid_graph_retrieve(
-                _retrieval_query(question.question),
-                index,
-                bm25,
-                chunks,
-                embedder,
-                neo4j_manager=neo4j_mgr,
-                k=retrieval_k,
-            )
-            for question in questions
-        ]
+        retriever_name = "hybrid_graph"
     elif neo4j_mgr is not None:
-        retrieved_all = [
-            graph_retrieve(_retrieval_query(question.question), index, chunks, embedder, neo4j_manager=neo4j_mgr, k=retrieval_k)
-            for question in questions
-        ]
+        retriever_name = "graph"
     elif bm25 is not None:
-        hybrid_kwargs: dict[str, float] = {}
-        if hybrid_faiss_weight is not None:
-            hybrid_kwargs["faiss_weight"] = hybrid_faiss_weight
-        if hybrid_bm25_weight is not None:
-            hybrid_kwargs["bm25_weight"] = hybrid_bm25_weight
-        retrieved_all = [
-            hybrid_retrieve(
-                _retrieval_query(question.question),
-                index,
-                bm25,
-                chunks,
-                embedder,
-                k=retrieval_k,
-                **hybrid_kwargs,
-            )
-            for question in questions
-        ]
+        retriever_name = "hybrid"
     else:
-        retrieved_all = [
-            retrieve(_retrieval_query(question.question), index, chunks, embedder, k=retrieval_k)
-            for question in questions
-        ]
+        retriever_name = "faiss"
 
-    if not use_reranker or not _RERANKER_AVAILABLE:
-        return retrieved_all
-
-    print(f"  Reranking {retrieval_k} -> {k} with FlashRank ...", flush=True)
+    pipeline = RetrievalPipeline(
+        embedder=embedder,
+        index=index,
+        chunks=chunks,
+        bm25=bm25,
+        neo4j_manager=neo4j_mgr,
+        lancedb_table=lancedb_table,
+    )
     return [
-        rerank(
+        pipeline.retrieve(
             question.question,
-            retrieved,
-            k=k,
-            candidate_k=retrieval_k,
-            min_score=reranker_min_score,
+            retriever=retriever_name,
+            k=config.k,
+            query_expansion=config.query_expansion,
+            use_reranker=config.use_reranker,
+            reranker_candidate_multiplier=config.reranker_candidate_multiplier,
+            reranker_min_score=config.reranker_min_score,
+            hybrid_faiss_weight=config.hybrid_faiss_weight,
+            hybrid_bm25_weight=config.hybrid_bm25_weight,
         )
-        for question, retrieved in zip(questions, retrieved_all)
+        for question in questions
     ]
 
 
@@ -509,6 +658,10 @@ def _build_eval_result(
         citation_faithfulness=citation_faithfulness(generated_answer, retrieved_chunks),
         ragas_faithfulness=None,
         ragas_context_precision=None,
+        bertscore_f1=None,
+        judge_score=None,
+        judge_label=None,
+        judge_reason=None,
         context_coverage=coverage,
         hallucination_risk=round(1.0 - coverage, 4),
         latency_s=latency_s,
@@ -622,6 +775,36 @@ def _has_ragas_scores(results: list[EvalResult]) -> bool:
     )
 
 
+def _has_bertscore_scores(results: list[EvalResult]) -> bool:
+    return any(result.bertscore_f1 is not None for result in results)
+
+
+def _has_judge_scores(results: list[EvalResult]) -> bool:
+    return any(result.judge_score is not None for result in results)
+
+
+def _report_mode(has_ragas: bool, has_bertscore: bool, has_judge: bool) -> str:
+    if has_ragas:
+        return "ragas"
+    if has_bertscore and has_judge:
+        return "bertscore_judge"
+    if has_bertscore:
+        return "bertscore"
+    if has_judge:
+        return "judge"
+    return "base"
+
+
+def _report_line_width(mode: str) -> int:
+    return {
+        "ragas": 132,
+        "bertscore_judge": 108,
+        "bertscore": 98,
+        "judge": 98,
+        "base": 88,
+    }[mode]
+
+
 def _metric_str(value: float | None) -> str:
     return f"{value:.4f}" if value is not None else "  n/a "
 
@@ -651,14 +834,62 @@ def _apply_ragas_scores(
         print(f"  [Ragas {index:02d}/{total}] {question.id}", flush=True)
 
 
-def _print_report_header(has_ragas: bool, line_width: int) -> None:
+def _apply_bertscore_scores(
+    results: list[EvalResult],
+    questions: list[EvalQuestion],
+    *,
+    model_type: str,
+    lang: str,
+    batch_size: int,
+    device: str | None,
+) -> None:
+    total = len(results)
+    print(
+        f"  Scoring {total} answers with BERTScore  [model={model_type}, lang={lang}, device={device or 'auto'}] ...",
+        flush=True,
+    )
+    predictions = [result.answer for result in results]
+    references = [question.reference_answer for question in questions]
+    _, _, f1_scores = bert_score(
+        predictions,
+        references,
+        model_type=model_type,
+        lang=lang,
+        batch_size=batch_size,
+        device=device,
+        verbose=False,
+    )
+    for index, (result, f1_value) in enumerate(zip(results, f1_scores.tolist()), 1):
+        result.bertscore_f1 = round(float(f1_value), 4)
+        print(f"  [BERTScore {index:02d}/{total}] {result.question_id}", flush=True)
+
+
+def _print_report_header(mode: str, line_width: int) -> None:
     print("\n" + "=" * line_width)
     print("VERIDICTA EVALUATION REPORT")
     print("=" * line_width)
-    if has_ragas:
+    if mode == "ragas":
         print(
             f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} {'Cit.Faith':>10} "
-            f"{'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'Ctx Cov':>8} {'Latency':>9} {'k':>4}"
+            f"{'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'BERT F1':>9} {'Judge':>8} {'Ctx Cov':>8} {'Latency':>9} {'k':>4}"
+        )
+        return
+    if mode == "bertscore_judge":
+        print(
+            f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} {'BERT F1':>9} "
+            f"{'Judge':>8} {'Cit.Faith':>10} {'Ctx Cov':>8} {'Latency':>9} {'k':>4}"
+        )
+        return
+    if mode == "bertscore":
+        print(
+            f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} {'BERT F1':>9} "
+            f"{'Cit.Faith':>10} {'Ctx Cov':>8} {'Halluc.Risk':>11} {'Latency':>9} {'k':>4}"
+        )
+        return
+    if mode == "judge":
+        print(
+            f"{'ID':<15} {'KW Recall':>10} {'Word F1':>9} {'Judge':>8} "
+            f"{'Cit.Faith':>10} {'Ctx Cov':>8} {'Halluc.Risk':>11} {'Latency':>9} {'k':>4}"
         )
         return
     print(
@@ -667,14 +898,37 @@ def _print_report_header(has_ragas: bool, line_width: int) -> None:
     )
 
 
-def _print_report_row(result: EvalResult, has_ragas: bool) -> None:
+def _print_report_row(result: EvalResult, mode: str) -> None:
     wf1_str = _metric_str(result.word_f1)
-    if has_ragas:
+    bert_f1_str = _metric_str(result.bertscore_f1)
+    judge_str = _metric_str(result.judge_score)
+    if mode == "ragas":
         print(
             f"{result.question_id:<15} {result.keyword_recall:>10.4f} {wf1_str:>9} "
             f"{result.citation_faithfulness:>10.4f} {_metric_str(result.ragas_faithfulness):>12} "
-            f"{_metric_str(result.ragas_context_precision):>11} {result.context_coverage:>8.4f} "
+            f"{_metric_str(result.ragas_context_precision):>11} {bert_f1_str:>9} {judge_str:>8} {result.context_coverage:>8.4f} "
             f"{result.latency_s:>8.2f}s {result.n_retrieved:>4}"
+        )
+        return
+    if mode == "bertscore_judge":
+        print(
+            f"{result.question_id:<15} {result.keyword_recall:>10.4f} {wf1_str:>9} {bert_f1_str:>9} "
+            f"{judge_str:>8} {result.citation_faithfulness:>10.4f} {result.context_coverage:>8.4f} "
+            f"{result.latency_s:>8.2f}s {result.n_retrieved:>4}"
+        )
+        return
+    if mode == "bertscore":
+        print(
+            f"{result.question_id:<15} {result.keyword_recall:>10.4f} {wf1_str:>9} {bert_f1_str:>9} "
+            f"{result.citation_faithfulness:>10.4f} {result.context_coverage:>8.4f} "
+            f"{result.hallucination_risk:>11.4f} {result.latency_s:>8.2f}s {result.n_retrieved:>4}"
+        )
+        return
+    if mode == "judge":
+        print(
+            f"{result.question_id:<15} {result.keyword_recall:>10.4f} {wf1_str:>9} {judge_str:>8} "
+            f"{result.citation_faithfulness:>10.4f} {result.context_coverage:>8.4f} "
+            f"{result.hallucination_risk:>11.4f} {result.latency_s:>8.2f}s {result.n_retrieved:>4}"
         )
         return
     print(
@@ -684,38 +938,146 @@ def _print_report_row(result: EvalResult, has_ragas: bool) -> None:
     )
 
 
-def _print_overall_summary(results: list[EvalResult], has_ragas: bool) -> None:
-    kw_vals = [result.keyword_recall for result in results]
-    wf1_vals = [result.word_f1 for result in results if result.word_f1 is not None]
-    cit_vals = [result.citation_faithfulness for result in results]
-    cov_vals = [result.context_coverage for result in results]
-    risk_vals = [result.hallucination_risk for result in results]
-    lat_vals = [result.latency_s for result in results]
-    ragas_faith_vals = [result.ragas_faithfulness for result in results if result.ragas_faithfulness is not None]
-    ragas_ctx_vals = [
-        result.ragas_context_precision
-        for result in results
-        if result.ragas_context_precision is not None
-    ]
-    wf1_avg_str = _metric_str(_avg(wf1_vals) if wf1_vals else None)
+def _collect_report_metrics(results: list[EvalResult]) -> dict[str, list[float]]:
+    return {
+        "kw": [result.keyword_recall for result in results],
+        "wf1": [result.word_f1 for result in results if result.word_f1 is not None],
+        "cit": [result.citation_faithfulness for result in results],
+        "cov": [result.context_coverage for result in results],
+        "risk": [result.hallucination_risk for result in results],
+        "lat": [result.latency_s for result in results],
+        "bert": [result.bertscore_f1 for result in results if result.bertscore_f1 is not None],
+        "judge": [result.judge_score for result in results if result.judge_score is not None],
+        "ragas_faith": [result.ragas_faithfulness for result in results if result.ragas_faithfulness is not None],
+        "ragas_ctx": [
+            result.ragas_context_precision
+            for result in results
+            if result.ragas_context_precision is not None
+        ],
+    }
 
-    if has_ragas:
-        print(
-            f"{'OVERALL AVG':<15} {_avg(kw_vals):>10.4f} {wf1_avg_str:>9} "
-            f"{_avg(cit_vals):>10.4f} {_metric_str(_avg(ragas_faith_vals) if ragas_faith_vals else None):>12} "
-            f"{_metric_str(_avg(ragas_ctx_vals) if ragas_ctx_vals else None):>11} {_avg(cov_vals):>8.4f} "
-            f"{_avg(lat_vals):>8.2f}s"
-        )
-        return
 
-    print(
-        f"{'OVERALL AVG':<15} {_avg(kw_vals):>10.4f} {wf1_avg_str:>9} "
-        f"{_avg(cit_vals):>10.4f} {_avg(cov_vals):>8.4f} "
-        f"{_avg(risk_vals):>11.4f} {_avg(lat_vals):>8.2f}s"
+def _overall_summary_base(metrics: dict[str, list[float]], wf1_avg_str: str) -> str:
+    return (
+        f"{'OVERALL AVG':<15} {_avg(metrics['kw']):>10.4f} {wf1_avg_str:>9} "
+        f"{_avg(metrics['cit']):>10.4f} {_avg(metrics['cov']):>8.4f} "
+        f"{_avg(metrics['risk']):>11.4f} {_avg(metrics['lat']):>8.2f}s"
     )
 
 
-def _print_topic_breakdown(results: list[EvalResult], has_ragas: bool) -> None:
+def _overall_summary_judge(metrics: dict[str, list[float]], wf1_avg_str: str) -> str:
+    return (
+        f"{'OVERALL AVG':<15} {_avg(metrics['kw']):>10.4f} {wf1_avg_str:>9} {_metric_str(_avg(metrics['judge']) if metrics['judge'] else None):>8} "
+        f"{_avg(metrics['cit']):>10.4f} {_avg(metrics['cov']):>8.4f} {_avg(metrics['risk']):>11.4f} {_avg(metrics['lat']):>8.2f}s"
+    )
+
+
+def _overall_summary_bertscore(metrics: dict[str, list[float]], wf1_avg_str: str) -> str:
+    return (
+        f"{'OVERALL AVG':<15} {_avg(metrics['kw']):>10.4f} {wf1_avg_str:>9} {_metric_str(_avg(metrics['bert']) if metrics['bert'] else None):>9} "
+        f"{_avg(metrics['cit']):>10.4f} {_avg(metrics['cov']):>8.4f} {_avg(metrics['risk']):>11.4f} {_avg(metrics['lat']):>8.2f}s"
+    )
+
+
+def _overall_summary_bertscore_judge(metrics: dict[str, list[float]], wf1_avg_str: str) -> str:
+    return (
+        f"{'OVERALL AVG':<15} {_avg(metrics['kw']):>10.4f} {wf1_avg_str:>9} {_metric_str(_avg(metrics['bert']) if metrics['bert'] else None):>9} "
+        f"{_metric_str(_avg(metrics['judge']) if metrics['judge'] else None):>8} {_avg(metrics['cit']):>10.4f} {_avg(metrics['cov']):>8.4f} {_avg(metrics['lat']):>8.2f}s"
+    )
+
+
+def _overall_summary_ragas(metrics: dict[str, list[float]], wf1_avg_str: str) -> str:
+    return (
+        f"{'OVERALL AVG':<15} {_avg(metrics['kw']):>10.4f} {wf1_avg_str:>9} "
+        f"{_avg(metrics['cit']):>10.4f} {_metric_str(_avg(metrics['ragas_faith']) if metrics['ragas_faith'] else None):>12} "
+        f"{_metric_str(_avg(metrics['ragas_ctx']) if metrics['ragas_ctx'] else None):>11} {_metric_str(_avg(metrics['bert']) if metrics['bert'] else None):>9} {_metric_str(_avg(metrics['judge']) if metrics['judge'] else None):>8} {_avg(metrics['cov']):>8.4f} "
+        f"{_avg(metrics['lat']):>8.2f}s"
+    )
+
+
+def _print_overall_summary(results: list[EvalResult], mode: str) -> None:
+    metrics = _collect_report_metrics(results)
+    wf1_avg_str = _metric_str(_avg(metrics["wf1"]) if metrics["wf1"] else None)
+    formatters = {
+        "base": _overall_summary_base,
+        "judge": _overall_summary_judge,
+        "bertscore": _overall_summary_bertscore,
+        "bertscore_judge": _overall_summary_bertscore_judge,
+        "ragas": _overall_summary_ragas,
+    }
+    print(formatters[mode](metrics, wf1_avg_str))
+
+
+def _topic_header(mode: str) -> str:
+    headers = {
+        "ragas": f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'BERT F1':>9} {'Judge':>8} {'n':>4}",
+        "bertscore_judge": f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'BERT F1':>9} {'Judge':>8} {'n':>4}",
+        "bertscore": f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'BERT F1':>9} {'Halluc.Risk':>12} {'n':>4}",
+        "judge": f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Judge':>8} {'Halluc.Risk':>12} {'n':>4}",
+        "base": f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Halluc.Risk':>12} {'n':>4}",
+    }
+    return headers[mode]
+
+
+def _topic_row_base(topic: str, kw_score: float, wf1_text: str, rows: list[EvalResult]) -> str:
+    hallucination_risk_score = _avg([row.hallucination_risk for row in rows])
+    return f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} {hallucination_risk_score:>12.4f} {len(rows):>4}"
+
+
+def _topic_row_judge(topic: str, kw_score: float, wf1_text: str, rows: list[EvalResult]) -> str:
+    judge_values = [row.judge_score for row in rows if row.judge_score is not None]
+    hallucination_risk_score = _avg([row.hallucination_risk for row in rows])
+    return (
+        f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} {_metric_str(_avg(judge_values) if judge_values else None):>8} "
+        f"{hallucination_risk_score:>12.4f} {len(rows):>4}"
+    )
+
+
+def _topic_row_bertscore(topic: str, kw_score: float, wf1_text: str, rows: list[EvalResult]) -> str:
+    bert_values = [row.bertscore_f1 for row in rows if row.bertscore_f1 is not None]
+    hallucination_risk_score = _avg([row.hallucination_risk for row in rows])
+    return (
+        f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} {_metric_str(_avg(bert_values) if bert_values else None):>9} "
+        f"{hallucination_risk_score:>12.4f} {len(rows):>4}"
+    )
+
+
+def _topic_row_bertscore_judge(topic: str, kw_score: float, wf1_text: str, rows: list[EvalResult]) -> str:
+    bert_values = [row.bertscore_f1 for row in rows if row.bertscore_f1 is not None]
+    judge_values = [row.judge_score for row in rows if row.judge_score is not None]
+    return (
+        f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} {_metric_str(_avg(bert_values) if bert_values else None):>9} "
+        f"{_metric_str(_avg(judge_values) if judge_values else None):>8} {len(rows):>4}"
+    )
+
+
+def _topic_row_ragas(topic: str, kw_score: float, wf1_text: str, rows: list[EvalResult]) -> str:
+    ragas_faith_values = [row.ragas_faithfulness for row in rows if row.ragas_faithfulness is not None]
+    ragas_ctx_values = [row.ragas_context_precision for row in rows if row.ragas_context_precision is not None]
+    bert_values = [row.bertscore_f1 for row in rows if row.bertscore_f1 is not None]
+    judge_values = [row.judge_score for row in rows if row.judge_score is not None]
+    return (
+        f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} "
+        f"{_metric_str(_avg(ragas_faith_values) if ragas_faith_values else None):>12} "
+        f"{_metric_str(_avg(ragas_ctx_values) if ragas_ctx_values else None):>11} {_metric_str(_avg(bert_values) if bert_values else None):>9} {_metric_str(_avg(judge_values) if judge_values else None):>8} {len(rows):>4}"
+    )
+
+
+def _topic_row(topic: str, rows: list[EvalResult], mode: str) -> str:
+    kw_score = _avg([row.keyword_recall for row in rows])
+    wf1_values = [row.word_f1 for row in rows if row.word_f1 is not None]
+    wf1_text = _metric_str(_avg(wf1_values) if wf1_values else None)
+    formatters = {
+        "base": _topic_row_base,
+        "judge": _topic_row_judge,
+        "bertscore": _topic_row_bertscore,
+        "bertscore_judge": _topic_row_bertscore_judge,
+        "ragas": _topic_row_ragas,
+    }
+    return formatters[mode](topic, kw_score, wf1_text, rows)
+
+
+def _print_topic_breakdown(results: list[EvalResult], mode: str) -> None:
     topics: dict[str, list[EvalResult]] = {}
     for result in results:
         topics.setdefault(result.topic, []).append(result)
@@ -724,51 +1086,28 @@ def _print_topic_breakdown(results: list[EvalResult], has_ragas: bool) -> None:
         return
 
     print("\nPer-topic averages:")
-    if has_ragas:
-        print(
-            f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'n':>4}"
-        )
-    else:
-        print(f"  {'Topic':<25} {'KW Recall':>10} {'Word F1':>9} {'Halluc.Risk':>12} {'n':>4}")
+    print(_topic_header(mode))
 
     for topic, rows in sorted(topics.items()):
-        kw_score = _avg([row.keyword_recall for row in rows])
-        wf1_values = [row.word_f1 for row in rows if row.word_f1 is not None]
-        wf1_text = _metric_str(_avg(wf1_values) if wf1_values else None)
-        if has_ragas:
-            ragas_faith_values = [row.ragas_faithfulness for row in rows if row.ragas_faithfulness is not None]
-            ragas_ctx_values = [
-                row.ragas_context_precision
-                for row in rows
-                if row.ragas_context_precision is not None
-            ]
-            print(
-                f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} "
-                f"{_metric_str(_avg(ragas_faith_values) if ragas_faith_values else None):>12} "
-                f"{_metric_str(_avg(ragas_ctx_values) if ragas_ctx_values else None):>11} {len(rows):>4}"
-            )
-            continue
-
-        hallucination_risk_score = _avg([row.hallucination_risk for row in rows])
-        print(
-            f"  {topic:<25} {kw_score:>10.4f} {wf1_text:>9} "
-            f"{hallucination_risk_score:>12.4f} {len(rows):>4}"
-        )
+        print(_topic_row(topic, rows, mode))
 
 
 def print_report(results: list[EvalResult]) -> None:
     has_ragas = _has_ragas_scores(results)
-    line_width = 112 if has_ragas else 88
+    has_bertscore = _has_bertscore_scores(results)
+    has_judge = _has_judge_scores(results)
+    mode = _report_mode(has_ragas, has_bertscore, has_judge)
+    line_width = _report_line_width(mode)
 
-    _print_report_header(has_ragas, line_width)
+    _print_report_header(mode, line_width)
     print("-" * line_width)
 
     for result in results:
-        _print_report_row(result, has_ragas)
+        _print_report_row(result, mode)
 
     print("-" * line_width)
-    _print_overall_summary(results, has_ragas)
-    _print_topic_breakdown(results, has_ragas)
+    _print_overall_summary(results, mode)
+    _print_topic_breakdown(results, mode)
 
     print("=" * line_width + "\n")
 
@@ -781,50 +1120,110 @@ def save_results(results: list[EvalResult], out_dir: Path) -> None:
     print(f"Results saved -> {out_path}")
 
 
+def _comparison_header(mode: str) -> tuple[str, str]:
+    headers = {
+        "ragas": (
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'Cit.Faith':>10} {'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'BERT F1':>9} {'Judge':>8} {'Latency':>9}",
+            "  " + "-" * 124,
+        ),
+        "bertscore_judge": (
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'BERT F1':>9} {'Judge':>8} {'Cit.Faith':>10} {'Latency':>9}",
+            "  " + "-" * 100,
+        ),
+        "bertscore": (
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'BERT F1':>9} {'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}",
+            "  " + "-" * 90,
+        ),
+        "judge": (
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'Judge':>8} {'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}",
+            "  " + "-" * 90,
+        ),
+        "base": (
+            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}",
+            "  " + "-" * 80,
+        ),
+    }
+    return headers[mode]
+
+
+def _comparison_row_base(short: str, kw: float, wf1_s: str, cit: float, risk: float, lat: float, *_unused) -> str:
+    return f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
+
+
+def _comparison_row_judge(short: str, kw: float, wf1_s: str, cit: float, risk: float, lat: float, _ragas_faith_vals, _ragas_ctx_vals, _bert_vals, judge_vals) -> str:
+    return (
+        f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {_metric_str(_avg(judge_vals) if judge_vals else None):>8} "
+        f"{cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
+    )
+
+
+def _comparison_row_bertscore(short: str, kw: float, wf1_s: str, cit: float, risk: float, lat: float, _ragas_faith_vals, _ragas_ctx_vals, bert_vals, _judge_vals) -> str:
+    return (
+        f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {_metric_str(_avg(bert_vals) if bert_vals else None):>9} "
+        f"{cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
+    )
+
+
+def _comparison_row_bertscore_judge(short: str, kw: float, wf1_s: str, cit: float, _risk: float, lat: float, _ragas_faith_vals, _ragas_ctx_vals, bert_vals, judge_vals) -> str:
+    return (
+        f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {_metric_str(_avg(bert_vals) if bert_vals else None):>9} "
+        f"{_metric_str(_avg(judge_vals) if judge_vals else None):>8} {cit:>10.4f} {lat:>8.2f}s"
+    )
+
+
+def _comparison_row_ragas(short: str, kw: float, wf1_s: str, cit: float, _risk: float, lat: float, ragas_faith_vals, ragas_ctx_vals, bert_vals, judge_vals) -> str:
+    return (
+        f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {cit:>10.4f} "
+        f"{_metric_str(_avg(ragas_faith_vals) if ragas_faith_vals else None):>12} "
+        f"{_metric_str(_avg(ragas_ctx_vals) if ragas_ctx_vals else None):>11} {_metric_str(_avg(bert_vals) if bert_vals else None):>9} {_metric_str(_avg(judge_vals) if judge_vals else None):>8} {lat:>8.2f}s"
+    )
+
+
+def _comparison_row(model_name: str, results: list[EvalResult], mode: str) -> str:
+    kw = _avg([result.keyword_recall for result in results])
+    wf1_vals = [result.word_f1 for result in results if result.word_f1 is not None]
+    wf1_s = _metric_str(_avg(wf1_vals) if wf1_vals else None)
+    cit = _avg([result.citation_faithfulness for result in results])
+    risk = _avg([result.hallucination_risk for result in results])
+    lat = _avg([result.latency_s for result in results])
+    ragas_faith_vals = [result.ragas_faithfulness for result in results if result.ragas_faithfulness is not None]
+    ragas_ctx_vals = [result.ragas_context_precision for result in results if result.ragas_context_precision is not None]
+    bert_vals = [result.bertscore_f1 for result in results if result.bertscore_f1 is not None]
+    judge_vals = [result.judge_score for result in results if result.judge_score is not None]
+    short = model_name[:30]
+    formatters = {
+        "base": _comparison_row_base,
+        "judge": _comparison_row_judge,
+        "bertscore": _comparison_row_bertscore,
+        "bertscore_judge": _comparison_row_bertscore_judge,
+        "ragas": _comparison_row_ragas,
+    }
+    return formatters[mode](short, kw, wf1_s, cit, risk, lat, ragas_faith_vals, ragas_ctx_vals, bert_vals, judge_vals)
+
+
 def print_comparison(all_results: dict[str, list[EvalResult]]) -> None:
     """Print a side-by-side comparison table across multiple models."""
     has_ragas = any(_has_ragas_scores(results) for results in all_results.values())
-    line_width = 108 if has_ragas else 84
+    has_bertscore = any(_has_bertscore_scores(results) for results in all_results.values())
+    has_judge = any(_has_judge_scores(results) for results in all_results.values())
+    mode = _report_mode(has_ragas, has_bertscore, has_judge)
+    line_width = {
+        "ragas": 128,
+        "bertscore_judge": 104,
+        "bertscore": 94,
+        "judge": 94,
+        "base": 84,
+    }[mode]
 
     print("\n" + "=" * line_width)
     print("MODEL COMPARISON REPORT")
     print("=" * line_width)
-    if has_ragas:
-        print(
-            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} {'Cit.Faith':>10} "
-            f"{'Ragas.Faith':>12} {'Ragas.CtxP':>11} {'Latency':>9}"
-        )
-        print("  " + "-" * 104)
-    else:
-        print(
-            f"  {'Model':<30} {'KW Recall':>10} {'Word F1':>9} "
-            f"{'Cit.Faith':>10} {'Halluc.Risk':>11} {'Latency':>9}"
-        )
-        print("  " + "-" * 80)
+    header, separator = _comparison_header(mode)
+    print(header)
+    print(separator)
 
     for model_name, results in all_results.items():
-        kw = _avg([r.keyword_recall for r in results])
-        wf1_vals = [r.word_f1 for r in results if r.word_f1 is not None]
-        wf1_s = _metric_str(_avg(wf1_vals) if wf1_vals else None)
-        cit = _avg([r.citation_faithfulness for r in results])
-        risk = _avg([r.hallucination_risk for r in results])
-        lat = _avg([r.latency_s for r in results])
-        ragas_faith_vals = [r.ragas_faithfulness for r in results if r.ragas_faithfulness is not None]
-        ragas_ctx_vals = [
-            r.ragas_context_precision for r in results if r.ragas_context_precision is not None
-        ]
-        short = model_name[:30]
-        if has_ragas:
-            print(
-                f"  {short:<30} {kw:>10.4f} {wf1_s:>9} {cit:>10.4f} "
-                f"{_metric_str(_avg(ragas_faith_vals) if ragas_faith_vals else None):>12} "
-                f"{_metric_str(_avg(ragas_ctx_vals) if ragas_ctx_vals else None):>11} {lat:>8.2f}s"
-            )
-        else:
-            print(
-                f"  {short:<30} {kw:>10.4f} {wf1_s:>9} "
-                f"{cit:>10.4f} {risk:>11.4f} {lat:>8.2f}s"
-            )
+        print(_comparison_row(model_name, results, mode))
 
     print("=" * line_width + "\n")
 
@@ -959,6 +1358,48 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_RAGAS_LANGUAGE,
         help="Target language used to adapt Ragas prompt examples  (default: french)",
     )
+    parser.add_argument(
+        "--bertscore",
+        action="store_true",
+        help="Compute optional BERTScore F1 against reference answers (CPU compatible)",
+    )
+    parser.add_argument(
+        "--bertscore-model",
+        default="distilbert-base-multilingual-cased",
+        help="Hugging Face model used for BERTScore  (default: distilbert-base-multilingual-cased)",
+    )
+    parser.add_argument(
+        "--bertscore-lang",
+        default="fr",
+        help="Language code used by BERTScore idf baseline  (default: fr)",
+    )
+    parser.add_argument(
+        "--bertscore-batch-size",
+        type=int,
+        default=16,
+        help="Batch size for BERTScore  (default: 16)",
+    )
+    parser.add_argument(
+        "--bertscore-device",
+        default=None,
+        help="Torch device for BERTScore (e.g. cpu, cuda:0). Defaults to auto.",
+    )
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="Compute optional minimal LLM judge score against the reference answer",
+    )
+    parser.add_argument(
+        "--judge-backend",
+        default="copilot",
+        choices=["copilot", "cerebras"],
+        help="Backend used by the minimal LLM judge  (default: copilot)",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=None,
+        help="LLM model used by the minimal judge  (default depends on judge backend)",
+    )
     return parser.parse_args()
 
 
@@ -1043,6 +1484,59 @@ def _build_ragas_evaluator(args: argparse.Namespace) -> RagasEvaluator | None:
     return evaluator
 
 
+def _validate_bertscore_args(args: argparse.Namespace) -> None:
+    if not args.bertscore:
+        return
+    if not _BERTSCORE_AVAILABLE:
+        sys.exit("ERROR: BERTScore dependency unavailable. Run: pip install bert-score")
+    if args.bertscore_batch_size < 1:
+        sys.exit("ERROR: --bertscore-batch-size must be >= 1")
+
+
+def _validate_judge_args(args: argparse.Namespace) -> None:
+    if not args.judge:
+        return
+    if args.retrieval_only:
+        sys.exit("ERROR: --judge is only available in full RAG mode (without --retrieval-only).")
+    try:
+        resolve_llm_backend(args.judge_backend)
+    except ValueError as exc:
+        sys.exit(f"ERROR: {exc}")
+
+
+def _validate_main_args(args: argparse.Namespace) -> None:
+    if args.reranker_candidate_multiplier < 1:
+        sys.exit("ERROR: --reranker-candidate-multiplier must be >= 1")
+
+    one_weight_missing = (args.hybrid_faiss_weight is None) != (args.hybrid_bm25_weight is None)
+    if one_weight_missing:
+        sys.exit("ERROR: Provide both --hybrid-faiss-weight and --hybrid-bm25-weight together")
+
+    if args.hybrid_faiss_weight is not None and args.hybrid_bm25_weight is not None:
+        if args.hybrid_faiss_weight < 0 or args.hybrid_bm25_weight < 0:
+            sys.exit("ERROR: hybrid weights must be >= 0")
+        if args.hybrid_faiss_weight + args.hybrid_bm25_weight == 0:
+            sys.exit("ERROR: hybrid weights sum must be > 0")
+
+
+def _load_primary_index(args: argparse.Namespace, index_dir: Path, lancedb_table) -> tuple[object | None, list[dict]]:
+    if args.retriever in ("lancedb", "lancedb_graph"):
+        from retrievers.lancedb_rag import _table_to_chunks
+
+        index = None
+        chunks = _table_to_chunks(lancedb_table)
+        print(f"  LanceDB chunks exported: {len(chunks)}")
+        return index, chunks
+
+    print("Loading FAISS index ...")
+    try:
+        index, chunks = load_index(index_dir)
+    except (FileNotFoundError, RuntimeError) as exc:
+        sys.exit(f"ERROR: {exc}")
+    print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
+    return index, chunks
+
+
 def _build_run_config(
     args: argparse.Namespace,
     *,
@@ -1065,6 +1559,14 @@ def _build_run_config(
         query_expansion=args.query_expansion,
         prompt_version=args.prompt_version,
         ragas_evaluator=ragas_evaluator,
+        use_bertscore=args.bertscore,
+        bertscore_model=args.bertscore_model,
+        bertscore_lang=args.bertscore_lang,
+        bertscore_batch_size=args.bertscore_batch_size,
+        bertscore_device=args.bertscore_device,
+        use_judge=args.judge,
+        judge_backend=args.judge_backend,
+        judge_model=args.judge_model,
     )
 
 
@@ -1141,19 +1643,7 @@ def _run_single_evaluation(
 
 def main() -> None:
     args = _parse_args()
-
-    if args.reranker_candidate_multiplier < 1:
-        sys.exit("ERROR: --reranker-candidate-multiplier must be >= 1")
-
-    one_weight_missing = (args.hybrid_faiss_weight is None) != (args.hybrid_bm25_weight is None)
-    if one_weight_missing:
-        sys.exit("ERROR: Provide both --hybrid-faiss-weight and --hybrid-bm25-weight together")
-
-    if args.hybrid_faiss_weight is not None and args.hybrid_bm25_weight is not None:
-        if args.hybrid_faiss_weight < 0 or args.hybrid_bm25_weight < 0:
-            sys.exit("ERROR: hybrid weights must be >= 0")
-        if args.hybrid_faiss_weight + args.hybrid_bm25_weight == 0:
-            sys.exit("ERROR: hybrid weights sum must be > 0")
+    _validate_main_args(args)
 
     questions_path = Path(args.questions)
     if not questions_path.exists():
@@ -1167,19 +1657,7 @@ def main() -> None:
     print(f"  {len(questions)} questions loaded from {questions_path}")
 
     bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(args, index_dir)
-
-    if args.retriever in ("lancedb", "lancedb_graph"):
-        from retrievers.lancedb_rag import _table_to_chunks
-        index = None
-        chunks = _table_to_chunks(lancedb_table)
-        print(f"  LanceDB chunks exported: {len(chunks)}")
-    else:
-        print("Loading FAISS index ...")
-        try:
-            index, chunks = load_index(index_dir)
-        except (FileNotFoundError, RuntimeError) as exc:
-            sys.exit(f"ERROR: {exc}")
-        print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
+    index, chunks = _load_primary_index(args, index_dir, lancedb_table)
 
     print("Loading embedder ...")
     embedder = _load_embedder()
@@ -1191,6 +1669,8 @@ def main() -> None:
         sys.exit("ERROR: FlashRank reranker not available. Run: pip install flashrank")
 
     ragas_evaluator = _build_ragas_evaluator(args)
+    _validate_bertscore_args(args)
+    _validate_judge_args(args)
 
     if args.all_models:
         _run_all_models_evaluation(
