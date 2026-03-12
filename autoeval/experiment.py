@@ -22,36 +22,58 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
+# ============================================================================
 # === TUNABLE PARAMETERS === (edit this section, then run the script)
 # ============================================================================
 
-RETRIEVER = "lancedb"           # faiss | hybrid | lancedb | graph | hybrid_graph | lancedb_graph
-K = 5                           # chunks to retrieve (3–15)
+RETRIEVER = "lancedb_graph"
+K = 6
 
 # RRF weights — LanceDB retrievers only
-VECTOR_WEIGHT = 0.3             # dense vector weight in RRF (0.1–0.9)
-FTS_WEIGHT = 0.7                # full-text search weight in RRF (0.1–0.9)
+VECTOR_WEIGHT = 0.25
+FTS_WEIGHT = 0.75
 
 # Hybrid weights — hybrid / hybrid_graph only
-HYBRID_FAISS_WEIGHT = None      # None = use module default (0.4)
-HYBRID_BM25_WEIGHT = None       # None = use module default (0.6)
+HYBRID_FAISS_WEIGHT = 0.5
+HYBRID_BM25_WEIGHT = 0.5
 
 # Reranker
-USE_RERANKER = False
-RERANKER_CANDIDATE_MULTIPLIER = 4   # over-retrieval factor (2–8)
-RERANKER_MIN_SCORE = None           # FlashRank min threshold or None
+USE_RERANKER = True
+RERANKER_CANDIDATE_MULTIPLIER = 4
+RERANKER_MIN_SCORE = None
 
 # Query expansion
 QUERY_EXPANSION = False
 
 # LLM generation (only used with --full)
-PROMPT_VERSION = 3              # 1, 2, or 3
-BACKEND = "copilot"             # copilot | cerebras
-MODEL = "gpt-4.1"              # model name
-WORKERS = 4                     # parallel LLM workers
+PROMPT_VERSION = 3
+BACKEND = "copilot"
+MODEL = "gpt-4.1"
+WORKERS = 4
 
 # Experiment note (one line describing your hypothesis)
-NOTE = "baseline LanceDB k=5"
+NOTE = "lancedb_graph k=6 FTS=0.75 + reranker mult=4: exp14 (best score=0.4671) never tested reranker; reranker re-selects top-6 from 24 FTS-heavy candidates for better semantic alignment, targeting F1>=0.30 while FTS dominance maintains KW>=0.67"
 
 # ============================================================================
 # === END TUNABLE PARAMETERS ===
