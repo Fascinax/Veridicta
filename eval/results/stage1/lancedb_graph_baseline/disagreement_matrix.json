@@ -1,0 +1,351 @@
+{
+  "n": 100,
+  "word_f1_avg": 0.2732,
+  "bertscore_f1_avg": 0.8105,
+  "judge_avg": 0.781,
+  "judge_acceptable": 76,
+  "judge_incorrect": 24,
+  "pearson_word_bert": 0.7187,
+  "classes": {
+    "ok": 57,
+    "metric_penalty": 37,
+    "retrieval_ok_gen_bad": 6
+  },
+  "metric_penalty_rate": 0.37,
+  "true_failure_rate": 0.0,
+  "metric_penalty_cases": [
+    {
+      "question_id": "monaco-004",
+      "word_f1": 0.2177,
+      "bertscore_f1": 0.8335,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.6779,
+      "judge_reason": "La réponse générée explique correctement que l'indemnité compensatrice de préavis est calculée sur la base du salaire br"
+    },
+    {
+      "question_id": "monaco-098",
+      "word_f1": 0.2174,
+      "bertscore_f1": 0.8233,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8374,
+      "judge_reason": "La réponse générée détaille correctement les obligations de reclassement, la procédure, les cas d'impossibilité, les san"
+    },
+    {
+      "question_id": "monaco-036",
+      "word_f1": 0.2235,
+      "bertscore_f1": 0.8192,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8947,
+      "judge_reason": "La réponse générée reprend l'essentiel de la référence : transfert des contrats en cas de maintien de l'entité économiqu"
+    },
+    {
+      "question_id": "monaco-025",
+      "word_f1": 0.1893,
+      "bertscore_f1": 0.8191,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8158,
+      "judge_reason": "La réponse générée reprend l'essentiel : reconnaissance constitutionnelle du droit de grève à Monaco, encadrement légal,"
+    },
+    {
+      "question_id": "monaco-009",
+      "word_f1": 0.2475,
+      "bertscore_f1": 0.8143,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.6588,
+      "judge_reason": "La réponse générée mentionne correctement le délai de prescription de cinq ans, l'interruption par la saisine, et la règ"
+    },
+    {
+      "question_id": "monaco-089",
+      "word_f1": 0.2271,
+      "bertscore_f1": 0.8138,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8235,
+      "judge_reason": "La réponse générée détaille les obligations de Monaco, mentionne le SICCFIN, la législation, les obligations des profess"
+    },
+    {
+      "question_id": "monaco-030",
+      "word_f1": 0.2371,
+      "bertscore_f1": 0.8124,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8323,
+      "judge_reason": "La réponse générée reprend l'essentiel de l'encadrement légal du contrat d'apprentissage à Monaco, mentionne la formatio"
+    },
+    {
+      "question_id": "monaco-059",
+      "word_f1": 0.2469,
+      "bertscore_f1": 0.8109,
+      "judge_score": 0.9,
+      "judge_label": "acceptable",
+      "context_coverage": 0.894,
+      "judge_reason": "La réponse générée détaille correctement les prestations (soins, indemnités journalières, rentes, majorations) et le pri"
+    },
+    {
+      "question_id": "monaco-035",
+      "word_f1": 0.218,
+      "bertscore_f1": 0.8068,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7607,
+      "judge_reason": "La réponse générée détaille correctement la procédure de reconnaissance et d'indemnisation, mentionne l'expertise médica"
+    },
+    {
+      "question_id": "monaco-039",
+      "word_f1": 0.2424,
+      "bertscore_f1": 0.8062,
+      "judge_score": 0.9,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7935,
+      "judge_reason": "La réponse générée détaille correctement la définition, la preuve, le rôle du juge et les conséquences du harcèlement se"
+    },
+    {
+      "question_id": "monaco-095",
+      "word_f1": 0.2184,
+      "bertscore_f1": 0.8054,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7563,
+      "judge_reason": "La réponse générée détaille correctement les conditions d'exercice, le monopole pharmaceutique et la coopération interna"
+    },
+    {
+      "question_id": "monaco-096",
+      "word_f1": 0.2384,
+      "bertscore_f1": 0.8053,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8313,
+      "judge_reason": "La réponse générée détaille de nombreux dispositifs légaux et techniques pertinents pour la protection des données de sa"
+    },
+    {
+      "question_id": "monaco-052",
+      "word_f1": 0.2481,
+      "bertscore_f1": 0.8052,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7453,
+      "judge_reason": "La réponse générée décrit correctement la procédure disciplinaire, les droits de la défense et l'accès au dossier, mais "
+    },
+    {
+      "question_id": "monaco-041",
+      "word_f1": 0.2061,
+      "bertscore_f1": 0.8036,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7344,
+      "judge_reason": "La réponse générée reprend toutes les obligations principales : constat d'inaptitude par le médecin du travail, obligati"
+    },
+    {
+      "question_id": "monaco-071",
+      "word_f1": 0.2019,
+      "bertscore_f1": 0.8023,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8071,
+      "judge_reason": "La réponse générée détaille correctement le processus de négociation, de conclusion, d'enregistrement et d'extension des"
+    },
+    {
+      "question_id": "monaco-018",
+      "word_f1": 0.2212,
+      "bertscore_f1": 0.8015,
+      "judge_score": 0.9,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7957,
+      "judge_reason": "La réponse générée explique correctement le principe de parité, la base légale et la méthode de révision du salaire mini"
+    },
+    {
+      "question_id": "monaco-065",
+      "word_f1": 0.1926,
+      "bertscore_f1": 0.8008,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8316,
+      "judge_reason": "La réponse générée détaille précisément les conditions de qualification, cite l'arrêté ministériel pertinent, mentionne "
+    },
+    {
+      "question_id": "monaco-053",
+      "word_f1": 0.2058,
+      "bertscore_f1": 0.7979,
+      "judge_score": 0.7,
+      "judge_label": "incorrect",
+      "context_coverage": 0.8446,
+      "judge_reason": "La réponse générée détaille le processus de concours et de stage mais omet que la nomination finale des fonctionnaires e"
+    },
+    {
+      "question_id": "monaco-040",
+      "word_f1": 0.1854,
+      "bertscore_f1": 0.7958,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7342,
+      "judge_reason": "La réponse générée détaille plusieurs obligations précises de l'employeur, notamment la prise en compte des avis du méde"
+    },
+    {
+      "question_id": "monaco-037",
+      "word_f1": 0.2082,
+      "bertscore_f1": 0.7942,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7379,
+      "judge_reason": "La réponse générée reprend l'essentiel des règles applicables, notamment la nécessité d'une cause économique réelle, la "
+    },
+    {
+      "question_id": "monaco-088",
+      "word_f1": 0.178,
+      "bertscore_f1": 0.7928,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8768,
+      "judge_reason": "La réponse générée détaille la réglementation de la copropriété à Monaco, mentionne la loi applicable, l'organisation de"
+    },
+    {
+      "question_id": "monaco-032",
+      "word_f1": 0.2381,
+      "bertscore_f1": 0.7919,
+      "judge_score": 0.6,
+      "judge_label": "incorrect",
+      "context_coverage": 0.7709,
+      "judge_reason": "La réponse générée détaille des aspects procéduraux et jurisprudentiels mais omet de mentionner explicitement les condit"
+    },
+    {
+      "question_id": "monaco-012",
+      "word_f1": 0.1786,
+      "bertscore_f1": 0.7916,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.4103,
+      "judge_reason": "La réponse générée indique correctement que les sources ne traitent pas explicitement de la démission déguisée ni de ses"
+    },
+    {
+      "question_id": "monaco-069",
+      "word_f1": 0.2155,
+      "bertscore_f1": 0.7908,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7,
+      "judge_reason": "La réponse générée explique le rôle central de la pension de vieillesse dans la protection sociale monégasque et mention"
+    },
+    {
+      "question_id": "monaco-019",
+      "word_f1": 0.1598,
+      "bertscore_f1": 0.7901,
+      "judge_score": 0.9,
+      "judge_label": "acceptable",
+      "context_coverage": 0.6884,
+      "judge_reason": "La réponse générée détaille correctement l'application des conventions collectives monégasques, insiste sur leur champ d"
+    },
+    {
+      "question_id": "monaco-010",
+      "word_f1": 0.1825,
+      "bertscore_f1": 0.7866,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7333,
+      "judge_reason": "La réponse générée reprend les éléments essentiels de la définition jurisprudentielle du harcèlement moral à Monaco, not"
+    },
+    {
+      "question_id": "monaco-044",
+      "word_f1": 0.2178,
+      "bertscore_f1": 0.7858,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7633,
+      "judge_reason": "La réponse générée décrit correctement le fonctionnement actuel du régime de retraite complémentaire à Monaco, mentionne"
+    },
+    {
+      "question_id": "monaco-083",
+      "word_f1": 0.191,
+      "bertscore_f1": 0.7835,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7289,
+      "judge_reason": "La réponse générée détaille correctement le champ d'application, les objectifs et les limites des procédures collectives"
+    },
+    {
+      "question_id": "monaco-047",
+      "word_f1": 0.1378,
+      "bertscore_f1": 0.782,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8346,
+      "judge_reason": "La réponse générée reprend l'ensemble des règles essentielles sur le travail de nuit à Monaco, y compris la définition d"
+    },
+    {
+      "question_id": "monaco-080",
+      "word_f1": 0.1738,
+      "bertscore_f1": 0.7809,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8808,
+      "judge_reason": "La réponse générée reprend toutes les exigences essentielles : contrôle de la CCIN, information des personnes concernées"
+    },
+    {
+      "question_id": "monaco-077",
+      "word_f1": 0.1284,
+      "bertscore_f1": 0.7781,
+      "judge_score": 0.8,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8134,
+      "judge_reason": "La réponse générée détaille de nombreuses obligations de gouvernance et de transparence, y compris la tenue de comptes, "
+    },
+    {
+      "question_id": "monaco-043",
+      "word_f1": 0.1864,
+      "bertscore_f1": 0.777,
+      "judge_score": 0.6,
+      "judge_label": "incorrect",
+      "context_coverage": 0.6111,
+      "judge_reason": "La réponse générée détaille la distinction entre primes discrétionnaires et contractuelles mais omet l'intégration des p"
+    },
+    {
+      "question_id": "monaco-066",
+      "word_f1": 0.1492,
+      "bertscore_f1": 0.7768,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.7987,
+      "judge_reason": "La réponse générée détaille précisément le processus de certification professionnelle dans le secteur financier à Monaco"
+    },
+    {
+      "question_id": "monaco-034",
+      "word_f1": 0.1749,
+      "bertscore_f1": 0.7747,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8115,
+      "judge_reason": "La réponse générée détaille de nombreuses obligations de réparation et de suivi, mais omet explicitement l'obligation de"
+    },
+    {
+      "question_id": "monaco-087",
+      "word_f1": 0.2353,
+      "bertscore_f1": 0.7718,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.6813,
+      "judge_reason": "La réponse générée détaille correctement les étapes et formalités de la saisie et vente immobilière à Monaco, en accord "
+    },
+    {
+      "question_id": "monaco-061",
+      "word_f1": 0.1667,
+      "bertscore_f1": 0.7708,
+      "judge_score": 1.0,
+      "judge_label": "acceptable",
+      "context_coverage": 0.8265,
+      "judge_reason": "La réponse générée détaille précisément les conditions de majoration des rentes selon la législation monégasque, en s'ap"
+    },
+    {
+      "question_id": "monaco-055",
+      "word_f1": 0.2151,
+      "bertscore_f1": 0.7621,
+      "judge_score": 0.7,
+      "judge_label": "acceptable",
+      "context_coverage": 0.753,
+      "judge_reason": "La réponse générée détaille les conditions générales de recrutement, l'aptitude, la priorité monégasque et les pièces à "
+    }
+  ]
+}
