@@ -1,0 +1,482 @@
+[
+  {
+    "id": "monaco-001",
+    "question": "Quelles sont les indemnités de licenciement prévues par le droit monégasque ?",
+    "reference_answer": "En droit monégasque, le salarié licencié a droit à une indemnité de congédiement calculée en fonction de l'ancienneté, ainsi qu'à une indemnité compensatrice de préavis si ce dernier n'est pas effectué. En cas de licenciement abusif, des dommages et intérêts supplémentaires peuvent être accordés par le Tribunal du travail.",
+    "reference_keywords": [
+      "indemnité",
+      "congédiement",
+      "ancienneté",
+      "préavis",
+      "licenciement"
+    ]
+  },
+  {
+    "id": "monaco-007",
+    "question": "Comment le Tribunal du travail de Monaco apprécie-t-il le licenciement pour motif personnel ?",
+    "reference_answer": "Le Tribunal du travail de Monaco apprécie le licenciement pour motif personnel en vérifiant que les faits reprochés au salarié sont réels, suffisamment graves et justifient la rupture du contrat. Il contrôle également le respect de la procédure contradictoire.",
+    "reference_keywords": [
+      "tribunal du travail",
+      "licenciement",
+      "motif personnel",
+      "faits",
+      "procédure"
+    ]
+  },
+  {
+    "id": "monaco-012",
+    "question": "Quelles sont les conséquences d'une démission déguisée en droit monégasque ?",
+    "reference_answer": "Lorsque le Tribunal du travail de Monaco requalifie une démission en prise d'acte aux torts de l'employeur ou en licenciement sans cause réelle et sérieuse, le salarié peut prétendre aux indemnités de rupture comme s'il avait été licencié abusivement.",
+    "reference_keywords": [
+      "démission",
+      "prise d'acte",
+      "requalification",
+      "licenciement",
+      "torts de l'employeur"
+    ]
+  },
+  {
+    "id": "monaco-015",
+    "question": "Comment le Tribunal du travail de Monaco évalue-t-il le préjudice moral d'un salarié licencié ?",
+    "reference_answer": "Le Tribunal du travail de Monaco évalue le préjudice moral en tenant compte des circonstances dans lesquelles s'est déroulé le licenciement, notamment son caractère vexatoire, la brutalité de la rupture, et les répercussions sur la vie personnelle et professionnelle du salarié.",
+    "reference_keywords": [
+      "préjudice moral",
+      "vexatoire",
+      "brutalité",
+      "tribunal du travail",
+      "évaluation"
+    ]
+  },
+  {
+    "id": "monaco-016",
+    "question": "Quelle est la durée légale du travail hebdomadaire à Monaco et comment sont rémunérées les heures supplémentaires ?",
+    "reference_answer": "La durée légale du travail à Monaco est fixée par la loi n° 739. Les heures effectuées au-delà de la durée légale constituent des heures supplémentaires qui doivent être rémunérées avec une majoration de salaire ou compensées par un repos équivalent, selon les dispositions conventionnelles applicables.",
+    "reference_keywords": [
+      "durée légale",
+      "heures supplémentaires",
+      "majoration",
+      "repos compensateur",
+      "salaire"
+    ]
+  },
+  {
+    "id": "monaco-018",
+    "question": "Quel est le salaire minimum légal en vigueur à Monaco et comment est-il révisé ?",
+    "reference_answer": "Monaco dispose d'un salaire minimum interprofessionnel garanti (SMIG) qui est régulièrement révisé par ordonnance souveraine. Son montant est déterminé en tenant compte de l'évolution du coût de la vie et des conditions économiques de la Principauté. Tout salarié doit percevoir au moins ce minimum.",
+    "reference_keywords": [
+      "salaire minimum",
+      "minimum garanti",
+      "ordonnance",
+      "rémunération",
+      "employeur"
+    ]
+  },
+  {
+    "id": "monaco-019",
+    "question": "Comment les conventions collectives s'appliquent-elles dans les entreprises monégasques ?",
+    "reference_answer": "Les conventions collectives conclues à Monaco s'appliquent aux entreprises et aux salariés relevant de leur champ d'application professionnel et territorial. Elles fixent des conditions de travail et de rémunération qui ne peuvent être inférieures aux minima légaux. Leur extension peut être prononcée par arrêté ministériel.",
+    "reference_keywords": [
+      "convention collective",
+      "champ d'application",
+      "extension",
+      "conditions de travail",
+      "arrêté ministériel"
+    ]
+  },
+  {
+    "id": "monaco-020",
+    "question": "Quels sont les droits d'une salariée enceinte ou en congé maternité à Monaco ?",
+    "reference_answer": "La salariée enceinte bénéficie d'une protection contre le licenciement durant la grossesse et le congé maternité à Monaco. Elle a droit à un congé maternité rémunéré pendant lequel son contrat est suspendu. Toute rupture du contrat pendant cette période est nulle sauf faute grave non liée à la grossesse.",
+    "reference_keywords": [
+      "maternité",
+      "grossesse",
+      "congé",
+      "licenciement",
+      "contrat"
+    ]
+  },
+  {
+    "id": "monaco-022",
+    "question": "Quelles sont les spécificités du contrat de travail à temps partiel à Monaco ?",
+    "reference_answer": "Le contrat à temps partiel à Monaco doit être établi par écrit et mentionner la durée hebdomadaire ou mensuelle convenue ainsi que la répartition des horaires. Les heures complémentaires effectuées au-delà de la durée prévue sont soumises à des règles particulières. Le salarié à temps partiel bénéficie des mêmes droits que le salarié à temps complet au prorata de son temps de travail.",
+    "reference_keywords": [
+      "temps partiel",
+      "contrat",
+      "durée",
+      "salarié",
+      "travail"
+    ]
+  },
+  {
+    "id": "monaco-024",
+    "question": "Comment fonctionne la représentation du personnel dans les entreprises monégasques ?",
+    "reference_answer": "Les entreprises d'une certaine taille employant des salariés à Monaco sont tenues de mettre en place des délégués du personnel élus. Ces représentants ont pour mission de présenter les réclamations des salariés à l'employeur et de veiller à l'application des dispositions légales et conventionnelles. La loi monégasque organise les modalités de leur élection et leur protection.",
+    "reference_keywords": [
+      "délégués du personnel",
+      "délégué",
+      "représentant",
+      "élection",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-025",
+    "question": "Le droit de grève est-il reconnu à Monaco et quelles en sont les limites ?",
+    "reference_answer": "Le droit de grève est reconnu en Principauté de Monaco mais son exercice est encadré par la loi. Certains services essentiels peuvent faire l'objet de restrictions particulières. Une grève doit reposer sur des revendications professionnelles collectives et son déclenchement doit respecter les conditions légales, notamment en matière de préavis.",
+    "reference_keywords": [
+      "grève",
+      "loi",
+      "préavis",
+      "travail",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-026",
+    "question": "Quelles obligations l'employeur monégasque a-t-il en matière de formation professionnelle ?",
+    "reference_answer": "L'employeur à Monaco est tenu de contribuer au financement de la formation professionnelle continue et d'assurer l'adaptation de ses salariés à l'évolution de leurs emplois. Des cotisations spécifiques sont prélevées à cet effet. Le salarié peut bénéficier de formations professionnelles pour maintenir son employabilité.",
+    "reference_keywords": [
+      "formation",
+      "employeur",
+      "salarié",
+      "contrat",
+      "obligation"
+    ]
+  },
+  {
+    "id": "monaco-030",
+    "question": "Comment est encadré le contrat d'apprentissage en Principauté de Monaco ?",
+    "reference_answer": "Le contrat d'apprentissage à Monaco est un contrat de travail particulier associant formation pratique en entreprise et enseignement théorique. Il est encadré par la legislation monégasque qui fixe les conditions d'âge, la durée, la rémunération minimale de l'apprenti et les obligations réciproques de l'employeur et de l'apprenti.",
+    "reference_keywords": [
+      "apprentissage",
+      "apprenti",
+      "contrat",
+      "formation",
+      "employeur"
+    ]
+  },
+  {
+    "id": "monaco-034",
+    "question": "Quelles sont les obligations en matière de déclaration et de réparation des accidents du travail à Monaco ?",
+    "reference_answer": "Tout accident survenu par le fait ou à l'occasion du travail doit être déclaré par l'employeur dans les délais légaux aux organismes compétents à Monaco. La victime bénéficie d'une prise en charge de ses soins médicaux et d'indemnités journalières pendant son arrêt de travail. En cas d'incapacité permanente, une rente peut être attribuée.",
+    "reference_keywords": [
+      "accident du travail",
+      "accident",
+      "indemnité",
+      "employeur",
+      "incapacité"
+    ]
+  },
+  {
+    "id": "monaco-035",
+    "question": "Comment la maladie professionnelle est-elle reconnue et indemnisée à Monaco ?",
+    "reference_answer": "La maladie professionnelle à Monaco doit figurer sur un tableau de maladies professionnelles ou être reconnue d'origine professionnelle par les organismes compétents. La reconnaissance ouvre droit à une prise en charge des soins et à des indemnités spécifiques. L'employeur peut voir sa responsabilité engagée en cas de faute inexcusable.",
+    "reference_keywords": [
+      "maladie professionnelle",
+      "tableau",
+      "reconnaissance",
+      "indemnisation",
+      "faute inexcusable"
+    ]
+  },
+  {
+    "id": "monaco-036",
+    "question": "Que devient le contrat de travail en cas de transfert ou de rachat d'une entreprise à Monaco ?",
+    "reference_answer": "En cas de transfert d'une entité économique autonome conservant son identité, les contrats de travail en cours sont en principe transférés au nouvel employeur, qui est tenu par les mêmes droits et obligations que l'ancien. Les salariés ne peuvent pas s'opposer au transfert, mais leur ancienneté et leurs avantages acquis doivent être maintenus.",
+    "reference_keywords": [
+      "transfert d'entreprise",
+      "contrat de travail",
+      "cession",
+      "maintien des droits",
+      "ancienneté"
+    ]
+  },
+  {
+    "id": "monaco-037",
+    "question": "Quelles règles encadrent les licenciements économiques collectifs à Monaco ?",
+    "reference_answer": "Le licenciement économique collectif à Monaco est soumis à une procédure particulière impliquant la consultation des représentants du personnel et, selon l'effectif concerné, la notification aux autorités administratives. L'employeur doit justifier d'une cause économique réelle et sérieuse et rechercher des mesures d'accompagnement pour les salariés concernés.",
+    "reference_keywords": [
+      "licenciement",
+      "économique",
+      "motif économique",
+      "procédure",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-039",
+    "question": "Comment le harcèlement sexuel est-il traité par le droit et la jurisprudence monégasques ?",
+    "reference_answer": "Le harcèlement sexuel au travail est prohibé par le droit monégasque. Il peut être constitué par tout comportement à connotation sexuelle non consenti imposé à une personne dans le cadre professionnel. L'auteur de tels agissements s'expose à des sanctions disciplinaires et pénales, et l'employeur peut voir sa responsabilité civile engagée s'il n'a pas pris les mesures de prévention nécessaires.",
+    "reference_keywords": [
+      "harcèlement sexuel",
+      "comportement",
+      "sanction",
+      "responsabilité employeur",
+      "prévention"
+    ]
+  },
+  {
+    "id": "monaco-040",
+    "question": "Quelles sont les obligations de l'employeur en matière de médecine du travail et de santé au travail à Monaco ?",
+    "reference_answer": "L'employeur à Monaco est tenu d'organiser la surveillance médicale de ses salariés par un service de médecine du travail. Les salariés bénéficient d'examens médicaux obligatoires (à l'embauche, périodiques, de reprise). L'employeur a également l'obligation générale de protéger la santé physique et mentale de ses salariés par des mesures de prévention adaptées.",
+    "reference_keywords": [
+      "médecin",
+      "médecine du travail",
+      "inaptitude",
+      "employeur",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-043",
+    "question": "Comment les primes et rémunérations variables sont-elles traitées en droit du travail monégasque ?",
+    "reference_answer": "Les primes et éléments variables de rémunération peuvent être prévus par le contrat de travail, la convention collective ou l'usage. Lorsqu'ils présentent un caractère général, constant et fixe, ils intègrent le salaire contractuel et ne peuvent être supprimés unilatéralement par l'employeur. Leur base de calcul entre dans l'assiette des indemnités de rupture.",
+    "reference_keywords": [
+      "prime",
+      "rémunération",
+      "salaire",
+      "indemnité",
+      "contrat"
+    ]
+  },
+  {
+    "id": "monaco-044",
+    "question": "Comment fonctionne le régime de retraite complémentaire des salariés à Monaco (CAR) ?",
+    "reference_answer": "La Caisse Autonome de Retraites (CAR) de Monaco gère le régime de retraite complémentaire obligatoire des salariés et des non-salariés monégasques. Les cotisations sont prélevées sur les salaires et partagées entre l'employeur et le salarié. Les droits à la retraite sont acquis en fonction des cotisations versées tout au long de la carrière.",
+    "reference_keywords": [
+      "CAR",
+      "Caisse Autonome de Retraites",
+      "retraite complémentaire",
+      "cotisations",
+      "droits à la retraite"
+    ]
+  },
+  {
+    "id": "monaco-047",
+    "question": "Quelles sont les règles applicables au travail de nuit à Monaco ?",
+    "reference_answer": "Le travail de nuit à Monaco est soumis à une réglementation spécifique qui définit les plages horaires nocturnes, impose des contreparties obligatoires sous forme de repos ou de majoration salariale, et soumet les travailleurs de nuit à une surveillance médicale renforcée. Le recours au travail de nuit doit être justifié par les nécessités de l'entreprise.",
+    "reference_keywords": [
+      "travail de nuit",
+      "plages horaires",
+      "majoration",
+      "repos",
+      "surveillance médicale"
+    ]
+  },
+  {
+    "id": "monaco-053",
+    "question": "Quelles sont les conditions de nomination et d'avancement des fonctionnaires dans l'administration monégasque ?",
+    "reference_answer": "La nomination des fonctionnaires à Monaco est effectuée par ordonnance souveraine. L'avancement se fait à l'ancienneté et au choix, selon les règles fixées par le statut de la fonction publique. Certains postes sont pourvus par concours. La priorité d'emploi peut s'appliquer en faveur des nationaux monégasques pour les postes de la fonction publique.",
+    "reference_keywords": [
+      "nomination",
+      "avancement",
+      "ancienneté",
+      "ordonnance souveraine",
+      "concours"
+    ]
+  },
+  {
+    "id": "monaco-055",
+    "question": "Quelles sont les conditions de recrutement dans la fonction publique communale à Monaco ?",
+    "reference_answer": "Le recrutement dans les services de la Commune de Monaco obéit à des règles spécifiques. Les postes vacants font l'objet d'avis de recrutement publiés au Journal de Monaco. Les candidats doivent remplir des conditions d'aptitude et de qualification. L'élection des délégués du personnel dans la commune est encadrée par des arrêtés municipaux définissant les modalités de désignation et la composition des collèges électoraux.",
+    "reference_keywords": [
+      "commune",
+      "recrutement",
+      "avis",
+      "Journal de Monaco",
+      "délégués"
+    ]
+  },
+  {
+    "id": "monaco-058",
+    "question": "Quelles sont les obligations de l'employeur en matière de cotisations sociales à Monaco ?",
+    "reference_answer": "L'employeur à Monaco est tenu de déclarer ses salariés auprès des Caisses Sociales et de verser les cotisations patronales et salariales dans les délais légaux. Les cotisations couvrent l'assurance maladie, les accidents du travail, la retraite et les allocations familiales. Le non-respect de ces obligations expose l'employeur à des majorations de retard et des sanctions.",
+    "reference_keywords": [
+      "cotisations sociales",
+      "employeur",
+      "Caisses Sociales",
+      "assurance",
+      "déclaration"
+    ]
+  },
+  {
+    "id": "monaco-060",
+    "question": "Comment la législation monégasque encadre-t-elle la déclaration et la réparation des accidents du travail ?",
+    "reference_answer": "La déclaration et la réparation des accidents du travail à Monaco sont régies par la loi du 16 mai 1946, modifiée par la loi n° 462 du 6 août 1947. Tout accident survenu par le fait ou à l'occasion du travail doit être déclaré par l'employeur dans les délais prescrits. La réparation comprend la prise en charge des soins, les indemnités journalières et, le cas échéant, l'attribution d'une rente d'incapacité permanente.",
+    "reference_keywords": [
+      "déclaration",
+      "accident du travail",
+      "réparation",
+      "loi",
+      "employeur"
+    ]
+  },
+  {
+    "id": "monaco-061",
+    "question": "Quelles majorations des rentes d'accidents du travail ont été prévues par la législation monégasque ?",
+    "reference_answer": "Plusieurs lois ont majoré les rentes allouées aux victimes d'accidents du travail à Monaco. La loi n° 463 du 6 août 1947 a majoré les rentes allouées aux victimes ou à leurs ayants droit. D'autres revalorisations successives ont été adoptées pour tenir compte de l'évolution du coût de la vie et maintenir le pouvoir d'achat des bénéficiaires.",
+    "reference_keywords": [
+      "majoration",
+      "rente",
+      "accident du travail",
+      "victime",
+      "ayants droit"
+    ]
+  },
+  {
+    "id": "monaco-063",
+    "question": "Comment est organisée la formation professionnelle continue à Monaco et quelles obligations incombent aux employeurs ?",
+    "reference_answer": "La formation professionnelle continue à Monaco est encadrée par la législation qui impose aux employeurs de contribuer au financement de la formation de leurs salariés. Les qualifications professionnelles du personnel sont réglementées par des arrêtés ministériels définissant les niveaux de qualification requis pour certaines professions. Des organismes de formation agréés délivrent les certifications nécessaires.",
+    "reference_keywords": [
+      "formation professionnelle",
+      "qualification",
+      "employeur",
+      "certification",
+      "arrêté ministériel"
+    ]
+  },
+  {
+    "id": "monaco-065",
+    "question": "Quelles sont les conditions de qualification du personnel de sécurité civile et de prévention des incendies à Monaco ?",
+    "reference_answer": "La qualification du personnel permanent des services de sécurité incendie à Monaco est réglementée par l'arrêté ministériel n° 2002-196. Les agents doivent justifier de formations spécifiques dispensées par des organismes agréés. Les niveaux de qualification sont définis en fonction des responsabilités exercées. L'agrément des organismes de formation est délivré par arrêté ministériel.",
+    "reference_keywords": [
+      "qualification",
+      "sécurité incendie",
+      "formation",
+      "arrêté ministériel",
+      "agrément"
+    ]
+  },
+  {
+    "id": "monaco-066",
+    "question": "Comment les certifications professionnelles sont-elles délivrées dans le secteur financier à Monaco ?",
+    "reference_answer": "L'Association Monégasque des Activités Financières publie des listes de certifications professionnelles reconnues à Monaco. Ces certifications attestent des compétences des professionnels exerçant dans le secteur bancaire et financier. Elles sont conformes aux exigences réglementaires en matière de lutte contre le blanchiment et de conformité financière.",
+    "reference_keywords": [
+      "certification professionnelle",
+      "financier",
+      "AMAF",
+      "compétences",
+      "secteur bancaire"
+    ]
+  },
+  {
+    "id": "monaco-071",
+    "question": "Comment sont négociées et conclues les conventions collectives en Principauté de Monaco ?",
+    "reference_answer": "Les conventions collectives à Monaco sont négociées entre les organisations syndicales de salariés et les organisations patronales ou employeurs individuels. Elles fixent les conditions d'emploi, de rémunération et de travail applicables aux salariés relevant de leur champ professionnel. Leur extension à l'ensemble d'une branche peut être prononcée par arrêté ministériel. Les rémunérations minimales par secteur sont régulièrement publiées par communiqué officiel.",
+    "reference_keywords": [
+      "convention collective",
+      "négociation",
+      "syndicat",
+      "rémunération minimale",
+      "arrêté ministériel"
+    ]
+  },
+  {
+    "id": "monaco-077",
+    "question": "Quelles obligations pèsent sur les fondations monégasques en matière de gouvernance et de transparence ?",
+    "reference_answer": "Les fondations à Monaco doivent se conformer aux statuts approuvés, tenir une comptabilité régulière, et soumettre leurs comptes au contrôle des autorités de tutelle. Les modifications statutaires doivent être approuvées. La composition du conseil d'administration et les conditions de fonctionnement sont fixées par les statuts publiés au Journal de Monaco.",
+    "reference_keywords": [
+      "fondation",
+      "gouvernance",
+      "statuts",
+      "comptabilité",
+      "contrôle"
+    ]
+  },
+  {
+    "id": "monaco-080",
+    "question": "Quelles sont les règles relatives à la vidéosurveillance et aux traitements de données par les entreprises à Monaco ?",
+    "reference_answer": "La mise en place de dispositifs de vidéosurveillance à Monaco, notamment sur le lieu de travail, constitue un traitement d'informations nominatives soumis au contrôle de la CCIN. Les entreprises doivent justifier de la finalité du dispositif, informer les salariés et limiter la durée de conservation des images. Des délibérations de la CCIN encadrent ces pratiques pour préserver le droit à la vie privée.",
+    "reference_keywords": [
+      "vidéosurveillance",
+      "CCIN",
+      "données personnelles",
+      "vie privée",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-083",
+    "question": "Comment sont traitées les procédures collectives (faillite, redressement) des entreprises à Monaco ?",
+    "reference_answer": "Les procédures collectives à Monaco comprennent le redressement judiciaire et la liquidation judiciaire. Elles sont ouvertes lorsqu'une entreprise est en état de cessation des paiements. Le tribunal compétent désigne un administrateur judiciaire ou un liquidateur. Les créanciers déclarent leurs créances dans les délais légaux. La jurisprudence du Tribunal du travail traite des conséquences de ces procédures sur les contrats de travail des salariés.",
+    "reference_keywords": [
+      "procédure collective",
+      "faillite",
+      "redressement",
+      "liquidation",
+      "cessation des paiements"
+    ]
+  },
+  {
+    "id": "monaco-086",
+    "question": "Quelles sont les règles d'urbanisme et de construction en Principauté de Monaco ?",
+    "reference_answer": "L'urbanisme à Monaco est régi par des ordonnances souveraines et des arrêtés ministériels qui fixent les règles de construction, les normes de hauteur, de densité et d'occupation des sols. Les permis de construire sont délivrés par l'administration en fonction du plan d'urbanisme directeur. La désaffectation de parcelles du domaine public nécessite un projet de loi. Les opérations d'aménagement sont encadrées pour préserver le cadre de vie de la Principauté.",
+    "reference_keywords": [
+      "urbanisme",
+      "construction",
+      "permis de construire",
+      "ordonnance",
+      "aménagement"
+    ]
+  },
+  {
+    "id": "monaco-087",
+    "question": "Comment sont encadrées les ventes immobilières et les saisies immobilières à Monaco ?",
+    "reference_answer": "Les ventes aux enchères publiques sur saisie immobilière à Monaco se déroulent devant le tribunal, assisté d'un avocat-défenseur ou notaire. La procédure est régie par le Code de Procédure Civile monégasque. Les biens sont vendus en lots avec un cahier des charges. Les études de notaires et avocats-défenseurs publient les avis de vente au Journal de Monaco.",
+    "reference_keywords": [
+      "saisie immobilière",
+      "vente aux enchères",
+      "notaire",
+      "avocat-défenseur",
+      "immobilier"
+    ]
+  },
+  {
+    "id": "monaco-088",
+    "question": "Comment la copropriété est-elle réglementée à Monaco ?",
+    "reference_answer": "La copropriété à Monaco est régie par des dispositions spécifiques qui encadrent l'organisation des immeubles divisés en lots. Les copropriétaires sont regroupés en syndicat doté de la personnalité civile. L'assemblée générale des copropriétaires délibère sur la gestion de l'immeuble, les travaux et le budget. Un syndic est chargé de l'administration courante.",
+    "reference_keywords": [
+      "copropriété",
+      "syndicat",
+      "assemblée générale",
+      "lots",
+      "syndic"
+    ]
+  },
+  {
+    "id": "monaco-089",
+    "question": "Quelles sont les obligations de Monaco en matière de lutte contre le blanchiment de capitaux ?",
+    "reference_answer": "Monaco dispose d'un cadre juridique de lutte contre le blanchiment de capitaux comprenant des lois, ordonnances et conventions internationales ratifiées. Le Service d'Information et de Contrôle sur les Circuits Financiers (SICCFIN) est l'autorité nationale chargée de recevoir les déclarations de soupçon et de contrôler les professionnels assujettis. Les institutions financières, avocats et notaires sont soumis à des obligations de vigilance et de déclaration.",
+    "reference_keywords": [
+      "blanchiment",
+      "SICCFIN",
+      "déclaration de soupçon",
+      "vigilance",
+      "lutte"
+    ]
+  },
+  {
+    "id": "monaco-095",
+    "question": "Quelles sont les règles relatives à l'exercice de la pharmacie et à la vente de médicaments à Monaco ?",
+    "reference_answer": "L'exercice de la pharmacie à Monaco est subordonné à une autorisation administrative et au respect des conditions de diplôme et d'inscription à l'ordre. La vente de médicaments est réglementée par des arrêtés ministériels qui fixent les listes de substances classées comme stupéfiants et psychotropes. Les officines de pharmacie sont soumises à des obligations en matière de détention, de délivrance et de traçabilité des médicaments.",
+    "reference_keywords": [
+      "pharmacie",
+      "médicament",
+      "stupéfiant",
+      "psychotrope",
+      "arrêté ministériel"
+    ]
+  },
+  {
+    "id": "monaco-096",
+    "question": "Comment les données de santé à caractère personnel sont-elles protégées à Monaco ?",
+    "reference_answer": "La protection des données de santé à caractère personnel à Monaco est renforcée par l'ordonnance souveraine n° 8.337 du 5 novembre 2020. Les traitements de données de santé sont soumis à des conditions strictes de collecte, de conservation et de transmission. La CCIN exerce un contrôle spécifique sur ces traitements. Le consentement du patient et le secret médical constituent des garanties fondamentales.",
+    "reference_keywords": [
+      "données de santé",
+      "ordonnance souveraine",
+      "CCIN",
+      "protection",
+      "secret médical"
+    ]
+  }
+]
