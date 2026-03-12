@@ -43,13 +43,14 @@ from retrievers.baseline_rag import (
     build_index,
     load_index,
 )
+from retrievers.config import RRF_CONFIG
 
 logger = logging.getLogger(__name__)
 
 BM25_DIRNAME = "bm25s_index"
-RRF_K = 60          # standard RRF constant (higher -> smoother fusion)
-FAISS_WEIGHT = 0.3  # retuned after bm25s+French stemming migration (eval/tune_rrf.py)
-BM25_WEIGHT = 0.7   # bm25s now dominates slightly more on Monaco labour-law recall
+RRF_K = RRF_CONFIG.rrf_k
+FAISS_WEIGHT = RRF_CONFIG.faiss_weight
+BM25_WEIGHT = RRF_CONFIG.bm25_weight
 FRENCH_STEMMER_LANGUAGE = "french"
 
 
@@ -163,8 +164,8 @@ def hybrid_retrieve(
     chunks: list[dict],
     embedder: SentenceTransformer,
     k: int = DEFAULT_TOP_K,
-    faiss_weight: float = FAISS_WEIGHT,
-    bm25_weight: float = BM25_WEIGHT,
+    faiss_weight: float | None = None,
+    bm25_weight: float | None = None,
     candidate_k: int | None = None,
 ) -> list[dict]:
     """Return the top-k chunks using FAISS + BM25 fused with Reciprocal Rank Fusion.
@@ -188,6 +189,8 @@ def hybrid_retrieve(
     Returns:
         List of chunk dicts enriched with "score", "faiss_rrf", "bm25_rrf" fields.
     """
+    active_faiss_weight = FAISS_WEIGHT if faiss_weight is None else faiss_weight
+    active_bm25_weight = BM25_WEIGHT if bm25_weight is None else bm25_weight
     n_docs = len(chunks)
     if candidate_k is None:
         # Take enough candidates so FAISS and BM25 pools have meaningful overlap.
@@ -201,7 +204,7 @@ def hybrid_retrieve(
     faiss_rrf: dict[int, float] = {}
     for rank, (_, idx) in enumerate(zip(faiss_scores[0], faiss_indices[0])):
         if 0 <= idx < n_docs:
-            faiss_rrf[int(idx)] = _rrf_score(rank) * faiss_weight
+            faiss_rrf[int(idx)] = _rrf_score(rank) * active_faiss_weight
 
     # --- Sparse: BM25 ---
     query_tokens = _tokenize_texts([query], show_progress=False)[0]
@@ -210,7 +213,7 @@ def hybrid_retrieve(
     bm25_rrf: dict[int, float] = {}
     for rank, idx in enumerate(bm25_top_idx):
         if bm25_raw[idx] > 0.0:
-            bm25_rrf[int(idx)] = _rrf_score(rank) * bm25_weight
+            bm25_rrf[int(idx)] = _rrf_score(rank) * active_bm25_weight
 
     # --- RRF fusion ---
     all_ids = set(faiss_rrf) | set(bm25_rrf)

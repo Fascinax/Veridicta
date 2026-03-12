@@ -21,9 +21,9 @@ from types import TracebackType
 
 from copilot import CopilotClient as _SdkClient, PermissionHandler
 
-logger = logging.getLogger(__name__)
+from retrievers.config import COPILOT_DEFAULT_MODEL
 
-COPILOT_DEFAULT_MODEL = "gpt-4.1"
+logger = logging.getLogger(__name__)
 
 _MOJIBAKE_MARKERS = (
     "Ã",

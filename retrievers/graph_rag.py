@@ -33,19 +33,21 @@ from pathlib import Path
 
 import numpy as np
 
+from retrievers.config import GRAPH_CONFIG
+
 logger = logging.getLogger(__name__)
 
 # CITE-edge boost applied to each neighbor doc chunk.
 # Additive: a chunk whose parent doc is cited by 2 seed docs gets +2*CITE_BOOST.
-CITE_BOOST = 0.12
+CITE_BOOST = GRAPH_CONFIG.cite_boost
 # Article-level citations are more precise → slightly higher boost.
-CITE_ARTICLE_BOOST = 0.15
+CITE_ARTICLE_BOOST = GRAPH_CONFIG.cite_article_boost
 # Amendment relations (MODIFIE) bring relevant legislative context.
-MODIFIE_BOOST = 0.10
+MODIFIE_BOOST = GRAPH_CONFIG.modifie_boost
 # "Voir l'article" cross-references in legislation.
-VOIR_ARTICLE_BOOST = 0.08
+VOIR_ARTICLE_BOOST = GRAPH_CONFIG.voir_article_boost
 # How many candidate seed chunks to retrieve before graph expansion.
-SEED_MULTIPLIER = 4   # seed_k = max(20, k * SEED_MULTIPLIER)
+SEED_MULTIPLIER = GRAPH_CONFIG.seed_multiplier
 
 
 # ---------------------------------------------------------------------------

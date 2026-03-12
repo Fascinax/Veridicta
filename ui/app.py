@@ -54,9 +54,10 @@ from retrievers.baseline_rag import (
     answer,
     answer_stream,
     load_index,
-    retrieve,
     _load_embedder,
 )
+from retrievers.config import count_llm_tokens, get_context_budget_tokens, resolve_llm_backend
+from retrievers.pipeline import RetrievalPipeline
 from retrievers.traceability import (
     append_audit_event,
     build_prompt_trace,
@@ -72,34 +73,26 @@ LANCEDB_OPTION = "LanceDB (vector+FTS)"
 LANCEDB_GRAPH_OPTION = "LanceDB+Graph (vector+FTS+Neo4j)"
 
 try:
-    from retrievers.hybrid_rag import load_bm25_index, hybrid_retrieve
+    from retrievers.hybrid_rag import load_bm25_index
     _HYBRID_AVAILABLE = True
 except ImportError:
     _HYBRID_AVAILABLE = False
 
 try:
-    from retrievers.graph_rag import graph_retrieve, load_neo4j_manager
+    from retrievers.graph_rag import load_neo4j_manager
     _GRAPH_AVAILABLE = True
 except ImportError:
     _GRAPH_AVAILABLE = False
 
-try:
-    from retrievers.hybrid_graph_rag import hybrid_graph_retrieve
-    _HYBRID_GRAPH_AVAILABLE = _HYBRID_AVAILABLE and _GRAPH_AVAILABLE
-except ImportError:
-    _HYBRID_GRAPH_AVAILABLE = False
+_HYBRID_GRAPH_AVAILABLE = _HYBRID_AVAILABLE and _GRAPH_AVAILABLE
 
 try:
-    from retrievers.lancedb_rag import load_lancedb_index, lancedb_hybrid_retrieve
+    from retrievers.lancedb_rag import load_lancedb_index
     _LANCEDB_AVAILABLE = True
 except ImportError:
     _LANCEDB_AVAILABLE = False
 
-try:
-    from retrievers.lancedb_graph_rag import lancedb_graph_retrieve
-    _LANCEDB_GRAPH_AVAILABLE = _LANCEDB_AVAILABLE and _GRAPH_AVAILABLE
-except ImportError:
-    _LANCEDB_GRAPH_AVAILABLE = False
+_LANCEDB_GRAPH_AVAILABLE = _LANCEDB_AVAILABLE and _GRAPH_AVAILABLE
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
@@ -462,7 +455,7 @@ def _render_trace(trace: dict) -> None:
                 f"**Retriever**: {html.escape(trace.get('retriever', 'n/a'))}",
                 f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
                 f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
-                f"**Contexte**: {trace.get('context_chars', 0)} / {trace.get('max_context_chars', 0)} caractères",
+                f"**Contexte**: {trace.get('context_tokens', 0)} / {trace.get('max_context_tokens', 0)} tokens (~{trace.get('context_chars', 0)} caractères)",
                 f"**Audit log**: {html.escape(audit_log_path)}",
             ]
         )
@@ -503,13 +496,21 @@ def _build_retrieval_query(current_query: str, conversation_history: list[dict])
 
 
 def _fallback_generation_trace(prompt: str, backend: str, model: str) -> dict:
+    resolved_backend = resolve_llm_backend(backend)
+    max_context_tokens = get_context_budget_tokens(resolved_backend, model)
     return {
-        "prompt_trace": build_prompt_trace(prompt, [], 12_000),
+        "prompt_trace": build_prompt_trace(
+            prompt,
+            [],
+            max_context_tokens,
+            token_counter=lambda text: count_llm_tokens(text, model),
+        ),
         "used_chunks": [],
         "omitted_chunks": [],
         "context_chars": 0,
-        "max_context_chars": 12_000,
-        "backend": backend,
+        "context_tokens": 0,
+        "max_context_tokens": max_context_tokens,
+        "backend": resolved_backend,
         "model": model,
         "prompt_version": 1,
     }
@@ -528,32 +529,33 @@ def _retrieve_chunks(
     use_lancedb: bool = False,
     lancedb_table=None,
 ) -> list[dict]:
-    if use_lancedb and use_graph and neo4j_mgr is not None and lancedb_table is not None:
-        return lancedb_graph_retrieve(prompt, lancedb_table, embedder, neo4j_manager=neo4j_mgr, k=k)
-    if use_lancedb and lancedb_table is not None:
-        return lancedb_hybrid_retrieve(prompt, lancedb_table, embedder, k)
-    if use_graph and use_hybrid and neo4j_mgr is not None and bm25 is not None:
-        return hybrid_graph_retrieve(
-            prompt,
-            index_data,
-            bm25,
-            chunks_map,
-            embedder,
-            neo4j_manager=neo4j_mgr,
-            k=k,
-        )
-    if use_graph and neo4j_mgr is not None:
-        return graph_retrieve(
-            prompt,
-            index_data,
-            chunks_map,
-            embedder,
-            neo4j_manager=neo4j_mgr,
-            k=k,
-        )
-    if use_hybrid and bm25 is not None:
-        return hybrid_retrieve(prompt, index_data, bm25, chunks_map, embedder, k)
-    return retrieve(prompt, index_data, chunks_map, embedder, k)
+    if use_lancedb and use_graph:
+        retriever = "lancedb_graph"
+    elif use_lancedb:
+        retriever = "lancedb"
+    elif use_graph and use_hybrid:
+        retriever = "hybrid_graph"
+    elif use_graph:
+        retriever = "graph"
+    elif use_hybrid:
+        retriever = "hybrid"
+    else:
+        retriever = "faiss"
+
+    pipeline = RetrievalPipeline(
+        embedder=embedder,
+        index=index_data,
+        chunks=chunks_map,
+        bm25=bm25,
+        neo4j_manager=neo4j_mgr,
+        lancedb_table=lancedb_table,
+    )
+    return pipeline.retrieve(
+        prompt,
+        retriever=retriever,
+        k=k,
+        query_expansion=True,
+    )
 
 
 def _generate_response(
@@ -601,7 +603,8 @@ def _build_trace_payload(
         "used_count": len(used_chunks),
         "omitted_count": len(omitted_chunks),
         "context_chars": generation_trace.get("context_chars", 0),
-        "max_context_chars": generation_trace.get("max_context_chars", 0),
+        "context_tokens": generation_trace.get("context_tokens", 0),
+        "max_context_tokens": generation_trace.get("max_context_tokens", 0),
         "audit_log_path": str(audit_log_path) if audit_log_path is not None else str(get_audit_log_path()),
     }
 

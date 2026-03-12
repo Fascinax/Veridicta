@@ -27,15 +27,17 @@ import logging
 import sys
 from pathlib import Path
 
+from retrievers.config import GRAPH_CONFIG
+
 logger = logging.getLogger(__name__)
 
 # Relation-type boosts — identical to graph_rag.py so eval results are comparable.
-CITE_BOOST = 0.12
-CITE_ARTICLE_BOOST = 0.15
-MODIFIE_BOOST = 0.10
-VOIR_ARTICLE_BOOST = 0.08
+CITE_BOOST = GRAPH_CONFIG.cite_boost
+CITE_ARTICLE_BOOST = GRAPH_CONFIG.cite_article_boost
+MODIFIE_BOOST = GRAPH_CONFIG.modifie_boost
+VOIR_ARTICLE_BOOST = GRAPH_CONFIG.voir_article_boost
 
-SEED_MULTIPLIER = 4
+SEED_MULTIPLIER = GRAPH_CONFIG.seed_multiplier
 
 
 # ---------------------------------------------------------------------------

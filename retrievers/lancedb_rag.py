@@ -27,14 +27,16 @@ from pathlib import Path
 
 import numpy as np
 
+from retrievers.config import RRF_CONFIG
+
 logger = logging.getLogger(__name__)
 
 LANCEDB_DIR = Path("data/index/lancedb")
 LANCEDB_TABLE_NAME = "chunks"
 
-RRF_K = 60
-VECTOR_WEIGHT = 0.3
-FTS_WEIGHT = 0.7
+RRF_K = RRF_CONFIG.rrf_k
+VECTOR_WEIGHT = RRF_CONFIG.vector_weight
+FTS_WEIGHT = RRF_CONFIG.fts_weight
 
 DEFAULT_TOP_K = 5
 
@@ -176,7 +178,15 @@ def load_lancedb_index(
         )
 
     db = lancedb.connect(str(db_path))
-    if LANCEDB_TABLE_NAME not in db.table_names():
+    tables_response = db.list_tables()
+    if hasattr(tables_response, "tables"):
+        table_names = list(tables_response.tables)
+    else:
+        table_names = [
+            table.name if hasattr(table, "name") else str(table)
+            for table in tables_response
+        ]
+    if LANCEDB_TABLE_NAME not in table_names:
         raise FileNotFoundError(
             f"Table '{LANCEDB_TABLE_NAME}' not found in {db_path}. Run --build first."
         )
@@ -263,13 +273,15 @@ def lancedb_hybrid_retrieve(
     table,
     embedder,
     k: int = DEFAULT_TOP_K,
-    vector_weight: float = VECTOR_WEIGHT,
-    fts_weight: float = FTS_WEIGHT,
+    vector_weight: float | None = None,
+    fts_weight: float | None = None,
     candidate_k: int | None = None,
 ) -> list[dict]:
     """Hybrid vector + FTS retrieval with RRF fusion (replaces hybrid_rag.py)."""
     from retrievers.baseline_rag import _embed_query
 
+    active_vector_weight = VECTOR_WEIGHT if vector_weight is None else vector_weight
+    active_fts_weight = FTS_WEIGHT if fts_weight is None else fts_weight
     row_count = table.count_rows()
     if candidate_k is None:
         candidate_k = min(max(100, k * 10), row_count)
@@ -282,7 +294,7 @@ def lancedb_hybrid_retrieve(
     vec_chunk_map: dict[str, dict] = {}
     for rank, row in enumerate(vec_results):
         cid = row.get("chunk_id", "")
-        vec_rrf[cid] = _rrf_score(rank) * vector_weight
+        vec_rrf[cid] = _rrf_score(rank) * active_vector_weight
         vec_chunk_map[cid] = row
 
     # --- Sparse: FTS search ---
@@ -292,7 +304,7 @@ def lancedb_hybrid_retrieve(
         fts_results = table.search(query, query_type="fts").limit(candidate_k).to_list()
         for rank, row in enumerate(fts_results):
             cid = row.get("chunk_id", "")
-            fts_rrf[cid] = _rrf_score(rank) * fts_weight
+            fts_rrf[cid] = _rrf_score(rank) * active_fts_weight
             fts_chunk_map[cid] = row
     except Exception:
         logger.warning("FTS search failed — falling back to vector-only retrieval.")

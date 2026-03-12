@@ -26,15 +26,17 @@ import argparse
 import logging
 from pathlib import Path
 
+from retrievers.config import GRAPH_CONFIG
+
 logger = logging.getLogger(__name__)
 
 # Relation-type boosts — identical to hybrid_graph_rag.py for eval comparability.
-CITE_BOOST = 0.12
-CITE_ARTICLE_BOOST = 0.15
-MODIFIE_BOOST = 0.10
-VOIR_ARTICLE_BOOST = 0.08
+CITE_BOOST = GRAPH_CONFIG.cite_boost
+CITE_ARTICLE_BOOST = GRAPH_CONFIG.cite_article_boost
+MODIFIE_BOOST = GRAPH_CONFIG.modifie_boost
+VOIR_ARTICLE_BOOST = GRAPH_CONFIG.voir_article_boost
 
-SEED_MULTIPLIER = 4
+SEED_MULTIPLIER = GRAPH_CONFIG.seed_multiplier
 
 # Module-level cache: building chunks_by_doc from 49k rows is done once per table.
 _cached_chunks_by_doc: dict[str, list[dict]] | None = None

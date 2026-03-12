@@ -34,6 +34,15 @@ import numpy as np
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 
+from retrievers.config import (
+    CEREBRAS_DEFAULT_MODEL,
+    COPILOT_DEFAULT_MODEL,
+    EMBEDDING_CONFIG,
+    LLM_BACKEND,
+    count_llm_tokens,
+    get_context_budget_tokens,
+    resolve_llm_backend,
+)
 from retrievers.traceability import append_audit_event, build_prompt_trace, new_trace_id
 
 load_dotenv()
@@ -43,18 +52,14 @@ logger = logging.getLogger(__name__)
 
 # --- Constants ---
 
-EMBED_MODEL = os.getenv("VERIDICTA_EMBED_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
-EMBED_QUERY_PREFIX = os.getenv("VERIDICTA_EMBED_QUERY_PREFIX", "query: ")
-EMBED_DIMENSION = 1024
-EMBED_BATCH_SIZE = 32
-QUERY_EMBED_CACHE_SIZE = int(os.getenv("VERIDICTA_QUERY_EMBED_CACHE_SIZE", "512"))
+EMBED_MODEL = EMBEDDING_CONFIG.model_name
+EMBED_QUERY_PREFIX = EMBEDDING_CONFIG.query_prefix
+EMBED_DIMENSION = EMBEDDING_CONFIG.dimension
+EMBED_BATCH_SIZE = EMBEDDING_CONFIG.batch_size
+QUERY_EMBED_CACHE_SIZE = EMBEDDING_CONFIG.query_cache_size
 DEFAULT_TOP_K = 5
-MAX_CONTEXT_CHARS = 12_000
 
 # LLM backend configuration
-LLM_BACKEND = os.getenv("LLM_BACKEND", "copilot")  # "cerebras" | "copilot"
-CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b"
-COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "gpt-4.1")
 
 INDEX_DIR = Path("data/index")
 FAISS_FILENAME = "veridicta.faiss"
@@ -422,12 +427,16 @@ def answer(
         return_trace: When True, also return prompt-window trace metadata.
         conversation_history: Optional list of prior {role, content} messages for multi-turn context.
     """
-    active_backend = backend or LLM_BACKEND
+    active_backend = resolve_llm_backend(backend or LLM_BACKEND)
+    resolved_model = model or (
+        COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
+    )
     prompt_trace = build_prompt_trace(
         query,
         context_chunks,
-        MAX_CONTEXT_CHARS,
+        get_context_budget_tokens(active_backend, resolved_model),
         conversation_history=conversation_history,
+        token_counter=lambda text: count_llm_tokens(text, resolved_model),
     )
     user_message = prompt_trace.user_message
     
@@ -439,11 +448,11 @@ def answer(
         system = SYSTEM_PROMPT
 
     if active_backend == "copilot":
-        resolved_model = model or COPILOT_DEFAULT_MODEL
         response_text = _answer_copilot(system, user_message, resolved_model)
-    else:
-        resolved_model = model or CEREBRAS_DEFAULT_MODEL
+    elif active_backend == "cerebras":
         response_text = _answer_cerebras(system, user_message, resolved_model)
+    else:  # pragma: no cover - guarded by resolve_llm_backend
+        raise ValueError(f"Unsupported backend: {active_backend!r}")
 
     if not return_trace:
         return response_text
@@ -453,7 +462,8 @@ def answer(
         "used_chunks": prompt_trace.used_chunks,
         "omitted_chunks": prompt_trace.omitted_chunks,
         "context_chars": prompt_trace.context_chars,
-        "max_context_chars": prompt_trace.max_context_chars,
+        "context_tokens": prompt_trace.context_tokens,
+        "max_context_tokens": prompt_trace.max_context_tokens,
         "backend": active_backend,
         "model": resolved_model,
         "prompt_version": prompt_version,
@@ -485,12 +495,16 @@ def answer_stream(
     Returns:
         (token_iterator, trace_metadata_dict)
     """
-    active_backend = backend or LLM_BACKEND
+    active_backend = resolve_llm_backend(backend or LLM_BACKEND)
+    resolved_model = model or (
+        COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
+    )
     prompt_trace = build_prompt_trace(
         query,
         context_chunks,
-        MAX_CONTEXT_CHARS,
+        get_context_budget_tokens(active_backend, resolved_model),
         conversation_history=conversation_history,
+        token_counter=lambda text: count_llm_tokens(text, resolved_model),
     )
     user_message = prompt_trace.user_message
 
@@ -502,18 +516,19 @@ def answer_stream(
         system = SYSTEM_PROMPT
 
     if active_backend == "copilot":
-        resolved_model = model or COPILOT_DEFAULT_MODEL
         token_gen: Iterator[str] = _answer_copilot_stream(system, user_message, resolved_model)
-    else:
-        resolved_model = model or CEREBRAS_DEFAULT_MODEL
+    elif active_backend == "cerebras":
         token_gen = _answer_cerebras_stream(system, user_message, resolved_model)
+    else:  # pragma: no cover - guarded by resolve_llm_backend
+        raise ValueError(f"Unsupported backend: {active_backend!r}")
 
     trace = {
         "prompt_trace": prompt_trace,
         "used_chunks": prompt_trace.used_chunks,
         "omitted_chunks": prompt_trace.omitted_chunks,
         "context_chars": prompt_trace.context_chars,
-        "max_context_chars": prompt_trace.max_context_chars,
+        "context_tokens": prompt_trace.context_tokens,
+        "max_context_tokens": prompt_trace.max_context_tokens,
         "backend": active_backend,
         "model": resolved_model,
         "prompt_version": prompt_version,

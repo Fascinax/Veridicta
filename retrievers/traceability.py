@@ -6,6 +6,8 @@ import hashlib
 import json
 import logging
 import os
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,6 +58,10 @@ def _truncate(text: str, limit: int = PREVIEW_LIMIT) -> str:
     return compact[: limit - 1] + "…"
 
 
+def _approximate_token_count(text: str) -> int:
+    return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+
+
 def _copy_chunk_with_source_number(chunk: dict, source_number: int) -> dict:
     if isinstance(chunk, dict):
         annotated_chunk = dict(chunk)
@@ -82,7 +88,8 @@ class PromptTrace:
     used_chunks: list[dict]
     omitted_chunks: list[dict]
     context_chars: int
-    max_context_chars: int
+    context_tokens: int
+    max_context_tokens: int
 
 
 def _format_history_block(conversation_history: list[dict]) -> str:
@@ -115,19 +122,23 @@ def _format_history_block(conversation_history: list[dict]) -> str:
 def build_prompt_trace(
     query: str,
     retrieved_chunks: list[dict],
-    max_context_chars: int,
+    max_context_tokens: int,
     *,
     conversation_history: list[dict] | None = None,
+    token_counter: Callable[[str], int] | None = None,
 ) -> PromptTrace:
+    count_tokens = token_counter or _approximate_token_count
     parts: list[str] = []
     used_chunks: list[dict] = []
     omitted_chunks: list[dict] = []
     total_chars = 0
+    total_tokens = 0
 
     for source_number, chunk in enumerate(retrieved_chunks, 1):
         annotated_chunk = _copy_chunk_with_source_number(chunk, source_number)
         entry = _format_context_entry(annotated_chunk)
-        if total_chars + len(entry) > max_context_chars:
+        entry_tokens = count_tokens(entry)
+        if total_tokens + entry_tokens > max_context_tokens:
             omitted_chunks.append(annotated_chunk)
             for next_source_number, next_chunk in enumerate(
                 retrieved_chunks[source_number:],
@@ -140,6 +151,7 @@ def build_prompt_trace(
         parts.append(entry)
         used_chunks.append(annotated_chunk)
         total_chars += len(entry)
+        total_tokens += entry_tokens
 
     history_block = _format_history_block(conversation_history) if conversation_history else ""
 
@@ -157,7 +169,8 @@ def build_prompt_trace(
         used_chunks=used_chunks,
         omitted_chunks=omitted_chunks,
         context_chars=total_chars,
-        max_context_chars=max_context_chars,
+        context_tokens=total_tokens,
+        max_context_tokens=max_context_tokens,
     )
 
 
@@ -247,7 +260,8 @@ def append_audit_event(
             "used_in_prompt_count": len(prompt_trace.used_chunks),
             "omitted_from_prompt_count": len(prompt_trace.omitted_chunks),
             "context_chars": prompt_trace.context_chars,
-            "max_context_chars": prompt_trace.max_context_chars,
+            "context_tokens": prompt_trace.context_tokens,
+            "max_context_tokens": prompt_trace.max_context_tokens,
             "chunks": [
                 _chunk_summary(chunk, chunk.get("chunk_id", "") in used_chunk_ids)
                 for chunk in prompt_trace.used_chunks + prompt_trace.omitted_chunks
