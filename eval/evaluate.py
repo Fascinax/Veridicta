@@ -538,7 +538,10 @@ def run_eval(
     )
 
     if config.retrieval_only:
-        return _build_retrieval_only_results(questions, retrieved_all)
+        results = _build_retrieval_only_results(questions, retrieved_all)
+        if config.stream_out is not None:
+            _write_results_file(results, config.stream_out)
+        return results
 
     results = _generate_eval_results(questions, retrieved_all, config)
 

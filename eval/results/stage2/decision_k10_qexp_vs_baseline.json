@@ -1,0 +1,35 @@
+{
+  "baseline_file": "eval/results/stage2/lancedb_graph_k10/eval_20260312_122723.jsonl",
+  "qexp_file": "eval/results/stage2/lancedb_graph_k10_retrieval_qexp_full/eval_20260312_162104.jsonl",
+  "qexp_judge_fix_file": "eval/results/stage2/lancedb_graph_k10_retrieval_qexp_q081/eval_20260312_225250.jsonl",
+  "baseline_metrics": {
+    "judge_score": 0.8160000000000004,
+    "keyword_recall": 0.7379999999999994,
+    "context_coverage": 0.7592579999999995,
+    "word_f1": 0.24511260096486664,
+    "bertscore_f1": 0.8009890000000003,
+    "latency_s": 16.233799999999995
+  },
+  "qexp_metrics_corrected": {
+    "judge_score": 0.8320000000000003,
+    "keyword_recall": 0.7519999999999994,
+    "context_coverage": 0.7603419999999999,
+    "word_f1": 0.24466487409963786,
+    "bertscore_f1": 0.8004259999999996,
+    "latency_s": 20.4105
+  },
+  "delta_qexp_minus_baseline": {
+    "judge_score": 0.015999999999999903,
+    "keyword_recall": 0.014000000000000012,
+    "context_coverage": 0.001084000000000307,
+    "word_f1": -0.0004477268652287869,
+    "bertscore_f1": -0.0005630000000006463,
+    "latency_s": 4.176700000000004
+  },
+  "accept_rate_baseline": 0.84,
+  "accept_rate_qexp_corrected": 0.87,
+  "incorrect_rate_baseline": 0.16,
+  "incorrect_rate_qexp_corrected": 0.13,
+  "decision": "keep_qexp_for_quality_then_optimize_latency",
+  "rationale": "judge/context priority improved globally; latency regressed and must be optimized next"
+}
