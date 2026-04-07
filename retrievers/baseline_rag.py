@@ -117,6 +117,37 @@ SYSTEM_PROMPT_V3 = (
     "tout en fondant chaque affirmation sur les sources du contexte actuel.\n"
 )
 
+# Optional generation patch for targeted gen_bad remediation.
+# Disabled by default to avoid affecting production behavior.
+PROMPT_V3_TARGETED_PATCH = (
+    "\nCONSIGNES DE COMPLETUDE CIBLEE (opt-in) :\n"
+    "- Couvre d'abord le cadre general applicable au salarie en entreprise privee, "
+    "puis les regimes speciaux seulement si la question les vise explicitement.\n"
+    "- Avant de finaliser, verifie : regle generale, conditions d'application, "
+    "effets concrets (droits/obligations/indemnites), limites/exceptions, delais/recours si presents.\n"
+    "- Si les sources ne couvrent qu'un sous-regime (secteur public, profession reglementee), "
+    "indique-le explicitement et n'en fais pas la regle generale.\n"
+    "- N'omets pas les points structurels demandes dans la question.\n"
+    "- IMPORTANT CITATIONS: n'utilise que [Source N] pour citer. "
+    "Ne mets jamais un nom de loi, d'ordonnance ou d'article dans des crochets de citation.\n"
+    "- Si une information attendue n'apparait pas dans les sources, ecris : "
+    "\"Element non precise par les sources fournies.\"\n"
+)
+
+
+def _is_truthy_env(var_name: str) -> bool:
+    value = os.getenv(var_name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _resolve_system_prompt(prompt_version: int) -> str:
+    if prompt_version == 2:
+        return SYSTEM_PROMPT_V2
+    if prompt_version == 3:
+        if _is_truthy_env("VERIDICTA_PROMPT_V3_TARGETED_PATCH"):
+            return SYSTEM_PROMPT_V3 + PROMPT_V3_TARGETED_PATCH
+        return SYSTEM_PROMPT_V3
+    return SYSTEM_PROMPT
 
 # --- Embedding ---
 
@@ -440,12 +471,7 @@ def answer(
     )
     user_message = prompt_trace.user_message
     
-    if prompt_version == 2:
-        system = SYSTEM_PROMPT_V2
-    elif prompt_version == 3:
-        system = SYSTEM_PROMPT_V3
-    else:
-        system = SYSTEM_PROMPT
+    system = _resolve_system_prompt(prompt_version)
 
     if active_backend == "copilot":
         response_text = _answer_copilot(system, user_message, resolved_model)
@@ -508,12 +534,7 @@ def answer_stream(
     )
     user_message = prompt_trace.user_message
 
-    if prompt_version == 2:
-        system = SYSTEM_PROMPT_V2
-    elif prompt_version == 3:
-        system = SYSTEM_PROMPT_V3
-    else:
-        system = SYSTEM_PROMPT
+    system = _resolve_system_prompt(prompt_version)
 
     if active_backend == "copilot":
         token_gen: Iterator[str] = _answer_copilot_stream(system, user_message, resolved_model)

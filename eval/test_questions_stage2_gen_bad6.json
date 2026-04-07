@@ -1,0 +1,74 @@
+[
+  {
+    "id": "monaco-022",
+    "question": "Quelles sont les spécificités du contrat de travail à temps partiel à Monaco ?",
+    "reference_answer": "Le contrat à temps partiel à Monaco doit être établi par écrit et mentionner la durée hebdomadaire ou mensuelle convenue ainsi que la répartition des horaires. Les heures complémentaires effectuées au-delà de la durée prévue sont soumises à des règles particulières. Le salarié à temps partiel bénéficie des mêmes droits que le salarié à temps complet au prorata de son temps de travail.",
+    "reference_keywords": [
+      "temps partiel",
+      "contrat",
+      "durée",
+      "salarié",
+      "travail"
+    ]
+  },
+  {
+    "id": "monaco-024",
+    "question": "Comment fonctionne la représentation du personnel dans les entreprises monégasques ?",
+    "reference_answer": "Les entreprises d'une certaine taille employant des salariés à Monaco sont tenues de mettre en place des délégués du personnel élus. Ces représentants ont pour mission de présenter les réclamations des salariés à l'employeur et de veiller à l'application des dispositions légales et conventionnelles. La loi monégasque organise les modalités de leur élection et leur protection.",
+    "reference_keywords": [
+      "délégués du personnel",
+      "délégué",
+      "représentant",
+      "élection",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-026",
+    "question": "Quelles obligations l'employeur monégasque a-t-il en matière de formation professionnelle ?",
+    "reference_answer": "L'employeur à Monaco est tenu de contribuer au financement de la formation professionnelle continue et d'assurer l'adaptation de ses salariés à l'évolution de leurs emplois. Des cotisations spécifiques sont prélevées à cet effet. Le salarié peut bénéficier de formations professionnelles pour maintenir son employabilité.",
+    "reference_keywords": [
+      "formation",
+      "employeur",
+      "salarié",
+      "contrat",
+      "obligation"
+    ]
+  },
+  {
+    "id": "monaco-027",
+    "question": "Quelles sont les règles anti-discrimination applicables à l'embauche et en cours de contrat à Monaco ?",
+    "reference_answer": "Le droit monégasque interdit toute discrimination fondée notamment sur l'origine, le sexe, la religion, les opinions politiques ou syndicales dans le cadre de l'embauche et de l'exécution du contrat de travail. Les salariés victimes de discrimination peuvent saisir le Tribunal du travail pour obtenir réparation.",
+    "reference_keywords": [
+      "discrimination",
+      "contrat",
+      "salarié",
+      "tribunal",
+      "travail"
+    ]
+  },
+  {
+    "id": "monaco-032",
+    "question": "Quelles sont les règles relatives à la mise à la retraite et au départ volontaire à la retraite à Monaco ?",
+    "reference_answer": "En droit monégasque, la mise à la retraite par l'employeur est encadrée par des conditions d'âge et d'ancienneté. Le salarié peut également partir volontairement à la retraite à l'âge légal. Le départ ou la mise à la retraite ouvre droit à une indemnité dont le montant est calculé en fonction de l'ancienneté, différente de l'indemnité de licenciement.",
+    "reference_keywords": [
+      "retraite",
+      "pension",
+      "indemnité",
+      "ancienneté",
+      "salarié"
+    ]
+  },
+  {
+    "id": "monaco-043",
+    "question": "Comment les primes et rémunérations variables sont-elles traitées en droit du travail monégasque ?",
+    "reference_answer": "Les primes et éléments variables de rémunération peuvent être prévus par le contrat de travail, la convention collective ou l'usage. Lorsqu'ils présentent un caractère général, constant et fixe, ils intègrent le salaire contractuel et ne peuvent être supprimés unilatéralement par l'employeur. Leur base de calcul entre dans l'assiette des indemnités de rupture.",
+    "reference_keywords": [
+      "prime",
+      "rémunération",
+      "salaire",
+      "indemnité",
+      "contrat"
+    ]
+  }
+]

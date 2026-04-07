@@ -1,0 +1,54 @@
+{
+  "subset_file": "eval/test_questions_stage2_gen_bad9.json",
+  "objective": "generation_quality_opt_in_without_changing_default",
+  "runs": {
+    "baseline_v3": {
+      "file": "eval/results/stage2/gen_prompt_ablation_v3/eval_20260313_115651.jsonl",
+      "keyword_recall": 0.7778,
+      "word_f1": 0.2315,
+      "bertscore_f1": 0.7998,
+      "judge_score": 0.5111,
+      "citation_faithfulness": 1.0,
+      "context_coverage": 0.7531,
+      "latency_s": 15.6111,
+      "accept_rate": 0.2222
+    },
+    "patch_v1": {
+      "file": "eval/results/stage2/gen_prompt_patch_v1/eval_20260313_123720.jsonl",
+      "keyword_recall": 0.8,
+      "word_f1": 0.1974,
+      "bertscore_f1": 0.786,
+      "judge_score": 0.6111,
+      "citation_faithfulness": 0.8889,
+      "context_coverage": 0.7225,
+      "latency_s": 16.9111,
+      "accept_rate": 0.4444
+    },
+    "patch_v2": {
+      "file": "eval/results/stage2/gen_prompt_patch_v2/eval_20260313_124357.jsonl",
+      "keyword_recall": 0.7333,
+      "word_f1": 0.2049,
+      "bertscore_f1": 0.7782,
+      "judge_score": 0.5667,
+      "citation_faithfulness": 1.0,
+      "context_coverage": 0.673,
+      "latency_s": 14.8411,
+      "accept_rate": 0.2222
+    },
+    "patch_v3": {
+      "file": "eval/results/stage2/gen_prompt_patch_v3/eval_20260313_124932.jsonl",
+      "keyword_recall": 0.6889,
+      "word_f1": 0.2007,
+      "bertscore_f1": 0.786,
+      "judge_score": 0.6556,
+      "citation_faithfulness": 1.0,
+      "context_coverage": 0.7352,
+      "latency_s": 17.3567,
+      "accept_rate": 0.5556
+    }
+  },
+  "selected": "patch_v3",
+  "selection_rationale": "Best generation-quality signals on the targeted slice (judge_score and accept_rate), while preserving citation_faithfulness=1.0. Kept opt-in to avoid default regressions on broader metrics.",
+  "opt_in_flag": "VERIDICTA_PROMPT_V3_TARGETED_PATCH=1",
+  "default_behavior_changed": false
+}

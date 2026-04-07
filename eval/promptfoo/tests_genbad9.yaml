@@ -1,0 +1,81 @@
+- vars:
+    id: monaco-022
+    question: Quelles sont les specificites du contrat de travail a temps partiel a Monaco ?
+    reference_keywords:
+      - temps partiel
+      - contrat
+      - duree
+      - salarie
+      - travail
+- vars:
+    id: monaco-024
+    question: Comment fonctionne la representation du personnel dans les entreprises monegasques ?
+    reference_keywords:
+      - delegues du personnel
+      - delegue
+      - representant
+      - election
+      - salarie
+- vars:
+    id: monaco-026
+    question: Quelles obligations l'employeur monegasque a-t-il en matiere de formation professionnelle ?
+    reference_keywords:
+      - formation
+      - employeur
+      - salarie
+      - contrat
+      - obligation
+- vars:
+    id: monaco-027
+    question: Quelles sont les regles anti-discrimination applicables a l'embauche et en cours de contrat a Monaco ?
+    reference_keywords:
+      - discrimination
+      - contrat
+      - salarie
+      - tribunal
+      - travail
+- vars:
+    id: monaco-032
+    question: Quelles sont les regles relatives a la mise a la retraite et au depart volontaire a la retraite a Monaco ?
+    reference_keywords:
+      - retraite
+      - pension
+      - indemnite
+      - anciennete
+      - salarie
+- vars:
+    id: monaco-043
+    question: Comment les primes et remunerations variables sont-elles traitees en droit du travail monegasque ?
+    reference_keywords:
+      - prime
+      - remuneration
+      - salaire
+      - indemnite
+      - contrat
+- vars:
+    id: monaco-053
+    question: Quelles sont les conditions de nomination et d'avancement des fonctionnaires dans l'administration monegasque ?
+    reference_keywords:
+      - nomination
+      - avancement
+      - anciennete
+      - ordonnance souveraine
+      - concours
+- vars:
+    id: monaco-058
+    question: Quelles sont les obligations de l'employeur en matiere de cotisations sociales a Monaco ?
+    reference_keywords:
+      - cotisations sociales
+      - employeur
+      - caisses sociales
+      - assurance
+      - declaration
+- vars:
+    id: monaco-063
+    question: Comment est organisee la formation professionnelle continue a Monaco et quelles obligations incombent aux employeurs ?
+    reference_keywords:
+      - formation professionnelle
+      - qualification
+      - employeur
+      - certification
+      - arrete ministeriel

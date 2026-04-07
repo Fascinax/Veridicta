@@ -1,0 +1,35 @@
+{
+  "subset_file": "eval/test_questions_stage2_gen_bad9.json",
+  "subset_size": 9,
+  "baseline_file": "eval/results/stage2/gen_prompt_ablation_v3/eval_20260313_115651.jsonl",
+  "candidate_file": "eval/results/stage2/gen_prompt_ablation_v4/eval_20260313_120341.jsonl",
+  "baseline_metrics": {
+    "keyword_recall": 0.7778,
+    "word_f1": 0.2315,
+    "bertscore_f1": 0.7998,
+    "judge_score": 0.5111,
+    "context_coverage": 0.7531,
+    "latency_s": 15.61,
+    "accept_rate": 0.2222
+  },
+  "candidate_metrics": {
+    "keyword_recall": 0.7333,
+    "word_f1": 0.2365,
+    "bertscore_f1": 0.792,
+    "judge_score": 0.4889,
+    "context_coverage": 0.6679,
+    "latency_s": 11.34,
+    "accept_rate": 0.1111
+  },
+  "delta_v4_minus_v3": {
+    "keyword_recall": -0.0444,
+    "word_f1": 0.005,
+    "bertscore_f1": -0.0079,
+    "judge_score": -0.0222,
+    "context_coverage": -0.0852,
+    "latency_s": -4.2667,
+    "accept_rate": -0.1111
+  },
+  "decision": "keep_v3_default",
+  "rationale": "Prompt v4 improves latency but degrades quality on the targeted generation-failure slice (judge, context coverage, acceptance)."
+}

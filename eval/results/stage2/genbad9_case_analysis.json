@@ -1,0 +1,117 @@
+{
+  "input_file": "eval\\results\\stage2\\gen_prompt_ablation_v3\\eval_20260313_115651.jsonl",
+  "total_cases": 9,
+  "incorrect_cases": 7,
+  "signal_counts": {
+    "omission": 7,
+    "scope_too_narrow": 4,
+    "missed_general_rule": 4,
+    "public_private_confusion": 1,
+    "missing_indemnities": 1
+  },
+  "topic_counts": {
+    "temps_partiel": 1,
+    "representants_personnel": 1,
+    "formation": 2,
+    "discrimination": 1,
+    "retraite": 1,
+    "cotisations_sociales": 1
+  },
+  "top_signals": [
+    "omission",
+    "scope_too_narrow",
+    "missed_general_rule",
+    "public_private_confusion",
+    "missing_indemnities"
+  ],
+  "cases": [
+    {
+      "question_id": "monaco-022",
+      "topic": "temps_partiel",
+      "judge_score": 0.4,
+      "keyword_recall": 0.8,
+      "context_coverage": 0.8041,
+      "signals": [
+        "omission",
+        "scope_too_narrow",
+        "missed_general_rule",
+        "public_private_confusion"
+      ],
+      "judge_reason": "La réponse générée se concentre sur les agents contractuels de l'État et le secteur public, alors que la question et la référence portent sur le droit du travail général à Monaco, notamment le secteur privé ; elle omet des éléments essentiels comme l'obligation d'un écrit, la mention de la durée et la répartition des horaires, et les droits au prorata."
+    },
+    {
+      "question_id": "monaco-024",
+      "topic": "representants_personnel",
+      "judge_score": 0.5,
+      "keyword_recall": 0.8,
+      "context_coverage": 0.8264,
+      "signals": [
+        "omission",
+        "missed_general_rule"
+      ],
+      "judge_reason": "La réponse générée détaille le fonctionnement du comité paritaire et la gestion du fonds social mais omet l'essentiel sur la mission générale des délégués du personnel, leur rôle de représentation et la présentation des réclamations, ainsi que l'obligation légale de leur mise en place selon la taille de l'entreprise."
+    },
+    {
+      "question_id": "monaco-026",
+      "topic": "formation",
+      "judge_score": 0.3,
+      "keyword_recall": 1.0,
+      "context_coverage": 0.802,
+      "signals": [
+        "omission",
+        "scope_too_narrow",
+        "missed_general_rule"
+      ],
+      "judge_reason": "La réponse générée se limite aux obligations liées au contrat d'apprentissage et omet l'obligation générale de contribution au financement de la formation professionnelle continue et d'adaptation des salariés à l'évolution de leur emploi, qui sont essentielles selon la référence."
+    },
+    {
+      "question_id": "monaco-027",
+      "topic": "discrimination",
+      "judge_score": 0.6,
+      "keyword_recall": 1.0,
+      "context_coverage": 0.6864,
+      "signals": [
+        "omission"
+      ],
+      "judge_reason": "La réponse générée omet de mentionner explicitement l'interdiction de discrimination fondée sur l'origine, la religion, et les opinions politiques ou syndicales, alors que la référence l'indique clairement ; elle minimise aussi la portée des règles existantes et ne mentionne pas la possibilité de saisir le Tribunal du travail."
+    },
+    {
+      "question_id": "monaco-032",
+      "topic": "retraite",
+      "judge_score": 0.4,
+      "keyword_recall": 0.6,
+      "context_coverage": 0.6748,
+      "signals": [
+        "omission",
+        "scope_too_narrow",
+        "missing_indemnities"
+      ],
+      "judge_reason": "La réponse générée se concentre sur l'absence de droit de rétractation et les plans de départs volontaires, mais omet les règles essentielles sur l'âge, l'ancienneté, et l'indemnité de départ à la retraite, qui sont présentes dans la référence."
+    },
+    {
+      "question_id": "monaco-058",
+      "topic": "cotisations_sociales",
+      "judge_score": 0.5,
+      "keyword_recall": 0.6,
+      "context_coverage": 0.7246,
+      "signals": [
+        "omission"
+      ],
+      "judge_reason": "La réponse générée ne traite que des obligations relatives à la retraite complémentaire et omet les autres cotisations sociales obligatoires (maladie, accident du travail, allocations familiales), qui sont essentielles selon la référence."
+    },
+    {
+      "question_id": "monaco-063",
+      "topic": "formation",
+      "judge_score": 0.5,
+      "keyword_recall": 0.6,
+      "context_coverage": 0.7021,
+      "signals": [
+        "omission",
+        "scope_too_narrow",
+        "missed_general_rule"
+      ],
+      "judge_reason": "La réponse générée se concentre uniquement sur les pharmaciens et préparateurs en pharmacie, omettant l'obligation générale des employeurs de contribuer au financement de la formation professionnelle continue pour tous les salariés, qui est un point essentiel de la référence."
+    }
+  ],
+  "recommended_prompt_patch_file": "eval\\results\\stage2\\genbad9_prompt_patch_v1.txt"
+}

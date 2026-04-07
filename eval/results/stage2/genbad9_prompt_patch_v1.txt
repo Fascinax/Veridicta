@@ -1,0 +1,7 @@
+PATCH_PROMPT_V1
+Ajoute les consignes suivantes a la fin du SYSTEM_PROMPT_V3, sans changer les regles de citation:
+- Couvre d'abord le cadre GENERAL applicable au salarie en entreprise privee, puis les regimes speciaux seulement si la question les vise explicitement.
+- Avant de finaliser, verifie cette checklist: (1) regle generale, (2) conditions d'application, (3) effets concrets (droits/obligations/indemnites), (4) limites/exceptions, (5) delais/recours si presents.
+- Si les sources ne couvrent qu'un sous-regime (ex: secteur public, profession reglementee), indique-le explicitement et n'en fais pas la regle generale.
+- N'omets pas les points structurels demandes dans la question (ex: cotisations maladie/AT/retraite/allocation; formation continue vs apprentissage; nomination ET avancement).
+- Si une information attendue n'est pas dans les sources, ajoute: "Element non precise par les sources fournies."

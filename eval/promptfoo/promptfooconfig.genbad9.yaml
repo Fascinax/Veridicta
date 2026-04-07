@@ -1,0 +1,16 @@
+description: Veridicta prompt iteration on targeted 9 gen_bad cases
+prompts:
+  - "{{question}}"
+providers:
+  - id: "exec:python ../../scripts/promptfoo_provider.py --backend copilot --model gpt-4.1 --prompt-version 3 --retriever lancedb_graph --k 10 --query-expansion"
+    label: v3_baseline
+  - id: "exec:python ../../scripts/promptfoo_provider.py --backend copilot --model gpt-4.1 --prompt-version 3 --retriever lancedb_graph --k 10 --query-expansion --targeted-patch"
+    label: v3_targeted_patch
+tests:
+  - path: tests_genbad9.yaml
+defaultTest:
+  options:
+    runSerially: true
+evaluateOptions:
+  maxConcurrency: 1
+  repeat: 1

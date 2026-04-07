@@ -192,6 +192,18 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Node.js (copilot bridge)
+# Node.js (copilot bridge — legacy, replaced by Python SDK)
 node_modules/
 package-lock.json
+package.json
+copilot-bridge.mjs
+
+# Scratch / one-off scripts at root
+/_*.py
+
+# Benchmark cache & local perf results
+.benchmarks/
+perf_full_results.json
+
+# Audit trail (generated at runtime)
+data/audit/
