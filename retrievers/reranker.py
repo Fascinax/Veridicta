@@ -57,14 +57,14 @@ def _enrich_reranked_chunk(chunk: dict, score: float, rerank_rank: int) -> dict:
     return enriched
 
 
-def rerank(
+def rerank_with_trace(
     query: str,
     candidates: list[dict],
     k: int = 5,
     candidate_k: int = RERANKER_CANDIDATE_K,
     min_score: float | None = None,
-) -> list[dict]:
-    """Re-score candidates with FlashRank and return top-k.
+) -> tuple[list[dict], list[dict]]:
+    """Re-score candidates and return the selected and complete ranked pools.
 
     Args:
         query: User question.
@@ -74,10 +74,10 @@ def rerank(
         min_score: Optional minimum FlashRank score threshold.
 
     Returns:
-        Top-k chunk dicts sorted by FlashRank score, with rerank metadata added.
+        A tuple containing the top-k chunks and every reranked candidate.
     """
     if not candidates:
-        return []
+        return [], []
 
     from flashrank import RerankRequest  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
@@ -96,10 +96,28 @@ def rerank(
         if filtered:
             reranked_passages = filtered
 
-    results: list[dict] = []
-    for rerank_rank, passage in enumerate(reranked_passages[:k], 1):
+    ranked_candidates: list[dict] = []
+    for rerank_rank, passage in enumerate(reranked_passages, 1):
         candidate_index = int(passage["id"])
         chunk = pool[candidate_index]
         score = float(passage.get("score", 0.0))
-        results.append(_enrich_reranked_chunk(chunk, score, rerank_rank))
-    return results
+        ranked_candidates.append(_enrich_reranked_chunk(chunk, score, rerank_rank))
+    return ranked_candidates[:k], ranked_candidates
+
+
+def rerank(
+    query: str,
+    candidates: list[dict],
+    k: int = 5,
+    candidate_k: int = RERANKER_CANDIDATE_K,
+    min_score: float | None = None,
+) -> list[dict]:
+    """Re-score candidates with FlashRank and return top-k."""
+    selected, _ = rerank_with_trace(
+        query,
+        candidates,
+        k=k,
+        candidate_k=candidate_k,
+        min_score=min_score,
+    )
+    return selected

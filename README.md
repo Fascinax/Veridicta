@@ -118,6 +118,30 @@ Run the app:
 streamlit run ui/app.py
 ```
 
+### Annotate the human gold set
+
+To review the 40 Stage 0 answers interactively (reference, baseline answer,
+retrieved context, verdict and rationale), launch the local annotation studio:
+
+```bash
+streamlit run ui/annotation_app.py --server.port 8502
+```
+
+Open <http://localhost:8502>. Each explicit save updates
+`eval/gold_annotations.jsonl` atomically. The studio labels only the
+versioned `LanceDB + Graph` baseline; automatic metrics remain visible as
+diagnostics and do not replace the human verdict. Validate the completed set
+with:
+
+```bash
+python -m eval.validate_contract --strict-human-labels
+```
+
+The optional `eval/ai_annotation_suggestions.jsonl` file provides provisional
+labels and rationales for pending rows. Use the studio’s **Copier la
+suggestion** action to load one as a draft, then review and save it yourself;
+suggestions are never counted as human annotations until explicitly validated.
+
 Note: FAISS, bm25s, and chunk artifacts are auto-downloaded at startup from Fascinax/veridicta-index when missing locally.
 
 ## Deploy to Streamlit Cloud
@@ -149,11 +173,42 @@ The app injects Streamlit secrets into environment variables at startup and ensu
 
 ## Evaluation
 
+The versioned evaluation contract is documented in
+[`eval/EVALUATION_CONTRACT.md`](eval/EVALUATION_CONTRACT.md). It pins the
+100-question regression set, keeps Word F1 diagnostic-only, and requires each
+run to preserve quality, latency and cost fields. Validate the contract before
+comparing experiments:
+
+```bash
+python -m eval.validate_contract
+```
+
+The strict human-review check now confirms that all 40 selected answers in
+`eval/gold_annotations.jsonl` have been reviewed:
+
+```bash
+python -m eval.validate_contract --strict-human-labels
+```
+
 Run full evaluation:
 
 ```bash
 python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid_graph --prompt-version 3 --workers 4
 ```
+
+Every run also writes a metadata-only trace JSONL beside the results (or at
+the path supplied with `--trace-out`). Each row follows the retrieval chain
+from raw top-20 candidates through reranking, final selection and prompt
+injection, and records cited source numbers plus a diagnostic failure stage.
+Chunk text, prompts and credentials are not written to this trace file.
+
+```bash
+python -m eval.evaluate --retrieval-only --trace-out eval/results/trace.jsonl
+```
+
+The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,
+`generation`, and `none`. They identify the first observable loss against the
+reference keywords; they do not replace the human verdict or a legal review.
 
 Useful variants:
 

@@ -61,6 +61,7 @@ from retrievers.pipeline import RetrievalPipeline
 from retrievers.traceability import (
     append_audit_event,
     build_prompt_trace,
+    citation_source_numbers,
     get_audit_log_path,
     new_trace_id,
 )
@@ -456,10 +457,16 @@ def _render_trace(trace: dict) -> None:
                 f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
                 f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
                 f"**Contexte**: {trace.get('context_tokens', 0)} / {trace.get('max_context_tokens', 0)} tokens (~{trace.get('context_chars', 0)} caractères)",
+                f"**Sources citées**: {', '.join(f'[Source {number}]' for number in trace.get('cited_source_numbers', [])) or 'aucune'}",
                 f"**Audit log**: {html.escape(audit_log_path)}",
             ]
         )
     )
+    retrieval_trace = trace.get("retrieval_trace")
+    if retrieval_trace:
+        st.caption("Trace metadata-only : le texte des chunks et les secrets ne sont pas exposés dans ce détail.")
+        with st.expander("Détail retrieval · top 20 → final"):
+            st.json(retrieval_trace)
 
 
 _MAX_HISTORY_TURNS = 3
@@ -516,7 +523,7 @@ def _fallback_generation_trace(prompt: str, backend: str, model: str) -> dict:
     }
 
 
-def _retrieve_chunks(
+def _retrieve_chunks_with_trace(
     prompt: str,
     index_data,
     chunks_map: list[dict],
@@ -528,7 +535,7 @@ def _retrieve_chunks(
     bm25,
     use_lancedb: bool = False,
     lancedb_table=None,
-) -> list[dict]:
+) -> tuple[list[dict], object]:
     if use_lancedb and use_graph:
         retriever = "lancedb_graph"
     elif use_lancedb:
@@ -550,12 +557,42 @@ def _retrieve_chunks(
         neo4j_manager=neo4j_mgr,
         lancedb_table=lancedb_table,
     )
-    return pipeline.retrieve(
+    return pipeline.retrieve_with_trace(
         prompt,
         retriever=retriever,
         k=k,
         query_expansion=True,
+        trace_candidate_k=20,
     )
+
+
+def _retrieve_chunks(
+    prompt: str,
+    index_data,
+    chunks_map: list[dict],
+    embedder,
+    k: int,
+    use_graph: bool,
+    neo4j_mgr,
+    use_hybrid: bool,
+    bm25,
+    use_lancedb: bool = False,
+    lancedb_table=None,
+) -> list[dict]:
+    retrieved, _ = _retrieve_chunks_with_trace(
+        prompt,
+        index_data,
+        chunks_map,
+        embedder,
+        k,
+        use_graph,
+        neo4j_mgr,
+        use_hybrid,
+        bm25,
+        use_lancedb,
+        lancedb_table,
+    )
+    return retrieved
 
 
 def _generate_response(
@@ -591,9 +628,16 @@ def _build_trace_payload(
     retrieved: list[dict],
     generation_trace: dict,
     audit_log_path,
+    retrieval_trace,
+    response_text: str,
 ) -> dict:
     used_chunks = generation_trace.get("used_chunks", [])
     omitted_chunks = generation_trace.get("omitted_chunks", [])
+    serialized_retrieval_trace = (
+        retrieval_trace.to_dict()
+        if hasattr(retrieval_trace, "to_dict")
+        else retrieval_trace
+    )
     return {
         "trace_id": trace_id,
         "retriever": retriever_label,
@@ -605,6 +649,8 @@ def _build_trace_payload(
         "context_chars": generation_trace.get("context_chars", 0),
         "context_tokens": generation_trace.get("context_tokens", 0),
         "max_context_tokens": generation_trace.get("max_context_tokens", 0),
+        "cited_source_numbers": citation_source_numbers(response_text),
+        "retrieval_trace": serialized_retrieval_trace,
         "audit_log_path": str(audit_log_path) if audit_log_path is not None else str(get_audit_log_path()),
     }
 
@@ -743,7 +789,7 @@ def _handle_prompt(
         retrieval_query = _build_retrieval_query(prompt, conversation_history)
         with st.spinner("Recherche dans le corpus…"):
             t0 = time.perf_counter()
-            retrieved = _retrieve_chunks(
+            retrieved, retrieval_trace = _retrieve_chunks_with_trace(
                 retrieval_query,
                 index_data,
                 chunks_map,
@@ -794,6 +840,7 @@ def _handle_prompt(
             model=generation_trace.get("model", model),
             prompt_version=generation_trace.get("prompt_version", 1),
             latency_s=elapsed,
+            retrieval_trace=retrieval_trace,
         )
         trace_payload = _build_trace_payload(
             trace_id,
@@ -801,6 +848,8 @@ def _handle_prompt(
             retrieved,
             generation_trace,
             audit_log_path,
+            retrieval_trace,
+            response_text,
         )
         # Final render: remove the streaming cursor ▌
         response_placeholder.markdown(

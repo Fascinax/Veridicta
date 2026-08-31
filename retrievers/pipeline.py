@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from retrievers.baseline_rag import DEFAULT_TOP_K, retrieve
 from retrievers.query_expansion import expand_query_legal_fr
+from retrievers.traceability import summarize_chunks, text_summary
 
 try:
     from retrievers.hybrid_rag import hybrid_retrieve
@@ -33,9 +34,49 @@ except ImportError:  # pragma: no cover - optional dependency
     lancedb_graph_retrieve = None
 
 try:
-    from retrievers.reranker import rerank
+    from retrievers.reranker import rerank, rerank_with_trace
 except ImportError:  # pragma: no cover - optional dependency
     rerank = None
+    rerank_with_trace = None
+
+
+RAW_TRACE_CANDIDATE_K = 20
+
+
+@dataclass(frozen=True)
+class RetrievalTrace:
+    """Runtime retrieval decisions with metadata-only serialization."""
+
+    query: str
+    retrieval_query: str
+    retriever: str
+    requested_k: int
+    raw_candidate_k: int
+    query_expansion: bool
+    use_reranker: bool
+    raw_candidates: list[dict]
+    reranked_candidates: list[dict]
+    final_candidates: list[dict]
+    decisions: list[dict]
+
+    def to_dict(self) -> dict:
+        """Return a safe trace payload without chunk text or credentials."""
+        return {
+            "schema_version": "1.0",
+            "query": text_summary(self.query),
+            "retrieval_query": text_summary(self.retrieval_query),
+            "retriever": self.retriever,
+            "requested_k": self.requested_k,
+            "raw_candidate_k": self.raw_candidate_k,
+            "raw_candidate_count": len(self.raw_candidates),
+            "query_expansion": self.query_expansion,
+            "use_reranker": self.use_reranker,
+            "raw_top20": summarize_chunks(self.raw_candidates[:RAW_TRACE_CANDIDATE_K], "raw_top20"),
+            "candidate_pool": summarize_chunks(self.raw_candidates, "candidate_pool"),
+            "reranked_candidates": summarize_chunks(self.reranked_candidates, "reranked"),
+            "final_candidates": summarize_chunks(self.final_candidates, "final"),
+            "decisions": self.decisions,
+        }
 
 
 @dataclass
@@ -81,6 +122,111 @@ class RetrievalPipeline:
             candidate_k=retrieval_k,
             min_score=reranker_min_score,
         )
+
+    def retrieve_with_trace(
+        self,
+        query: str,
+        *,
+        retriever: str = "faiss",
+        k: int = DEFAULT_TOP_K,
+        query_expansion: bool = False,
+        use_reranker: bool = False,
+        reranker_candidate_multiplier: int = 4,
+        reranker_min_score: float | None = None,
+        hybrid_faiss_weight: float | None = None,
+        hybrid_bm25_weight: float | None = None,
+        trace_candidate_k: int = RAW_TRACE_CANDIDATE_K,
+    ) -> tuple[list[dict], RetrievalTrace]:
+        """Retrieve final chunks and preserve every ranking decision."""
+        if k < 1:
+            raise ValueError("k must be >= 1")
+        if trace_candidate_k < 1:
+            raise ValueError("trace_candidate_k must be >= 1")
+
+        retrieval_query = expand_query_legal_fr(query) if query_expansion else query
+        raw_candidate_k = max(k, trace_candidate_k)
+        if use_reranker:
+            raw_candidate_k = max(
+                raw_candidate_k,
+                k * max(1, reranker_candidate_multiplier),
+            )
+
+        raw_candidates = self._dispatch_retriever(
+            retriever=retriever,
+            query=retrieval_query,
+            k=raw_candidate_k,
+            hybrid_faiss_weight=hybrid_faiss_weight,
+            hybrid_bm25_weight=hybrid_bm25_weight,
+        )
+
+        decisions = [
+            {
+                "stage": "retrieval",
+                "policy": "retrieval_score_descending",
+                "candidate_count": len(raw_candidates),
+            },
+            {
+                "stage": "raw_snapshot",
+                "policy": "first_20_candidates",
+                "candidate_count": min(len(raw_candidates), RAW_TRACE_CANDIDATE_K),
+            },
+        ]
+
+        reranked_candidates: list[dict] = []
+        if use_reranker:
+            if rerank_with_trace is None:
+                raise RuntimeError(
+                    "FlashRank reranker unavailable. Install flashrank to enable reranking."
+                )
+            final_candidates, reranked_candidates = rerank_with_trace(
+                query,
+                raw_candidates,
+                k=k,
+                candidate_k=len(raw_candidates),
+                min_score=reranker_min_score,
+            )
+            decisions.append(
+                {
+                    "stage": "reranking",
+                    "policy": "flashrank_score_descending",
+                    "candidate_count": len(reranked_candidates),
+                    "candidate_multiplier": reranker_candidate_multiplier,
+                    "min_score": reranker_min_score,
+                }
+            )
+            selection_policy = "reranked_top_k"
+        else:
+            final_candidates = raw_candidates[:k]
+            decisions.append(
+                {
+                    "stage": "reranking",
+                    "policy": "disabled",
+                    "candidate_count": 0,
+                }
+            )
+            selection_policy = "raw_top_k"
+
+        decisions.append(
+            {
+                "stage": "selection",
+                "policy": selection_policy,
+                "k": k,
+            }
+        )
+        trace = RetrievalTrace(
+            query=query,
+            retrieval_query=retrieval_query,
+            retriever=retriever,
+            requested_k=k,
+            raw_candidate_k=raw_candidate_k,
+            query_expansion=query_expansion,
+            use_reranker=use_reranker,
+            raw_candidates=raw_candidates,
+            reranked_candidates=reranked_candidates,
+            final_candidates=final_candidates,
+            decisions=decisions,
+        )
+        return final_candidates, trace
 
     def _dispatch_retriever(
         self,

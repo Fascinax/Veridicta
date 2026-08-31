@@ -22,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -48,11 +49,29 @@ from retrievers.baseline_rag import (
     answer,
     load_index,
 )
-from retrievers.config import default_model_for_backend, resolve_llm_backend
-from retrievers.pipeline import RetrievalPipeline
+from retrievers.config import (
+    count_llm_tokens,
+    default_model_for_backend,
+    get_context_budget_tokens,
+    resolve_llm_backend,
+)
+from retrievers.pipeline import RetrievalPipeline, RetrievalTrace
 from retrievers.query_expansion import (
     expand_query_legal_fr as _expand_query_legal_fr,
     normalize_for_match as _normalize_for_match,
+)
+from retrievers.traceability import (
+    PromptTrace,
+    citation_source_numbers,
+    build_prompt_trace,
+    prompt_trace_to_dict,
+    new_trace_id,
+    text_summary,
+)
+from eval.contract import (
+    ContractValidationError,
+    load_contract,
+    validate_questions_file,
 )
 
 try:
@@ -79,11 +98,7 @@ except ImportError:
 
 _LANCEDB_GRAPH_AVAILABLE = _LANCEDB_AVAILABLE and _GRAPH_AVAILABLE
 
-try:
-    from retrievers.reranker import rerank
-    _RERANKER_AVAILABLE = True
-except ImportError:
-    _RERANKER_AVAILABLE = False
+_RERANKER_AVAILABLE = importlib.util.find_spec("retrievers.reranker") is not None
 
 try:
     from eval.ragas_support import (
@@ -170,6 +185,10 @@ class EvalResult:
     ragas_error: str | None = None
     judge_error: str | None = None
     sources_titles: list[str] = field(default_factory=list)
+    cost_usd: float | None = None
+    trace_id: str | None = None
+    failure_stage: str | None = None
+    failure_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -196,6 +215,7 @@ class EvalRunConfig:
     use_judge: bool = False
     judge_backend: str = "copilot"
     judge_model: str | None = None
+    trace_out: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -332,6 +352,67 @@ def context_coverage(answer: str, retrieved_chunks: list[dict]) -> float:
         return 1.0
     covered = sum(1 for t in significant if t in context_tokens)
     return round(covered / len(significant), 4)
+
+
+def _chunks_text(chunks: list[dict]) -> str:
+    return " ".join(chunk.get("text", "") for chunk in chunks)
+
+
+def classify_failure(
+    question: EvalQuestion,
+    answer_text: str,
+    retrieval_trace: RetrievalTrace,
+    prompt_trace: PromptTrace,
+    citation_score: float,
+    include_generation: bool = True,
+) -> dict[str, object]:
+    """Attribute the first observable loss in the RAG path.
+
+    This is a deterministic diagnostic, not a claim about legal correctness.
+    It compares reference-keyword recall at each boundary of the pipeline.
+    """
+    keywords = question.reference_keywords
+    if not keywords:
+        return {
+            "stage": "none",
+            "reason": "no reference keywords available for attribution",
+        }
+
+    raw_recall = keyword_recall(
+        _chunks_text(retrieval_trace.raw_candidates[:20]),
+        keywords,
+    )
+    reranked_pool = retrieval_trace.reranked_candidates or retrieval_trace.final_candidates
+    reranked_recall = keyword_recall(_chunks_text(reranked_pool), keywords)
+    final_recall = keyword_recall(_chunks_text(retrieval_trace.final_candidates), keywords)
+    used_recall = keyword_recall(_chunks_text(prompt_trace.used_chunks), keywords)
+    answer_recall = keyword_recall(answer_text, keywords)
+    signals = {
+        "raw_top20_keyword_recall": round(raw_recall, 4),
+        "reranked_keyword_recall": round(reranked_recall, 4),
+        "final_keyword_recall": round(final_recall, 4),
+        "prompt_keyword_recall": round(used_recall, 4),
+        "answer_keyword_recall": round(answer_recall, 4),
+        "citation_faithfulness": round(citation_score, 4),
+    }
+
+    if raw_recall < 1.0:
+        stage = "retrieval"
+        reason = "reference keywords are missing from the raw top-20"
+    elif final_recall < raw_recall:
+        stage = "ranking"
+        reason = "relevant keywords are present in raw top-20 but lost before final selection"
+    elif used_recall < final_recall:
+        stage = "context_assembly"
+        reason = "relevant final chunks were omitted from the prompt context"
+    elif include_generation and (answer_recall < 1.0 or citation_score < 1.0):
+        stage = "generation"
+        reason = "prompt evidence is available but the answer is incomplete or uncited"
+    else:
+        stage = "none"
+        reason = "no loss detected by the keyword and citation signals"
+
+    return {"stage": stage, "reason": reason, "signals": signals}
 
 
 _JUDGE_SYSTEM_PROMPT = """Tu es un juge d'evaluation RAG pour le droit du travail monegasque.
@@ -526,7 +607,7 @@ def run_eval(
     neo4j_mgr=None,
     lancedb_table=None,
 ) -> list[EvalResult]:
-    retrieved_all = _retrieve_contexts(
+    retrieved_all, retrieval_traces = _retrieve_contexts_with_trace(
         questions,
         index,
         chunks,
@@ -538,17 +619,24 @@ def run_eval(
     )
 
     if config.retrieval_only:
-        results = _build_retrieval_only_results(questions, retrieved_all)
-        if config.stream_out is not None:
-            _write_results_file(results, config.stream_out)
-        return results
+        results, trace_records = _build_retrieval_only_results(
+            questions,
+            retrieved_all,
+            retrieval_traces,
+            config,
+        )
+    else:
+        results, trace_records = _generate_eval_results(
+            questions,
+            retrieved_all,
+            retrieval_traces,
+            config,
+        )
 
-    results = _generate_eval_results(questions, retrieved_all, config)
-
-    if config.ragas_evaluator is not None:
+    if not config.retrieval_only and config.ragas_evaluator is not None:
         _apply_ragas_scores(results, questions, retrieved_all, config.ragas_evaluator)
 
-    if config.use_bertscore:
+    if not config.retrieval_only and config.use_bertscore:
         _apply_bertscore_scores(
             results,
             questions,
@@ -558,7 +646,7 @@ def run_eval(
             device=config.bertscore_device,
         )
 
-    if config.use_judge:
+    if not config.retrieval_only and config.use_judge:
         _apply_judge_scores(
             results,
             questions,
@@ -569,6 +657,8 @@ def run_eval(
 
     if config.stream_out is not None:
         _write_results_file(results, config.stream_out)
+    if config.trace_out is not None:
+        _write_trace_file(trace_records, results, config.trace_out)
 
     return results
 
@@ -597,6 +687,29 @@ def _retrieve_contexts(
     neo4j_mgr=None,
     lancedb_table=None,
 ) -> list[list[dict]]:
+    contexts, _ = _retrieve_contexts_with_trace(
+        questions,
+        index,
+        chunks,
+        embedder,
+        config,
+        bm25=bm25,
+        neo4j_mgr=neo4j_mgr,
+        lancedb_table=lancedb_table,
+    )
+    return contexts
+
+
+def _retrieve_contexts_with_trace(
+    questions: list[EvalQuestion],
+    index,
+    chunks: list[dict],
+    embedder,
+    config: EvalRunConfig,
+    bm25=None,
+    neo4j_mgr=None,
+    lancedb_table=None,
+) -> tuple[list[list[dict]], list[RetrievalTrace]]:
     question_count = len(questions)
     retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr, lancedb_table=lancedb_table)
     print(f"  Retrieving context for {question_count} questions  [{retriever_label}] ...", flush=True)
@@ -622,8 +735,10 @@ def _retrieve_contexts(
         neo4j_manager=neo4j_mgr,
         lancedb_table=lancedb_table,
     )
-    return [
-        pipeline.retrieve(
+    retrieved_all: list[list[dict]] = []
+    traces: list[RetrievalTrace] = []
+    for question in questions:
+        retrieved, trace = pipeline.retrieve_with_trace(
             question.question,
             retriever=retriever_name,
             k=config.k,
@@ -634,8 +749,9 @@ def _retrieve_contexts(
             hybrid_faiss_weight=config.hybrid_faiss_weight,
             hybrid_bm25_weight=config.hybrid_bm25_weight,
         )
-        for question in questions
-    ]
+        retrieved_all.append(retrieved)
+        traces.append(trace)
+    return retrieved_all, traces
 
 
 def _source_titles(retrieved_chunks: list[dict]) -> list[str]:
@@ -649,9 +765,16 @@ def _build_eval_result(
     *,
     latency_s: float,
     include_word_f1: bool,
+    trace_id: str | None = None,
+    failure_classification: dict[str, object] | None = None,
 ) -> EvalResult:
     coverage = context_coverage(generated_answer, retrieved_chunks)
     word_f1_score = word_f1(generated_answer, question.reference_answer) if include_word_f1 else None
+    failure_stage = None
+    failure_reason = None
+    if failure_classification is not None:
+        failure_stage = str(failure_classification.get("stage") or "none")
+        failure_reason = str(failure_classification.get("reason") or "")
     return EvalResult(
         question_id=question.id,
         question=question.question,
@@ -671,73 +794,206 @@ def _build_eval_result(
         n_retrieved=len(retrieved_chunks),
         answer=generated_answer,
         sources_titles=_source_titles(retrieved_chunks),
+        trace_id=trace_id,
+        failure_stage=failure_stage,
+        failure_reason=failure_reason,
     )
+
+
+def _build_eval_prompt_trace(
+    question: EvalQuestion,
+    retrieved_chunks: list[dict],
+    config: EvalRunConfig,
+) -> PromptTrace:
+    active_backend = config.backend or LLM_BACKEND
+    resolved_model = config.model or default_model_for_backend(active_backend)
+    context_budget = get_context_budget_tokens(active_backend, resolved_model)
+    return build_prompt_trace(
+        question.question,
+        retrieved_chunks,
+        context_budget,
+        token_counter=lambda text: count_llm_tokens(text, resolved_model),
+    )
+
+
+def _build_trace_record(
+    question: EvalQuestion,
+    result: EvalResult,
+    retrieval_trace: RetrievalTrace,
+    prompt_trace: PromptTrace,
+    generation_metadata: dict[str, object],
+    failure_classification: dict[str, object],
+) -> dict[str, object]:
+    cited_numbers = citation_source_numbers(result.answer)
+    return {
+        "schema_version": "1.0",
+        "trace_id": result.trace_id,
+        "question_id": question.id,
+        "query": text_summary(question.question),
+        "retrieval": retrieval_trace.to_dict(),
+        "prompt": prompt_trace_to_dict(prompt_trace, set(cited_numbers)),
+        "answer": {
+            **text_summary(result.answer),
+            "cited_source_numbers": cited_numbers,
+        },
+        "generation": generation_metadata,
+        "failure_classification": failure_classification,
+    }
 
 
 def _build_retrieval_only_results(
     questions: list[EvalQuestion],
     retrieved_all: list[list[dict]],
-) -> list[EvalResult]:
-    return [
-        _build_eval_result(
+    retrieval_traces: list[RetrievalTrace],
+    config: EvalRunConfig,
+) -> tuple[list[EvalResult], list[dict[str, object]]]:
+    results: list[EvalResult] = []
+    trace_records: list[dict[str, object]] = []
+    for question, retrieved, retrieval_trace in zip(questions, retrieved_all, retrieval_traces):
+        generated_answer = _chunks_text(retrieved[:3])
+        prompt_trace = _build_eval_prompt_trace(question, retrieved, config)
+        trace_id = new_trace_id()
+        preliminary_result = _build_eval_result(
             question,
             retrieved,
-            " ".join(chunk.get("text", "") for chunk in retrieved[:3]),
+            generated_answer,
             latency_s=0.0,
             include_word_f1=False,
+            trace_id=trace_id,
         )
-        for question, retrieved in zip(questions, retrieved_all)
-    ]
+        failure_classification = classify_failure(
+            question,
+            generated_answer,
+            retrieval_trace,
+            prompt_trace,
+            preliminary_result.citation_faithfulness,
+            include_generation=False,
+        )
+        result = _build_eval_result(
+            question,
+            retrieved,
+            generated_answer,
+            latency_s=0.0,
+            include_word_f1=False,
+            trace_id=trace_id,
+            failure_classification=failure_classification,
+        )
+        results.append(result)
+        trace_records.append(
+            _build_trace_record(
+                question,
+                result,
+                retrieval_trace,
+                prompt_trace,
+                {"mode": "retrieval_only"},
+                failure_classification,
+            )
+        )
+    return results, trace_records
 
 
 def _generate_eval_results(
     questions: list[EvalQuestion],
     retrieved_all: list[list[dict]],
+    retrieval_traces: list[RetrievalTrace],
     config: EvalRunConfig,
-) -> list[EvalResult]:
+) -> tuple[list[EvalResult], list[dict[str, object]]]:
     question_count = len(questions)
-    effective_workers = min(config.workers, question_count)
+    effective_workers = max(1, min(config.workers, question_count)) if question_count else 1
     active_backend = config.backend or LLM_BACKEND
     print(
         f"  Generating {question_count} answers  [backend={active_backend}, workers={effective_workers}] ...",
         flush=True,
     )
 
-    def _generate_one(task: tuple[int, EvalQuestion, list[dict]]) -> tuple[int, EvalResult]:
-        index, question, retrieved = task
+    def _generate_one(
+        task: tuple[int, EvalQuestion, list[dict], RetrievalTrace],
+    ) -> tuple[int, EvalResult, dict[str, object]]:
+        index, question, retrieved, retrieval_trace = task
         started_at = time.monotonic()
-        generated_answer = answer(
+        answer_result = answer(
             question.question,
             retrieved,
             model=config.model,
             backend=active_backend,
             prompt_version=config.prompt_version,
+            return_trace=True,
         )
+        if isinstance(answer_result, tuple):
+            generated_answer, generation_trace = answer_result
+        else:
+            generated_answer = answer_result
+            generation_trace = {}
+        prompt_trace = generation_trace.get("prompt_trace")
+        if not isinstance(prompt_trace, PromptTrace):
+            prompt_trace = _build_eval_prompt_trace(question, retrieved, config)
         latency_s = round(time.monotonic() - started_at, 2)
         print(f"  [{index:02d}/{question_count}] {question.id}  ({latency_s:.1f}s)", flush=True)
-        return index, _build_eval_result(
+        trace_id = new_trace_id()
+        preliminary_result = _build_eval_result(
             question,
             retrieved,
             generated_answer,
             latency_s=latency_s,
             include_word_f1=True,
+            trace_id=trace_id,
         )
+        failure_classification = classify_failure(
+            question,
+            generated_answer,
+            retrieval_trace,
+            prompt_trace,
+            preliminary_result.citation_faithfulness,
+        )
+        result = _build_eval_result(
+            question,
+            retrieved,
+            generated_answer,
+            latency_s=latency_s,
+            include_word_f1=True,
+            trace_id=trace_id,
+            failure_classification=failure_classification,
+        )
+        trace_record = _build_trace_record(
+            question,
+            result,
+            retrieval_trace,
+            prompt_trace,
+            {
+                "backend": generation_trace.get("backend", active_backend),
+                "model": generation_trace.get("model", config.model),
+                "prompt_version": generation_trace.get("prompt_version", config.prompt_version),
+            },
+            failure_classification,
+        )
+        return index, result, trace_record
 
-    tasks = [(index, question, retrieved) for index, (question, retrieved) in enumerate(zip(questions, retrieved_all), 1)]
+    tasks = [
+        (index, question, retrieved, retrieval_trace)
+        for index, (question, retrieved, retrieval_trace) in enumerate(
+            zip(questions, retrieved_all, retrieval_traces),
+            1,
+        )
+    ]
     ordered_results: dict[int, EvalResult] = {}
+    ordered_traces: dict[int, dict[str, object]] = {}
     stream_file_handle = _open_stream_file(config.stream_out)
     try:
         with ThreadPoolExecutor(max_workers=effective_workers) as pool:
             futures = {pool.submit(_generate_one, task): task[0] for task in tasks}
             for future in as_completed(futures):
-                index, result = future.result()
+                index, result, trace_record = future.result()
                 ordered_results[index] = result
+                ordered_traces[index] = trace_record
                 _stream_eval_result(stream_file_handle, result)
     finally:
         if stream_file_handle is not None:
             stream_file_handle.close()
 
-    return [ordered_results[index] for index in range(1, question_count + 1)]
+    return (
+        [ordered_results[index] for index in range(1, question_count + 1)],
+        [ordered_traces[index] for index in range(1, question_count + 1)],
+    )
 
 
 def _open_stream_file(stream_out: Path | None):
@@ -769,6 +1025,37 @@ def _write_results_file(results: list[EvalResult], out_path: Path) -> None:
     with open(out_path, "w", encoding="utf-8") as fh:
         for result in results:
             fh.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+
+
+def _write_trace_file(
+    trace_records: list[dict[str, object]],
+    results: list[EvalResult],
+    out_path: Path,
+) -> None:
+    """Persist one metadata-only trace record per evaluated question."""
+    result_by_trace_id = {
+        result.trace_id: result
+        for result in results
+        if result.trace_id is not None
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as trace_file:
+        for record in trace_records:
+            enriched_record = dict(record)
+            result = result_by_trace_id.get(record.get("trace_id"))
+            if result is not None:
+                enriched_record["metrics"] = {
+                    "keyword_recall": result.keyword_recall,
+                    "word_f1": result.word_f1,
+                    "citation_faithfulness": result.citation_faithfulness,
+                    "context_coverage": result.context_coverage,
+                    "hallucination_risk": result.hallucination_risk,
+                    "latency_s": result.latency_s,
+                    "cost_usd": result.cost_usd,
+                    "failure_stage": result.failure_stage,
+                }
+            trace_file.write(json.dumps(enriched_record, ensure_ascii=False) + "\n")
+    print(f"Trace saved -> {out_path}")
 
 
 def _has_ragas_scores(results: list[EvalResult]) -> bool:
@@ -1095,6 +1382,21 @@ def _print_topic_breakdown(results: list[EvalResult], mode: str) -> None:
         print(_topic_row(topic, rows, mode))
 
 
+def _print_failure_breakdown(results: list[EvalResult]) -> None:
+    """Print the heuristic boundary where relevant evidence was lost."""
+    counts: dict[str, int] = {}
+    for result in results:
+        stage = result.failure_stage or "unknown"
+        counts[stage] = counts.get(stage, 0) + 1
+    if not counts:
+        return
+
+    print("\nFailure attribution (heuristic):")
+    for stage in ("retrieval", "ranking", "context_assembly", "generation", "none", "unknown"):
+        if stage in counts:
+            print(f"  {stage:<18} {counts[stage]:>4}")
+
+
 def print_report(results: list[EvalResult]) -> None:
     has_ragas = _has_ragas_scores(results)
     has_bertscore = _has_bertscore_scores(results)
@@ -1111,6 +1413,7 @@ def print_report(results: list[EvalResult]) -> None:
     print("-" * line_width)
     _print_overall_summary(results, mode)
     _print_topic_breakdown(results, mode)
+    _print_failure_breakdown(results)
 
     print("=" * line_width + "\n")
 
@@ -1246,6 +1549,16 @@ def _parse_args() -> argparse.Namespace:
         help="Path to test_questions.json  (default: eval/test_questions.json)",
     )
     parser.add_argument(
+        "--contract",
+        default="eval/evaluation_contract.json",
+        help="Versioned evaluation contract (default: eval/evaluation_contract.json)",
+    )
+    parser.add_argument(
+        "--allow-custom-questions",
+        action="store_true",
+        help="Allow a diagnostic subset instead of the fixed regression set.",
+    )
+    parser.add_argument(
         "--k",
         type=int,
         default=8,
@@ -1255,6 +1568,11 @@ def _parse_args() -> argparse.Namespace:
         "--out",
         default="eval/results",
         help="Output directory for JSONL results  (default: eval/results)",
+    )
+    parser.add_argument(
+        "--trace-out",
+        default=None,
+        help="Optional JSONL trace path; defaults beside the result file",
     )
     parser.add_argument(
         "--index-dir",
@@ -1522,6 +1840,36 @@ def _validate_main_args(args: argparse.Namespace) -> None:
             sys.exit("ERROR: hybrid weights sum must be > 0")
 
 
+def _validate_evaluation_contract(
+    args: argparse.Namespace,
+    questions_path: Path,
+) -> None:
+    contract_path = Path(args.contract)
+    if not contract_path.is_absolute():
+        contract_path = ROOT / contract_path
+    try:
+        contract = load_contract(contract_path)
+        fingerprint = validate_questions_file(
+            questions_path,
+            contract,
+            allow_custom=args.allow_custom_questions,
+        )
+    except ContractValidationError as exc:
+        sys.exit(f"ERROR: evaluation contract: {exc}")
+
+    expected_path = (ROOT / contract.regression_set.path).resolve()
+    if fingerprint.path != expected_path:
+        print(
+            "WARNING: running a custom question set; results are diagnostic and "
+            "must not be compared to the fixed regression baseline."
+        )
+    else:
+        print(
+            f"Evaluation contract {contract.version} validated "
+            f"({fingerprint.count} fixed questions)."
+        )
+
+
 def _load_primary_index(args: argparse.Namespace, index_dir: Path, lancedb_table) -> tuple[object | None, list[dict]]:
     if args.retriever in ("lancedb", "lancedb_graph"):
         from retrievers.lancedb_rag import _table_to_chunks
@@ -1545,6 +1893,7 @@ def _build_run_config(
     *,
     ragas_evaluator: RagasEvaluator | None,
     stream_out: Path | None = None,
+    trace_out: Path | None = None,
     model: str | None = None,
 ) -> EvalRunConfig:
     return EvalRunConfig(
@@ -1570,6 +1919,7 @@ def _build_run_config(
         use_judge=args.judge,
         judge_backend=args.judge_backend,
         judge_model=args.judge_model,
+        trace_out=trace_out,
     )
 
 
@@ -1589,22 +1939,37 @@ def _run_all_models_evaluation(
 ) -> None:
     models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
     all_results: dict[str, list[EvalResult]] = {}
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     for model_name in models:
         print(f"\n{'='*60}")
         print(f"  Backend: {active_backend} | Model: {model_name} | Retriever: {retriever_label}")
         print(f"{'='*60}")
+        model_out_dir = out_dir / model_name.replace("/", "_")
+        if args.trace_out:
+            requested_trace_path = Path(args.trace_out)
+            trace_path = requested_trace_path.with_name(
+                f"{requested_trace_path.stem}_{model_name.replace('/', '_')}"
+                f"{requested_trace_path.suffix or '.jsonl'}"
+            )
+        else:
+            trace_path = model_out_dir / f"trace_{timestamp}.jsonl"
         results = run_eval(
             questions,
             index,
             chunks,
             embedder,
-            _build_run_config(args, ragas_evaluator=ragas_evaluator, model=model_name),
+            _build_run_config(
+                args,
+                ragas_evaluator=ragas_evaluator,
+                model=model_name,
+                trace_out=trace_path,
+            ),
             bm25=bm25,
             neo4j_mgr=neo4j_mgr,
             lancedb_table=lancedb_table,
         )
         print_report(results)
-        save_results(results, out_dir / model_name.replace("/", "_"))
+        save_results(results, model_out_dir)
         all_results[model_name] = results
     print_comparison(all_results)
 
@@ -1630,12 +1995,18 @@ def _run_single_evaluation(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
     stream_path = out_dir / f"eval_{timestamp}.jsonl"
+    trace_path = Path(args.trace_out) if args.trace_out else out_dir / f"trace_{timestamp}.jsonl"
     results = run_eval(
         questions,
         index,
         chunks,
         embedder,
-        _build_run_config(args, ragas_evaluator=ragas_evaluator, stream_out=stream_path),
+        _build_run_config(
+            args,
+            ragas_evaluator=ragas_evaluator,
+            stream_out=stream_path,
+            trace_out=trace_path,
+        ),
         bm25=bm25,
         neo4j_mgr=neo4j_mgr,
         lancedb_table=lancedb_table,
@@ -1651,6 +2022,8 @@ def main() -> None:
     questions_path = Path(args.questions)
     if not questions_path.exists():
         sys.exit(f"ERROR: questions file not found: {questions_path}")
+
+    _validate_evaluation_contract(args, questions_path)
 
     index_dir = Path(args.index_dir)
     active_backend = args.backend or LLM_BACKEND

@@ -1,0 +1,66 @@
+{
+  "contract_version": "1.0.0",
+  "domain": {
+    "jurisdiction": "Monaco",
+    "scope": "droit du travail",
+    "language": "fr"
+  },
+  "regression_set": {
+    "path": "eval/test_questions.json",
+    "format": "json",
+    "expected_count": 100,
+    "sha256": "4b86f8333075fbaef9b9d19a372e78a6e56f0aefe13b6600ceb5593821a6e6b2"
+  },
+  "human_gold_set": {
+    "packet_path": "eval/results/stage0/annotation_packet.jsonl",
+    "labels_path": "eval/gold_annotations.jsonl",
+    "expected_count": 40,
+    "min_count": 30,
+    "max_count": 50,
+    "required_labels": [
+      "correct",
+      "incomplete",
+      "unsupported",
+      "wrong"
+    ]
+  },
+  "quality_gates": {
+    "citation_faithfulness": {
+      "role": "safety",
+      "minimum": 0.99
+    },
+    "context_coverage": {
+      "role": "grounding_guardrail",
+      "minimum": 0.6
+    },
+    "bertscore_f1": {
+      "role": "semantic_quality",
+      "minimum": 0.75,
+      "optional": true
+    },
+    "judge_score": {
+      "role": "semantic_quality",
+      "minimum": 0.6,
+      "optional": true
+    }
+  },
+  "diagnostic_metrics": [
+    "keyword_recall",
+    "word_f1",
+    "ragas_faithfulness",
+    "ragas_context_precision"
+  ],
+  "required_result_fields": [
+    "question_id",
+    "question",
+    "answer",
+    "keyword_recall",
+    "word_f1",
+    "citation_faithfulness",
+    "context_coverage",
+    "bertscore_f1",
+    "judge_score",
+    "latency_s",
+    "cost_usd"
+  ]
+}

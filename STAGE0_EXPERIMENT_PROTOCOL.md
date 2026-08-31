@@ -77,7 +77,7 @@ Objectif : comparer la reponse finale et l'injection reelle de contexte sur le m
 ```powershell
 $env:VERIDICTA_AUDIT_DIR = "data/audit/stage0/lancedb_graph"
 $env:VERIDICTA_AUDIT_INCLUDE_CONTENT = "true"
-python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --retriever lancedb_graph --k 5 --backend copilot --model gpt-4.1 --prompt-version 3 --out eval/results/stage0/lancedb_graph_full
+python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --allow-custom-questions --retriever lancedb_graph --k 5 --backend copilot --model gpt-4.1 --prompt-version 3 --out eval/results/stage0/lancedb_graph_full
 ```
 
 ### Run B - `hybrid_graph`
@@ -85,7 +85,7 @@ python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --r
 ```powershell
 $env:VERIDICTA_AUDIT_DIR = "data/audit/stage0/hybrid_graph"
 $env:VERIDICTA_AUDIT_INCLUDE_CONTENT = "true"
-python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --retriever hybrid_graph --k 5 --backend copilot --model gpt-4.1 --prompt-version 3 --out eval/results/stage0/hybrid_graph_full
+python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --allow-custom-questions --retriever hybrid_graph --k 5 --backend copilot --model gpt-4.1 --prompt-version 3 --out eval/results/stage0/hybrid_graph_full
 ```
 
 Sorties attendues :
@@ -100,13 +100,13 @@ Objectif : isoler la couche retrieval du comportement du LLM.
 ### Run A - `lancedb_graph`, retrieval-only
 
 ```powershell
-python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --retriever lancedb_graph --k 5 --retrieval-only --prompt-version 3 --out eval/results/stage0/lancedb_graph_retrieval_only
+python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --allow-custom-questions --retriever lancedb_graph --k 5 --retrieval-only --prompt-version 3 --out eval/results/stage0/lancedb_graph_retrieval_only
 ```
 
 ### Run B - `hybrid_graph`, retrieval-only
 
 ```powershell
-python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --retriever hybrid_graph --k 5 --retrieval-only --prompt-version 3 --out eval/results/stage0/hybrid_graph_retrieval_only
+python -m eval.evaluate --questions eval/test_questions_stage0_bottom40.json --allow-custom-questions --retriever hybrid_graph --k 5 --retrieval-only --prompt-version 3 --out eval/results/stage0/hybrid_graph_retrieval_only
 ```
 
 Lecture attendue :
