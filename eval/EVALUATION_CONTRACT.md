@@ -123,7 +123,9 @@ The trace preserves the observable decisions needed to debug a RAG answer:
   retriever;
 - `retrieval.candidate_pool` and `retrieval.reranked_candidates`: the complete
   pool and reranker order when reranking is enabled;
-- `retrieval.final_candidates`: the chunks selected for the requested `k`;
+- `retrieval.final_candidates`: the chunks selected for the requested `k`; when
+  parent-child expansion is enabled, the `k` ranked seeds are followed by the
+  explicitly tagged sibling/neighbour context;
 - `prompt.used_chunks`, `prompt.omitted_chunks` and `prompt.decisions`: which
   final chunks entered the prompt and which were dropped by the context budget;
 - `answer.cited_source_numbers`: source numbers cited by the answer;
@@ -134,6 +136,36 @@ bounded preview and SHA-256, so traces can be shared for debugging without
 copying the legal corpus or provider credentials. Failure stages are
 heuristic diagnostics (`retrieval`, `ranking`, `context_assembly`,
 `generation`, or `none`) and never override the human annotation labels.
+
+## Structural chunking benchmark contract
+
+`python -m eval.benchmark_chunking` compares the compatibility fixed-size index
+with an independently built structural index. Both strategies use the same
+question set, embedding model, FAISS retriever and `k`; no LLM answer is
+generated. The JSON report is versioned as
+`2026-08-31-chunking-benchmark-v1` and reports:
+
+- mean keyword recall over the retrieved context;
+- useful-passage precision (fraction of retrieved chunks containing at least
+  one reference keyword) and its complement, context noise;
+- mean and p95 retrieval latency;
+- `citation_faithfulness: null`, because retrieval-only mode does not generate
+  an answer to cite.
+
+These deterministic measures are retrieval proxies and must not be presented
+as legal correctness or citation faithfulness. Run the full evaluator on the
+winning strategy and compare citation faithfulness before accepting a change.
+The full evaluator remains the source of truth for generation and citation
+metrics. Structural records add
+`chunking_strategy`, `structure_type`, `structure_id`,
+`structure_segment_index`, `parent_id`, `parent_document_id` and
+`neighbor_chunk_ids`; the default fixed strategy remains backward compatible.
+
+When `--parent-child` is enabled, ranked seeds are kept first and expanded with
+same-parent siblings followed by local neighbours from the same document.
+Every expansion is tagged in traces with `context_role`,
+`parent_child_source_chunk_id` and `parent_child_distance`; a configured
+`--parent-child-max-chunks` cap is applied after seeds are retained.
 
 ## Reranker benchmark contract
 

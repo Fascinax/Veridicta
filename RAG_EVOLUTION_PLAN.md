@@ -145,3 +145,12 @@ Livrable : benchmark separe sur perte d'indices juridiques et impact global sur 
 La prochaine action recommandee n'est pas de recoder le chunking. La prochaine action recommandee est de produire la preuve experimentale de l'endroit exact ou se perd le bon passage.
 
 Tant que cette preuve n'existe pas, toute refonte lourde du stack reste prematuree.
+
+## Mise en oeuvre opt-in (2026-08-31)
+
+L'etape 2 dispose maintenant d'une implementation legere et reversible : le
+decoupage fixe reste le defaut, tandis que `--strategy structural` produit un
+index parallele avec metadonnees parent/voisins. Le benchmark
+`python -m eval.benchmark_chunking` mesure le gain en retrieval pur avant tout
+choix de remplacement. L'expansion parent-child est egalement opt-in et doit
+etre validee avec l'evaluation complete avant adoption.

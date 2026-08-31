@@ -55,6 +55,7 @@ from retrievers.config import (
     get_context_budget_tokens,
     resolve_llm_backend,
 )
+from retrievers.parent_child import ParentChildConfig
 from retrievers.pipeline import RetrievalPipeline, RetrievalTrace
 from retrievers.query_expansion import (
     expand_query_legal_fr as _expand_query_legal_fr,
@@ -205,6 +206,9 @@ class EvalRunConfig:
     hybrid_faiss_weight: float | None = None
     hybrid_bm25_weight: float | None = None
     query_expansion: bool = False
+    parent_child: bool = False
+    parent_child_neighbor_radius: int = 1
+    parent_child_max_chunks: int | None = None
     prompt_version: int = 1
     ragas_evaluator: RagasEvaluator | None = None
     use_bertscore: bool = False
@@ -737,6 +741,14 @@ def _retrieve_contexts_with_trace(
     )
     retrieved_all: list[list[dict]] = []
     traces: list[RetrievalTrace] = []
+    parent_child_config = (
+        ParentChildConfig(
+            neighbor_radius=config.parent_child_neighbor_radius,
+            max_chunks=config.parent_child_max_chunks,
+        )
+        if config.parent_child
+        else None
+    )
     for question in questions:
         retrieved, trace = pipeline.retrieve_with_trace(
             question.question,
@@ -748,6 +760,7 @@ def _retrieve_contexts_with_trace(
             reranker_min_score=config.reranker_min_score,
             hybrid_faiss_weight=config.hybrid_faiss_weight,
             hybrid_bm25_weight=config.hybrid_bm25_weight,
+            parent_child_config=parent_child_config,
         )
         retrieved_all.append(retrieved)
         traces.append(trace)
@@ -1652,6 +1665,26 @@ def _parse_args() -> argparse.Namespace:
         help="Enable lightweight French legal query expansion before retrieval (default: disabled)",
     )
     parser.add_argument(
+        "--parent-child",
+        action="store_true",
+        help=(
+            "Expand selected passages with same-parent structural siblings and "
+            "local neighbours (default: disabled)."
+        ),
+    )
+    parser.add_argument(
+        "--parent-child-neighbor-radius",
+        type=int,
+        default=1,
+        help="Number of local chunks to expand on each side (default: 1)",
+    )
+    parser.add_argument(
+        "--parent-child-max-chunks",
+        type=int,
+        default=None,
+        help="Optional cap on expanded context chunks (default: unlimited)",
+    )
+    parser.add_argument(
         "--prompt-version",
         type=int,
         default=1,
@@ -1777,6 +1810,12 @@ def _build_cli_retriever_label(args: argparse.Namespace) -> str:
         retriever_label += f"-w{args.hybrid_faiss_weight:.2f}-{args.hybrid_bm25_weight:.2f}"
     if args.query_expansion:
         retriever_label += "+qexp"
+    if args.parent_child:
+        retriever_label += (
+            f"+parent-child-r{args.parent_child_neighbor_radius}"
+            if args.parent_child_neighbor_radius != 1
+            else "+parent-child"
+        )
     return retriever_label
 
 
@@ -1828,6 +1867,10 @@ def _validate_judge_args(args: argparse.Namespace) -> None:
 def _validate_main_args(args: argparse.Namespace) -> None:
     if args.reranker_candidate_multiplier < 1:
         sys.exit("ERROR: --reranker-candidate-multiplier must be >= 1")
+    if args.parent_child_neighbor_radius < 0:
+        sys.exit("ERROR: --parent-child-neighbor-radius must be >= 0")
+    if args.parent_child_max_chunks is not None and args.parent_child_max_chunks < 1:
+        sys.exit("ERROR: --parent-child-max-chunks must be >= 1")
 
     one_weight_missing = (args.hybrid_faiss_weight is None) != (args.hybrid_bm25_weight is None)
     if one_weight_missing:
@@ -1909,6 +1952,9 @@ def _build_run_config(
         hybrid_faiss_weight=args.hybrid_faiss_weight,
         hybrid_bm25_weight=args.hybrid_bm25_weight,
         query_expansion=args.query_expansion,
+        parent_child=args.parent_child,
+        parent_child_neighbor_radius=args.parent_child_neighbor_radius,
+        parent_child_max_chunks=args.parent_child_max_chunks,
         prompt_version=args.prompt_version,
         ragas_evaluator=ragas_evaluator,
         use_bertscore=args.bertscore,

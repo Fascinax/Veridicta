@@ -9,7 +9,8 @@ Writes:
   data/processed/chunks.jsonl
 
 Each chunk record: chunk_id, doc_id, chunk_index, total_chunks,
-titre, text, date, source, type, metadata, ingestion.
+titre, text, date, source, type, metadata, ingestion, chunking_strategy,
+structure_type, structure_id, parent_id, parent_document_id, neighbor_chunk_ids.
 
 Usage:
     python -m data_ingest.data_processor
@@ -21,13 +22,18 @@ from __future__ import annotations
 import argparse
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
 import jsonlines
 from tqdm import tqdm
+
+from data_ingest.chunking import (
+    STRUCTURAL_CHUNKING_VERSION,
+    chunk_document_fragments,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -37,6 +43,8 @@ CHUNK_OVERLAP = 200
 MIN_CHUNK_SIZE = 100
 HARD_MAX_CHUNK = 2200  # absolute ceiling — splits on spaces when no structure exists
 METADATA_SCHEMA_VERSION = "2026-03-traceability-v1"
+CHUNKING_STRATEGIES = ("fixed", "structural")
+DEFAULT_CHUNKING_STRATEGY = "fixed"
 PROCESSING_STARTED_AT = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 # Core LegiMonaco files (scraped by legimonaco_scraper.py)
@@ -149,6 +157,13 @@ class ChunkRecord:
     type: str
     metadata: dict
     ingestion: dict
+    chunking_strategy: str = DEFAULT_CHUNKING_STRATEGY
+    structure_type: str = "fixed"
+    structure_id: str = ""
+    structure_segment_index: int = 0
+    parent_id: str = ""
+    parent_document_id: str = ""
+    neighbor_chunk_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -163,6 +178,13 @@ class ChunkRecord:
             "type": self.type,
             "metadata": self.metadata,
             "ingestion": self.ingestion,
+            "chunking_strategy": self.chunking_strategy,
+            "structure_type": self.structure_type,
+            "structure_id": self.structure_id,
+            "structure_segment_index": self.structure_segment_index,
+            "parent_id": self.parent_id,
+            "parent_document_id": self.parent_document_id,
+            "neighbor_chunk_ids": self.neighbor_chunk_ids,
         }
 
 
@@ -195,7 +217,13 @@ def _normalise_metadata(doc: dict) -> dict:
     return merged_metadata
 
 
-def _build_ingestion_metadata(source_filename: str) -> dict:
+def _build_ingestion_metadata(
+    source_filename: str,
+    strategy: str = DEFAULT_CHUNKING_STRATEGY,
+) -> dict:
+    chunking_version = (
+        STRUCTURAL_CHUNKING_VERSION if strategy == "structural" else "fixed-v1"
+    )
     return {
         "processed_at_utc": PROCESSING_STARTED_AT,
         "pipeline": "data_ingest.data_processor",
@@ -204,33 +232,92 @@ def _build_ingestion_metadata(source_filename: str) -> dict:
         "chunk_overlap": CHUNK_OVERLAP,
         "hard_max_chunk": HARD_MAX_CHUNK,
         "metadata_schema_version": METADATA_SCHEMA_VERSION,
+        "chunking_strategy": strategy,
+        "chunking_version": chunking_version,
+        "structure_preservation": strategy == "structural",
     }
 
 
-def _document_to_chunks(doc: dict, source_filename: str) -> list[ChunkRecord]:
-    chunks = chunk_document(doc.get("text", ""))
+def chunk_document_with_metadata(
+    text: str,
+    strategy: str = DEFAULT_CHUNKING_STRATEGY,
+) -> list[dict]:
+    """Return text chunks with strategy-specific structural metadata."""
+    if strategy not in CHUNKING_STRATEGIES:
+        raise ValueError(
+            f"Unsupported chunking strategy: {strategy!r}; "
+            f"expected one of {CHUNKING_STRATEGIES}"
+        )
+    if strategy == "fixed":
+        chunks = chunk_document(text)
+        return [
+            {
+                "text": chunk,
+                "structure_type": "fixed",
+                "structure_id": f"fixed-{index:04d}",
+                "segment_index": 0,
+            }
+            for index, chunk in enumerate(chunks)
+        ]
+
+    return [
+        {
+            "text": fragment.text,
+            "structure_type": fragment.structure_type,
+            "structure_id": fragment.structure_id,
+            "segment_index": fragment.segment_index,
+        }
+        for fragment in chunk_document_fragments(
+            text,
+            strategy=strategy,
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            hard_max_chunk=HARD_MAX_CHUNK,
+        )
+    ]
+
+
+def _document_to_chunks(
+    doc: dict,
+    source_filename: str,
+    strategy: str = DEFAULT_CHUNKING_STRATEGY,
+) -> list[ChunkRecord]:
+    chunks = chunk_document_with_metadata(doc.get("text", ""), strategy)
     if not chunks:
         return []
     doc_id = doc.get("id", "")
     total = len(chunks)
     normalised_metadata = _normalise_metadata(doc)
-    ingestion = _build_ingestion_metadata(source_filename)
-    return [
+    ingestion = _build_ingestion_metadata(source_filename, strategy)
+    records = [
         ChunkRecord(
             chunk_id=f"{doc_id}-{i}",
             doc_id=doc_id,
             chunk_index=i,
             total_chunks=total,
             titre=doc.get("titre", ""),
-            text=chunk,
+            text=chunk["text"],
             date=doc.get("date", ""),
             source=doc.get("source", ""),
             type=doc.get("type", ""),
             metadata=normalised_metadata,
             ingestion=ingestion,
+            chunking_strategy=strategy,
+            structure_type=chunk["structure_type"],
+            structure_id=chunk["structure_id"],
+            structure_segment_index=chunk["segment_index"],
+            parent_id=f"{doc_id}:{chunk['structure_id']}",
+            parent_document_id=doc_id,
         )
         for i, chunk in enumerate(chunks)
     ]
+    for index, record in enumerate(records):
+        record.neighbor_chunk_ids = [
+            records[neighbor_index].chunk_id
+            for neighbor_index in (index - 1, index + 1)
+            if 0 <= neighbor_index < len(records)
+        ]
+    return records
 
 
 def _iter_raw_documents(raw_dir: Path) -> Iterator[tuple[str, dict]]:
@@ -259,8 +346,17 @@ def _iter_raw_documents(raw_dir: Path) -> Iterator[tuple[str, dict]]:
         logger.info("Total duplicates skipped across all files: %d", total_dupes)
 
 
-def process(raw_dir: Path, output_path: Path) -> int:
+def process(
+    raw_dir: Path,
+    output_path: Path,
+    strategy: str = DEFAULT_CHUNKING_STRATEGY,
+) -> int:
     """Chunk all raw documents and write to output_path. Returns chunk count."""
+    if strategy not in CHUNKING_STRATEGIES:
+        raise ValueError(
+            f"Unsupported chunking strategy: {strategy!r}; "
+            f"expected one of {CHUNKING_STRATEGIES}"
+        )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     total_docs = 0
     total_chunks = 0
@@ -268,7 +364,7 @@ def process(raw_dir: Path, output_path: Path) -> int:
     with jsonlines.open(output_path, mode="w") as writer:
         for source_filename, doc in tqdm(_iter_raw_documents(raw_dir), desc="Processing docs"):
             total_docs += 1
-            chunk_records = _document_to_chunks(doc, source_filename)
+            chunk_records = _document_to_chunks(doc, source_filename, strategy)
             if not chunk_records:
                 skipped += 1
                 continue
@@ -289,12 +385,21 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Directory containing raw JSONL files.")
     parser.add_argument("--out", default="data/processed", metavar="DIR",
                         help="Output directory (default: data/processed).")
+    parser.add_argument(
+        "--strategy",
+        choices=CHUNKING_STRATEGIES,
+        default=DEFAULT_CHUNKING_STRATEGY,
+        help=(
+            "Chunking strategy: fixed (compatibility default) or structural "
+            "(article/paragraph boundaries with parent metadata)."
+        ),
+    )
     return parser
 
 
 def main() -> None:
     args = _build_parser().parse_args()
-    n = process(Path(args.raw), Path(args.out) / OUTPUT_FILE)
+    n = process(Path(args.raw), Path(args.out) / OUTPUT_FILE, strategy=args.strategy)
     logger.info("Done. Total chunks: %d", n)
 
 

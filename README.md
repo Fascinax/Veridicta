@@ -250,6 +250,49 @@ the serverless CPU provider's cold start and per-request latency. Remote reranki
 latency and sends the selected legal passages to the configured provider, so
 use a private endpoint when corpus confidentiality requires it.
 
+### Structural chunking and parent-child retrieval
+
+The compatibility default keeps the existing fixed-size chunks. To build an
+isolated structural variant, preserving article/section headings, short
+conditions and exceptions, run:
+
+```bash
+python -m data_ingest.data_processor \
+  --raw data/raw \
+  --out data/processed/structural \
+  --strategy structural
+python -m retrievers.baseline_rag \
+  --build \
+  --chunks data/processed/structural/chunks.jsonl \
+  --index-dir data/index/structural
+```
+
+Compare both indexes without generating answers:
+
+```bash
+python -m eval.benchmark_chunking \
+  --questions eval/test_questions.json \
+  --fixed-index-dir data/index \
+  --structural-index-dir data/index/structural \
+  --k 8 \
+  --out eval/results/chunking_benchmark.json
+```
+
+The report contains keyword recall, useful-passage precision, context noise,
+and retrieval latency for each strategy; citation faithfulness is explicitly
+`null` because no answer is generated. These are retrieval proxies, not a
+legal correctness verdict. Run the full evaluator on the selected index to
+confirm citation faithfulness before adopting the strategy. Add
+`--parent-child` (and optionally `--neighbor-radius`/`--max-chunks`) to evaluate
+same-article siblings plus local neighbours. The same expansion is available
+in the main evaluator:
+
+```bash
+python -m eval.evaluate --retrieval-only \
+  --index-dir data/index/structural \
+  --parent-child --parent-child-neighbor-radius 1
+```
+
 Useful variants:
 
 ```bash

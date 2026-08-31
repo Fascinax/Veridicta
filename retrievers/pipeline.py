@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from retrievers.baseline_rag import DEFAULT_TOP_K, retrieve
+from retrievers.parent_child import ParentChildConfig, expand_parent_child_candidates
 from retrievers.query_expansion import expand_query_legal_fr
 from retrievers.traceability import summarize_chunks, text_summary
 
@@ -58,6 +59,7 @@ class RetrievalTrace:
     reranked_candidates: list[dict]
     final_candidates: list[dict]
     decisions: list[dict]
+    parent_child_enabled: bool = False
 
     def to_dict(self) -> dict:
         """Return a safe trace payload without chunk text or credentials."""
@@ -71,6 +73,7 @@ class RetrievalTrace:
             "raw_candidate_count": len(self.raw_candidates),
             "query_expansion": self.query_expansion,
             "use_reranker": self.use_reranker,
+            "parent_child_enabled": self.parent_child_enabled,
             "raw_top20": summarize_chunks(self.raw_candidates[:RAW_TRACE_CANDIDATE_K], "raw_top20"),
             "candidate_pool": summarize_chunks(self.raw_candidates, "candidate_pool"),
             "reranked_candidates": summarize_chunks(self.reranked_candidates, "reranked"),
@@ -100,6 +103,7 @@ class RetrievalPipeline:
         reranker_min_score: float | None = None,
         hybrid_faiss_weight: float | None = None,
         hybrid_bm25_weight: float | None = None,
+        parent_child_config: ParentChildConfig | None = None,
     ) -> list[dict]:
         retrieval_query = expand_query_legal_fr(query) if query_expansion else query
         retrieval_k = k * max(1, reranker_candidate_multiplier) if use_reranker else k
@@ -112,16 +116,25 @@ class RetrievalPipeline:
         )
 
         if not use_reranker:
-            return retrieved
+            if parent_child_config is None:
+                return retrieved
+            return expand_parent_child_candidates(
+                retrieved,
+                self.chunks or [],
+                parent_child_config,
+            )
         if rerank is None:
             raise RuntimeError("FlashRank reranker unavailable. Install flashrank to enable reranking.")
-        return rerank(
+        final_candidates = rerank(
             query,
             retrieved,
             k=k,
             candidate_k=retrieval_k,
             min_score=reranker_min_score,
         )
+        if parent_child_config is None:
+            return final_candidates
+        return expand_parent_child_candidates(final_candidates, self.chunks or [], parent_child_config)
 
     def retrieve_with_trace(
         self,
@@ -136,6 +149,7 @@ class RetrievalPipeline:
         hybrid_faiss_weight: float | None = None,
         hybrid_bm25_weight: float | None = None,
         trace_candidate_k: int = RAW_TRACE_CANDIDATE_K,
+        parent_child_config: ParentChildConfig | None = None,
     ) -> tuple[list[dict], RetrievalTrace]:
         """Retrieve final chunks and preserve every ranking decision."""
         if k < 1:
@@ -213,6 +227,25 @@ class RetrievalPipeline:
                 "k": k,
             }
         )
+        if parent_child_config is not None:
+            if self.chunks is None:
+                raise RuntimeError(
+                    "Parent-child expansion requires the loaded chunk map."
+                )
+            final_candidates = expand_parent_child_candidates(
+                final_candidates,
+                self.chunks,
+                parent_child_config,
+            )
+            decisions.append(
+                {
+                    "stage": "parent_child",
+                    "policy": "same_parent_then_local_neighbours",
+                    "candidate_count": len(final_candidates),
+                    "neighbor_radius": parent_child_config.neighbor_radius,
+                    "max_chunks": parent_child_config.max_chunks,
+                }
+            )
         trace = RetrievalTrace(
             query=query,
             retrieval_query=retrieval_query,
@@ -225,6 +258,7 @@ class RetrievalPipeline:
             reranked_candidates=reranked_candidates,
             final_candidates=final_candidates,
             decisions=decisions,
+            parent_child_enabled=parent_child_config is not None,
         )
         return final_candidates, trace
 
