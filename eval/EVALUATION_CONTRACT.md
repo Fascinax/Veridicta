@@ -138,8 +138,10 @@ heuristic diagnostics (`retrieval`, `ranking`, `context_assembly`,
 ## Reranker benchmark contract
 
 Run `python -m eval.benchmark_rerankers` to compare the current
-`ms-marco-MultiBERT-L-12` FlashRank adapter with `BAAI/bge-reranker-v2-m3`.
-Both models receive the same raw candidates. The default matrix is:
+`ms-marco-MultiBERT-L-12` FlashRank adapter with the local
+`BAAI/bge-reranker-v2-m3` adapter. Both models receive the same raw candidates.
+The optional `bge_hf` adapter uses the same BGE weights through Hugging Face's
+remote `hf-inference` provider. The default matrix is:
 
 - candidate pools: 20, 50 and 100;
 - injected windows: top-5, top-10 and top-20;
@@ -168,6 +170,24 @@ python -m eval.benchmark_rerankers `
   --top-k 5,10,20 `
   --details-out eval/results/reranker_benchmark/details.jsonl
 ```
+
+For a remote BGE comparison, set `HF_TOKEN` (or `HF_API_TOKEN` /
+`HUGGINGFACE_TOKEN`) and select `bge_hf`:
+
+```powershell
+$env:HF_TOKEN = "hf_..."
+python -m eval.benchmark_rerankers `
+  --retriever lancedb `
+  --models flashrank,bge_hf `
+  --candidate-pools 20 `
+  --top-k 5
+```
+
+The remote adapter batches query/passage pairs and records network time in the
+reranking latency. It does not write the token or passage text to benchmark
+artifacts. Set `VERIDICTA_HF_INFERENCE_URL` for a compatible dedicated endpoint;
+the default is the Hugging Face `hf-inference` router. Use a private endpoint
+when the evaluated corpus cannot leave the trusted environment.
 
 ## Annotation workflow
 

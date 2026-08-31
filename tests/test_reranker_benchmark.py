@@ -8,7 +8,10 @@ from eval.benchmark_rerankers import (
     BenchmarkConfig,
     BenchmarkDependencies,
     EvalQuestion,
+    HuggingFaceInferenceAdapter,
+    HuggingFaceInferenceConfig,
     RawRetrievalCase,
+    RERANKER_SPECS,
     RerankerSpec,
     _parse_int_list,
     _parse_model_specs,
@@ -43,6 +46,26 @@ class _IdentityAdapter:
 
     def rank(self, query: str, candidates: list[dict]) -> list[dict]:
         return [dict(candidate) for candidate in candidates]
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: object, text: str = "") -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = text
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _RecordingSession:
+    def __init__(self, response: _FakeResponse) -> None:
+        self.response = response
+        self.calls: list[tuple[str, dict]] = []
+
+    def post(self, url: str, **kwargs: object) -> _FakeResponse:
+        self.calls.append((url, kwargs))
+        return self.response
 
 
 def test_run_benchmark_keeps_summary_rows_aligned_per_model() -> None:
@@ -83,6 +106,114 @@ def test_run_benchmark_populates_citation_faithfulness_in_full_mode() -> None:
 
 def test_benchmark_argument_parsers_reject_invalid_values() -> None:
     assert _parse_int_list("20,50,20", "candidate-pools") == (20, 50)
-    assert _parse_model_specs("flashrank,bge")[0].key == "flashrank"
+    assert _parse_model_specs("flashrank,bge,bge_hf")[0].key == "flashrank"
     with pytest.raises(ValueError):
         BenchmarkConfig(candidate_pools=(2,), top_ks=(3,)).validate()
+
+
+def test_hf_inference_adapter_ranks_batched_pairs() -> None:
+    response = _FakeResponse(
+        200,
+        [
+            [{"label": "LABEL_0", "score": 0.10}],
+            [{"label": "LABEL_0", "score": 0.90}],
+            [{"label": "LABEL_0", "score": 0.40}],
+        ],
+    )
+    session = _RecordingSession(response)
+    adapter = HuggingFaceInferenceAdapter(
+        RERANKER_SPECS["bge_hf"],
+        HuggingFaceInferenceConfig(
+            token="test-token",
+            endpoint_url="https://hf.example.test/rerank",
+            timeout_seconds=7.0,
+            batch_size=10,
+        ),
+        session,
+    )
+
+    ranked = adapter.rank(
+        "Quel est le préavis ?",
+        [
+            {"chunk_id": "low", "text": "Les congés sont annuels."},
+            {"chunk_id": "high", "text": "Le préavis est de deux mois."},
+            {"chunk_id": "mid", "text": "Le contrat peut être rompu."},
+        ],
+    )
+
+    assert [chunk["chunk_id"] for chunk in ranked] == ["high", "mid", "low"]
+    assert len(session.calls) == 1
+    url, kwargs = session.calls[0]
+    assert url == "https://hf.example.test/rerank"
+    assert kwargs["json"] == {
+        "inputs": [
+            ["Quel est le préavis ?", "Les congés sont annuels."],
+            ["Quel est le préavis ?", "Le préavis est de deux mois."],
+            ["Quel est le préavis ?", "Le contrat peut être rompu."],
+        ],
+        "parameters": {"function_to_apply": "none"},
+    }
+    assert kwargs["headers"] == {
+        "Authorization": "Bearer test-token",
+        "Content-Type": "application/json",
+    }
+    assert kwargs["timeout"] == 7.0
+
+
+def test_hf_inference_adapter_requires_token_before_request() -> None:
+    session = _RecordingSession(_FakeResponse(200, []))
+    adapter = HuggingFaceInferenceAdapter(
+        RERANKER_SPECS["bge_hf"],
+        HuggingFaceInferenceConfig(token=None),
+        session,
+    )
+
+    with pytest.raises(RuntimeError, match="HF_TOKEN"):
+        adapter.rank("question", [{"text": "passage"}])
+
+    assert session.calls == []
+
+
+def test_hf_inference_adapter_surfaces_provider_errors() -> None:
+    session = _RecordingSession(
+        _FakeResponse(503, {"error": "Model is loading"}, "loading")
+    )
+    adapter = HuggingFaceInferenceAdapter(
+        RERANKER_SPECS["bge_hf"],
+        HuggingFaceInferenceConfig(token="test-token"),
+        session,
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 503.*Model is loading"):
+        adapter.rank("question", [{"text": "passage"}])
+
+
+def test_hf_inference_adapter_explains_authentication_failure() -> None:
+    session = _RecordingSession(
+        _FakeResponse(401, {"error": "Invalid username or password"})
+    )
+    adapter = HuggingFaceInferenceAdapter(
+        RERANKER_SPECS["bge_hf"],
+        HuggingFaceInferenceConfig(token="expired-token"),
+        session,
+    )
+
+    with pytest.raises(
+        RuntimeError, match="authentication failed.*Inference Providers"
+    ):
+        adapter.rank("question", [{"text": "passage"}])
+
+
+def test_hf_inference_config_reads_token_alias_and_default_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("HF_TOKEN", "HF_API_TOKEN", "HUGGINGFACE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "test-token")
+
+    config = HuggingFaceInferenceConfig.from_env()
+
+    assert config.token == "test-token"
+    assert config.endpoint_for(RERANKER_SPECS["bge_hf"]) == (
+        "https://router.huggingface.co/hf-inference/models/BAAI/bge-reranker-v2-m3"
+    )

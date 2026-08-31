@@ -210,7 +210,8 @@ The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,
 `generation`, and `none`. They identify the first observable loss against the
 reference keywords; they do not replace the human verdict or a legal review.
 
-Benchmark the current FlashRank model against the multilingual BGE reranker:
+Benchmark the current FlashRank model against the local multilingual BGE
+reranker:
 
 ```bash
 python -m eval.benchmark_rerankers \
@@ -226,6 +227,27 @@ reports Recall@k, MRR, keyword-based context precision, reranking latency
 (mean/p95) and process RSS. Citation faithfulness is `n/a` in retrieval-only
 mode; add `--full-rag --backend ... --model ...` when provider-backed answer
 generation is explicitly desired.
+
+To call BGE remotely through Hugging Face instead of downloading its weights,
+set a token with the `Inference Providers` permission and select `bge_hf`:
+
+```powershell
+$env:HF_TOKEN = "hf_..."  # keep the token out of Git and shell history when possible
+python -m eval.benchmark_rerankers `
+  --retriever lancedb `
+  --models flashrank,bge_hf `
+  --candidate-pools 20 `
+  --top-k 5
+```
+
+The remote adapter uses Hugging Face's `hf-inference` router, sends candidate
+pairs in batches, and keeps the token out of traces and result files. It accepts
+`HF_TOKEN`, `HF_API_TOKEN` or `HUGGINGFACE_TOKEN`. Set
+`VERIDICTA_HF_INFERENCE_URL` only when using a compatible private endpoint;
+`VERIDICTA_HF_TIMEOUT_SECONDS` (default `60`) and `VERIDICTA_HF_BATCH_SIZE`
+(default `32`) tune the request boundary. Remote reranking includes network
+latency and sends the selected legal passages to the configured provider, so
+use a private endpoint when corpus confidentiality requires it.
 
 Useful variants:
 

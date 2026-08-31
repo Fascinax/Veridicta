@@ -8,6 +8,7 @@ is populated only when ``--full-rag`` is explicitly requested.
 Examples:
     python -m eval.benchmark_rerankers --retriever lancedb
     python -m eval.benchmark_rerankers --models flashrank,bge --full-rag
+    python -m eval.benchmark_rerankers --models flashrank,bge_hf
 """
 
 from __future__ import annotations
@@ -16,22 +17,35 @@ import argparse
 import importlib.util
 import json
 import math
+import os
 import statistics
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import quote
+
+import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval.contract import ContractValidationError, load_contract, validate_questions_file
-from eval.evaluate import EvalQuestion, citation_faithfulness, keyword_recall, load_questions
-from retrievers.baseline_rag import (
+from eval.contract import (  # noqa: E402
+    ContractValidationError,
+    load_contract,
+    validate_questions_file,
+)
+from eval.evaluate import (  # noqa: E402
+    EvalQuestion,
+    citation_faithfulness,
+    keyword_recall,
+    load_questions,
+)
+from retrievers.baseline_rag import (  # noqa: E402
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
     INDEX_DIR,
@@ -39,14 +53,19 @@ from retrievers.baseline_rag import (
     _load_embedder,
     answer,
 )
-from retrievers.pipeline import RetrievalPipeline
+from retrievers.pipeline import RetrievalPipeline  # noqa: E402
 
 
 DEFAULT_CANDIDATE_POOLS = (20, 50, 100)
 DEFAULT_TOP_KS = (5, 10, 20)
 DEFAULT_RERANKER_MAX_LENGTH = 512
+DEFAULT_HF_INFERENCE_BATCH_SIZE = 32
+DEFAULT_HF_INFERENCE_TIMEOUT_SECONDS = 60.0
+HF_INFERENCE_ROUTER_URL = "https://router.huggingface.co/hf-inference/models"
 MILLISECONDS_PER_SECOND = 1_000.0
 MEGABYTES_PER_BYTE = 1 / (1024 * 1024)
+HF_TOKEN_ENV_NAMES = ("HF_TOKEN", "HF_API_TOKEN", "HUGGINGFACE_TOKEN")
+HF_AUTH_ERROR_STATUS_CODES = frozenset({401, 403})
 
 
 @dataclass(frozen=True)
@@ -67,6 +86,11 @@ RERANKER_SPECS = {
     "bge": RerankerSpec(
         key="bge",
         family="sentence_transformers",
+        model_name="BAAI/bge-reranker-v2-m3",
+    ),
+    "bge_hf": RerankerSpec(
+        key="bge_hf",
+        family="hf_inference",
         model_name="BAAI/bge-reranker-v2-m3",
     ),
 }
@@ -183,6 +207,193 @@ class BgeCrossEncoderAdapter:
         ]
 
 
+def _resolve_hf_token() -> str | None:
+    """Return the first configured Hugging Face token without exposing it."""
+    for environment_name in HF_TOKEN_ENV_NAMES:
+        token = os.getenv(environment_name)
+        if token:
+            return token
+    return None
+
+
+@dataclass(frozen=True)
+class HuggingFaceInferenceConfig:
+    """Runtime settings for the serverless Hugging Face inference provider."""
+
+    token: str | None
+    endpoint_url: str | None = None
+    timeout_seconds: float = DEFAULT_HF_INFERENCE_TIMEOUT_SECONDS
+    batch_size: int = DEFAULT_HF_INFERENCE_BATCH_SIZE
+
+    @classmethod
+    def from_env(cls) -> "HuggingFaceInferenceConfig":
+        """Build remote inference settings from environment variables."""
+        timeout_raw = os.getenv("VERIDICTA_HF_TIMEOUT_SECONDS")
+        batch_size_raw = os.getenv("VERIDICTA_HF_BATCH_SIZE")
+        try:
+            timeout_seconds = (
+                float(timeout_raw)
+                if timeout_raw is not None
+                else DEFAULT_HF_INFERENCE_TIMEOUT_SECONDS
+            )
+            batch_size = (
+                int(batch_size_raw)
+                if batch_size_raw is not None
+                else DEFAULT_HF_INFERENCE_BATCH_SIZE
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "VERIDICTA_HF_TIMEOUT_SECONDS and VERIDICTA_HF_BATCH_SIZE "
+                "must be numeric values"
+            ) from exc
+        if timeout_seconds <= 0:
+            raise ValueError("VERIDICTA_HF_TIMEOUT_SECONDS must be positive")
+        if batch_size < 1:
+            raise ValueError("VERIDICTA_HF_BATCH_SIZE must be positive")
+        return cls(
+            token=_resolve_hf_token(),
+            endpoint_url=os.getenv("VERIDICTA_HF_INFERENCE_URL") or None,
+            timeout_seconds=timeout_seconds,
+            batch_size=batch_size,
+        )
+
+    def endpoint_for(self, spec: RerankerSpec) -> str:
+        """Return the configured endpoint or the Hugging Face router URL."""
+        if self.endpoint_url:
+            return self.endpoint_url.rstrip("/")
+        model_path = quote(spec.model_name, safe="/")
+        return f"{HF_INFERENCE_ROUTER_URL}/{model_path}"
+
+
+def _extract_hf_score(payload: object) -> float:
+    """Extract one reranker score from a provider response fragment."""
+    if isinstance(payload, Mapping):
+        score = payload.get("score")
+        if isinstance(score, (int, float)) and not isinstance(score, bool):
+            return float(score)
+        if "scores" in payload:
+            return _extract_hf_score(payload["scores"])
+
+    if isinstance(payload, (int, float)) and not isinstance(payload, bool):
+        return float(payload)
+
+    if isinstance(payload, list):
+        if not payload:
+            raise RuntimeError("Hugging Face returned an empty score list")
+        if len(payload) == 1:
+            return _extract_hf_score(payload[0])
+        preferred = next(
+            (
+                item
+                for item in payload
+                if isinstance(item, Mapping)
+                and str(item.get("label", "")).upper() in {"LABEL_0", "0"}
+            ),
+            payload[0],
+        )
+        return _extract_hf_score(preferred)
+
+    raise RuntimeError("Hugging Face returned a response without a numeric score")
+
+
+def _extract_hf_scores(payload: object, expected_count: int) -> list[float]:
+    """Extract scores in input order from a batched provider response."""
+    if expected_count == 1:
+        return [_extract_hf_score(payload)]
+    if not isinstance(payload, list) or len(payload) != expected_count:
+        raise RuntimeError(
+            "Hugging Face returned an unexpected number of scores "
+            f"(expected {expected_count})"
+        )
+    return [_extract_hf_score(item) for item in payload]
+
+
+class HuggingFaceInferenceAdapter:
+    """Remote BGE reranker using Hugging Face's ``hf-inference`` provider."""
+
+    def __init__(
+        self,
+        spec: RerankerSpec,
+        config: HuggingFaceInferenceConfig,
+        session: requests.Session | None = None,
+    ) -> None:
+        self.spec = spec
+        self.config = config
+        self._session = session or requests.Session()
+
+    def _post_batch(self, query: str, candidates: list[dict]) -> object:
+        if not self.config.token:
+            raise RuntimeError(
+                "Hugging Face token missing. Set HF_TOKEN (or HF_API_TOKEN) "
+                "with Inference Providers permission."
+            )
+        payload = {
+            "inputs": [
+                [query, str(candidate.get("text", ""))] for candidate in candidates
+            ],
+            "parameters": {"function_to_apply": "none"},
+        }
+        response = self._session.post(
+            self.config.endpoint_for(self.spec),
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {self.config.token}",
+                "Content-Type": "application/json",
+            },
+            timeout=self.config.timeout_seconds,
+        )
+        if response.status_code in HF_AUTH_ERROR_STATUS_CODES:
+            raise RuntimeError(
+                "Hugging Face authentication failed "
+                f"(HTTP {response.status_code}). Check HF_TOKEN and its "
+                "Inference Providers permission."
+            )
+        if not 200 <= response.status_code < 300:
+            try:
+                error_payload = response.json()
+                error_message = (
+                    error_payload.get("error")
+                    if isinstance(error_payload, Mapping)
+                    else None
+                )
+            except ValueError:
+                error_message = None
+            if not error_message:
+                error_message = response.text[:400]
+            raise RuntimeError(
+                "Hugging Face inference request failed "
+                f"(HTTP {response.status_code}): {error_message}"
+            )
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise RuntimeError("Hugging Face returned invalid JSON") from exc
+
+    def rank(self, query: str, candidates: list[dict]) -> list[dict]:
+        if not candidates:
+            return []
+
+        scores: list[float] = []
+        for start in range(0, len(candidates), self.config.batch_size):
+            batch = candidates[start : start + self.config.batch_size]
+            response = self._post_batch(query, batch)
+            scores.extend(_extract_hf_scores(response, len(batch)))
+
+        ranked_indices = sorted(
+            range(len(candidates)),
+            key=lambda index: (-scores[index], index),
+        )
+        return [
+            _enrich_ranked_chunk(
+                candidates[index],
+                scores[index],
+                rank,
+                self.spec,
+            )
+            for rank, index in enumerate(ranked_indices, 1)
+        ]
+
+
 AdapterFactory = Callable[[RerankerSpec], RerankerAdapter]
 AnswerFunction = Callable[[EvalQuestion, list[dict]], str]
 
@@ -193,6 +404,8 @@ def create_reranker_adapter(spec: RerankerSpec) -> RerankerAdapter:
         return FlashRankAdapter(spec)
     if spec.family == "sentence_transformers":
         return BgeCrossEncoderAdapter(spec)
+    if spec.family == "hf_inference":
+        return HuggingFaceInferenceAdapter(spec, HuggingFaceInferenceConfig.from_env())
     raise ValueError(f"Unsupported reranker family: {spec.family}")
 
 
@@ -411,8 +624,12 @@ def _summary_for_configuration(
     ]
     recall_values = [observation.metrics.recall_at_k for observation in selected]
     mrr_values = [observation.metrics.mrr for observation in selected]
-    precision_values = [observation.metrics.context_precision for observation in selected]
-    citation_values = [observation.metrics.citation_faithfulness for observation in selected]
+    precision_values = [
+        observation.metrics.context_precision for observation in selected
+    ]
+    citation_values = [
+        observation.metrics.citation_faithfulness for observation in selected
+    ]
     latency_values = [observation.rank_latency_ms for observation in selected]
     generation_errors = sum(
         observation.metrics.generation_error is not None for observation in selected
@@ -460,7 +677,9 @@ def run_benchmark(
         raise ValueError("At least one retrieval case is required")
     dependencies = dependencies or BenchmarkDependencies()
     if config.full_generation and dependencies.answer_function is None:
-        raise ValueError("full_generation requires BenchmarkDependencies.answer_function")
+        raise ValueError(
+            "full_generation requires BenchmarkDependencies.answer_function"
+        )
 
     observations: list[BenchmarkObservation] = []
     summaries: list[BenchmarkSummary] = []
@@ -472,8 +691,12 @@ def run_benchmark(
             ranked_cases: list[tuple[RawRetrievalCase, list[dict], float]] = []
             for case in cases:
                 started_at = time.perf_counter()
-                ranked = adapter.rank(case.question.question, case.candidates[:candidate_pool])
-                rank_latency_ms = (time.perf_counter() - started_at) * MILLISECONDS_PER_SECOND
+                ranked = adapter.rank(
+                    case.question.question, case.candidates[:candidate_pool]
+                )
+                rank_latency_ms = (
+                    time.perf_counter() - started_at
+                ) * MILLISECONDS_PER_SECOND
                 ranked_cases.append((case, ranked, rank_latency_ms))
             ranked_by_pool[candidate_pool] = ranked_cases
         memory_after = _memory_rss_mb()
@@ -483,7 +706,10 @@ def run_benchmark(
                 for top_k in config.top_ks:
                     answer_text = None
                     generation_error = None
-                    if config.full_generation and dependencies.answer_function is not None:
+                    if (
+                        config.full_generation
+                        and dependencies.answer_function is not None
+                    ):
                         try:
                             answer_text = dependencies.answer_function(
                                 case.question,
@@ -554,7 +780,10 @@ def _parse_model_specs(raw_value: str) -> tuple[RerankerSpec, ...]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Compare FlashRank and BGE multilingual rerankers on Veridicta."
+        description=(
+            "Compare FlashRank with local or Hugging Face-hosted BGE "
+            "rerankers on Veridicta."
+        )
     )
     parser.add_argument("--questions", default="eval/test_questions.json")
     parser.add_argument("--contract", default="eval/evaluation_contract.json")
@@ -563,18 +792,48 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--retriever",
         default="lancedb",
-        choices=["faiss", "hybrid", "graph", "hybrid_graph", "lancedb", "lancedb_graph"],
+        choices=[
+            "faiss",
+            "hybrid",
+            "graph",
+            "hybrid_graph",
+            "lancedb",
+            "lancedb_graph",
+        ],
     )
-    parser.add_argument("--candidate-pools", type=lambda value: _parse_int_list(value, "candidate-pools"), default=DEFAULT_CANDIDATE_POOLS)
-    parser.add_argument("--top-k", type=lambda value: _parse_int_list(value, "top-k"), default=DEFAULT_TOP_KS)
-    parser.add_argument("--models", type=_parse_model_specs, default=tuple(RERANKER_SPECS.values()))
+    parser.add_argument(
+        "--candidate-pools",
+        type=lambda value: _parse_int_list(value, "candidate-pools"),
+        default=DEFAULT_CANDIDATE_POOLS,
+    )
+    parser.add_argument(
+        "--top-k",
+        type=lambda value: _parse_int_list(value, "top-k"),
+        default=DEFAULT_TOP_KS,
+    )
+    parser.add_argument(
+        "--models", type=_parse_model_specs, default=tuple(RERANKER_SPECS.values())
+    )
     parser.add_argument("--query-expansion", action="store_true")
-    parser.add_argument("--full-rag", action="store_true", help="Also generate answers to measure citation faithfulness.")
-    parser.add_argument("--backend", choices=["copilot", "cerebras"], default=LLM_BACKEND)
+    parser.add_argument(
+        "--full-rag",
+        action="store_true",
+        help="Also generate answers to measure citation faithfulness.",
+    )
+    parser.add_argument(
+        "--backend", choices=["copilot", "cerebras"], default=LLM_BACKEND
+    )
     parser.add_argument("--model", default=None)
     parser.add_argument("--prompt-version", type=int, choices=[1, 2, 3], default=1)
-    parser.add_argument("--out", type=Path, default=None, help="Summary JSONL output path.")
-    parser.add_argument("--details-out", type=Path, default=None, help="Optional per-question JSONL output path.")
+    parser.add_argument(
+        "--out", type=Path, default=None, help="Summary JSONL output path."
+    )
+    parser.add_argument(
+        "--details-out",
+        type=Path,
+        default=None,
+        help="Optional per-question JSONL output path.",
+    )
     return parser
 
 
@@ -598,7 +857,9 @@ def _load_pipeline(args: argparse.Namespace) -> RetrievalPipeline:
 
     index_dir = Path(args.index_dir)
     retrieval_args = argparse.Namespace(retriever=args.retriever)
-    bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(retrieval_args, index_dir)
+    bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(
+        retrieval_args, index_dir
+    )
     primary_args = argparse.Namespace(retriever=args.retriever)
     index, chunks = _load_primary_index(primary_args, index_dir, lancedb_table)
     print("Loading embedder ...")
@@ -616,7 +877,11 @@ def _load_pipeline(args: argparse.Namespace) -> RetrievalPipeline:
 def _build_answer_function(args: argparse.Namespace) -> AnswerFunction:
     model = args.model
     if model is None:
-        model = COPILOT_DEFAULT_MODEL if args.backend == "copilot" else CEREBRAS_DEFAULT_MODEL
+        model = (
+            COPILOT_DEFAULT_MODEL
+            if args.backend == "copilot"
+            else CEREBRAS_DEFAULT_MODEL
+        )
 
     def generate(question: EvalQuestion, chunks: list[dict]) -> str:
         generated = answer(
@@ -642,6 +907,7 @@ def _print_summary(result: BenchmarkResult) -> None:
     )
     print("-" * 120)
     for summary in result.summaries:
+
         def format_optional(value: float | None) -> str:
             return f"{value:.4f}" if value is not None else "n/a"
 
@@ -655,8 +921,12 @@ def _print_summary(result: BenchmarkResult) -> None:
             f"{memory_delta:>10}"
         )
     print("=" * 120)
-    if not any(summary.citation_faithfulness is not None for summary in result.summaries):
-        print("Citation faithfulness: n/a (use --full-rag to measure generated answers).")
+    if not any(
+        summary.citation_faithfulness is not None for summary in result.summaries
+    ):
+        print(
+            "Citation faithfulness: n/a (use --full-rag to measure generated answers)."
+        )
 
 
 def main() -> None:
@@ -688,7 +958,10 @@ def main() -> None:
     )
     result = run_benchmark(cases, args.models, config, dependencies)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = args.out or Path("eval/results/reranker_benchmark") / f"summary_{timestamp}.jsonl"
+    output_path = (
+        args.out
+        or Path("eval/results/reranker_benchmark") / f"summary_{timestamp}.jsonl"
+    )
     write_jsonl(result.summaries, output_path)
     if args.details_out is not None:
         write_jsonl(result.observations, args.details_out)
