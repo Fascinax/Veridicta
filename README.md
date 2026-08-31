@@ -210,6 +210,23 @@ The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,
 `generation`, and `none`. They identify the first observable loss against the
 reference keywords; they do not replace the human verdict or a legal review.
 
+Benchmark the current FlashRank model against the multilingual BGE reranker:
+
+```bash
+python -m eval.benchmark_rerankers \
+  --retriever lancedb \
+  --models flashrank,bge \
+  --candidate-pools 20,50,100 \
+  --top-k 5,10,20 \
+  --details-out eval/results/reranker_benchmark/details.jsonl
+```
+
+The benchmark retrieves one common pool before comparing rerankers, then
+reports Recall@k, MRR, keyword-based context precision, reranking latency
+(mean/p95) and process RSS. Citation faithfulness is `n/a` in retrieval-only
+mode; add `--full-rag --backend ... --model ...` when provider-backed answer
+generation is explicitly desired.
+
 Useful variants:
 
 ```bash

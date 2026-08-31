@@ -135,6 +135,40 @@ copying the legal corpus or provider credentials. Failure stages are
 heuristic diagnostics (`retrieval`, `ranking`, `context_assembly`,
 `generation`, or `none`) and never override the human annotation labels.
 
+## Reranker benchmark contract
+
+Run `python -m eval.benchmark_rerankers` to compare the current
+`ms-marco-MultiBERT-L-12` FlashRank adapter with `BAAI/bge-reranker-v2-m3`.
+Both models receive the same raw candidates. The default matrix is:
+
+- candidate pools: 20, 50 and 100;
+- injected windows: top-5, top-10 and top-20;
+- fixed regression set: the same 100 questions validated above.
+
+The JSONL summary reports, for every model/pool/window combination, Recall@k,
+MRR, context precision, reranking latency mean and p95, process RSS before and
+after the run, and the memory delta. Recall@k is the fraction of reference
+keywords found in the selected chunks. MRR uses the first chunk containing a
+reference keyword. Context precision is the fraction of selected chunks that
+contain at least one reference keyword; these two are deterministic retrieval
+proxies, not legal correctness judgments.
+
+Citation faithfulness is `null` in the default retrieval-only benchmark because
+no answer is generated. Use `--full-rag` with an explicitly configured backend
+and model to populate it. Full generation is intentionally opt-in because it
+incurs provider calls for every matrix cell.
+
+Example:
+
+```powershell
+python -m eval.benchmark_rerankers `
+  --retriever lancedb `
+  --models flashrank,bge `
+  --candidate-pools 20,50,100 `
+  --top-k 5,10,20 `
+  --details-out eval/results/reranker_benchmark/details.jsonl
+```
+
 ## Annotation workflow
 
 1. Open the generated answer and its injected/top-20 chunks in the Stage 0
