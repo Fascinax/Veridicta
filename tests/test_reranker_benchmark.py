@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+import requests
 
 from eval.benchmark_rerankers import (
     BenchmarkConfig,
@@ -115,9 +116,11 @@ def test_hf_inference_adapter_ranks_batched_pairs() -> None:
     response = _FakeResponse(
         200,
         [
-            [{"label": "LABEL_0", "score": 0.10}],
-            [{"label": "LABEL_0", "score": 0.90}],
-            [{"label": "LABEL_0", "score": 0.40}],
+            [
+                {"label": "LABEL_0", "score": 0.10},
+                {"label": "LABEL_0", "score": 0.90},
+                {"label": "LABEL_0", "score": 0.40},
+            ]
         ],
     )
     session = _RecordingSession(response)
@@ -147,11 +150,21 @@ def test_hf_inference_adapter_ranks_batched_pairs() -> None:
     assert url == "https://hf.example.test/rerank"
     assert kwargs["json"] == {
         "inputs": [
-            ["Quel est le préavis ?", "Les congés sont annuels."],
-            ["Quel est le préavis ?", "Le préavis est de deux mois."],
-            ["Quel est le préavis ?", "Le contrat peut être rompu."],
+            {"text": "Quel est le préavis ?", "text_pair": "Les congés sont annuels."},
+            {
+                "text": "Quel est le préavis ?",
+                "text_pair": "Le préavis est de deux mois.",
+            },
+            {
+                "text": "Quel est le préavis ?",
+                "text_pair": "Le contrat peut être rompu.",
+            },
         ],
-        "parameters": {"function_to_apply": "none"},
+        "parameters": {
+            "function_to_apply": "none",
+            "truncation": True,
+            "max_length": 512,
+        },
     }
     assert kwargs["headers"] == {
         "Authorization": "Bearer test-token",
@@ -188,6 +201,28 @@ def test_hf_inference_adapter_surfaces_provider_errors() -> None:
         adapter.rank("question", [{"text": "passage"}])
 
 
+def test_hf_inference_adapter_explains_timeout() -> None:
+    class _TimeoutSession:
+        def post(self, url: str, **kwargs: object) -> _FakeResponse:
+            raise requests.Timeout("read timeout")
+
+    adapter = HuggingFaceInferenceAdapter(
+        RERANKER_SPECS["bge_hf"],
+        HuggingFaceInferenceConfig(
+            token="test-token",
+            timeout_seconds=12.0,
+            batch_size=2,
+        ),
+        _TimeoutSession(),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="timed out after 12s.*VERIDICTA_HF_BATCH_SIZE",
+    ):
+        adapter.rank("question", [{"text": "passage"}])
+
+
 def test_hf_inference_adapter_explains_authentication_failure() -> None:
     session = _RecordingSession(
         _FakeResponse(401, {"error": "Invalid username or password"})
@@ -217,3 +252,5 @@ def test_hf_inference_config_reads_token_alias_and_default_endpoint(
     assert config.endpoint_for(RERANKER_SPECS["bge_hf"]) == (
         "https://router.huggingface.co/hf-inference/models/BAAI/bge-reranker-v2-m3"
     )
+    assert config.batch_size == 5
+    assert config.timeout_seconds == 120.0

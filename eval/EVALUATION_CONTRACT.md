@@ -184,10 +184,13 @@ python -m eval.benchmark_rerankers `
 ```
 
 The remote adapter batches query/passage pairs and records network time in the
-reranking latency. It does not write the token or passage text to benchmark
-artifacts. Set `VERIDICTA_HF_INFERENCE_URL` for a compatible dedicated endpoint;
-the default is the Hugging Face `hf-inference` router. Use a private endpoint
-when the evaluated corpus cannot leave the trusted environment.
+reranking latency. Its defaults are five pairs per request and a 120-second
+timeout to tolerate the serverless CPU provider's cold start; tune them with
+`VERIDICTA_HF_BATCH_SIZE` and `VERIDICTA_HF_TIMEOUT_SECONDS`. It does not write
+the token or passage text to benchmark artifacts. Set
+`VERIDICTA_HF_INFERENCE_URL` for a compatible dedicated endpoint; the default is
+the Hugging Face `hf-inference` router. Use a private endpoint when the
+evaluated corpus cannot leave the trusted environment.
 
 ## Annotation workflow
 

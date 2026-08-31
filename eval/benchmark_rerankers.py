@@ -59,8 +59,8 @@ from retrievers.pipeline import RetrievalPipeline  # noqa: E402
 DEFAULT_CANDIDATE_POOLS = (20, 50, 100)
 DEFAULT_TOP_KS = (5, 10, 20)
 DEFAULT_RERANKER_MAX_LENGTH = 512
-DEFAULT_HF_INFERENCE_BATCH_SIZE = 32
-DEFAULT_HF_INFERENCE_TIMEOUT_SECONDS = 60.0
+DEFAULT_HF_INFERENCE_BATCH_SIZE = 5
+DEFAULT_HF_INFERENCE_TIMEOUT_SECONDS = 120.0
 HF_INFERENCE_ROUTER_URL = "https://router.huggingface.co/hf-inference/models"
 MILLISECONDS_PER_SECOND = 1_000.0
 MEGABYTES_PER_BYTE = 1 / (1024 * 1024)
@@ -300,6 +300,13 @@ def _extract_hf_scores(payload: object, expected_count: int) -> list[float]:
     """Extract scores in input order from a batched provider response."""
     if expected_count == 1:
         return [_extract_hf_score(payload)]
+    if (
+        isinstance(payload, list)
+        and len(payload) == 1
+        and isinstance(payload[0], list)
+        and len(payload[0]) == expected_count
+    ):
+        payload = payload[0]
     if not isinstance(payload, list) or len(payload) != expected_count:
         raise RuntimeError(
             "Hugging Face returned an unexpected number of scores "
@@ -329,19 +336,38 @@ class HuggingFaceInferenceAdapter:
             )
         payload = {
             "inputs": [
-                [query, str(candidate.get("text", ""))] for candidate in candidates
+                {
+                    "text": query,
+                    "text_pair": str(candidate.get("text", "")),
+                }
+                for candidate in candidates
             ],
-            "parameters": {"function_to_apply": "none"},
-        }
-        response = self._session.post(
-            self.config.endpoint_for(self.spec),
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {self.config.token}",
-                "Content-Type": "application/json",
+            "parameters": {
+                "function_to_apply": "none",
+                "truncation": True,
+                "max_length": DEFAULT_RERANKER_MAX_LENGTH,
             },
-            timeout=self.config.timeout_seconds,
-        )
+        }
+        try:
+            response = self._session.post(
+                self.config.endpoint_for(self.spec),
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {self.config.token}",
+                    "Content-Type": "application/json",
+                },
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.Timeout as exc:
+            raise RuntimeError(
+                "Hugging Face inference timed out after "
+                f"{self.config.timeout_seconds:g}s. The serverless CPU provider "
+                "may be cold or overloaded; increase "
+                "VERIDICTA_HF_TIMEOUT_SECONDS or reduce "
+                "VERIDICTA_HF_BATCH_SIZE."
+            ) from exc
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Hugging Face inference request failed: {exc}") from exc
         if response.status_code in HF_AUTH_ERROR_STATUS_CODES:
             raise RuntimeError(
                 "Hugging Face authentication failed "

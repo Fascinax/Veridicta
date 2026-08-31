@@ -244,8 +244,9 @@ The remote adapter uses Hugging Face's `hf-inference` router, sends candidate
 pairs in batches, and keeps the token out of traces and result files. It accepts
 `HF_TOKEN`, `HF_API_TOKEN` or `HUGGINGFACE_TOKEN`. Set
 `VERIDICTA_HF_INFERENCE_URL` only when using a compatible private endpoint;
-`VERIDICTA_HF_TIMEOUT_SECONDS` (default `60`) and `VERIDICTA_HF_BATCH_SIZE`
-(default `32`) tune the request boundary. Remote reranking includes network
+`VERIDICTA_HF_TIMEOUT_SECONDS` (default `120`) and `VERIDICTA_HF_BATCH_SIZE`
+(default `5`) tune the request boundary. The conservative defaults account for
+the serverless CPU provider's cold start and per-request latency. Remote reranking includes network
 latency and sends the selected legal passages to the configured provider, so
 use a private endpoint when corpus confidentiality requires it.
 
