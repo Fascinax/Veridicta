@@ -14,6 +14,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 import json
 import math
@@ -900,6 +901,19 @@ def _load_pipeline(args: argparse.Namespace) -> RetrievalPipeline:
     )
 
 
+def _release_retrieval_resources(pipeline: RetrievalPipeline) -> None:
+    """Release the query embedder after the shared candidates are collected."""
+    if hasattr(pipeline, "embedder"):
+        del pipeline.embedder
+    gc.collect()
+    try:
+        import torch  # noqa: PLC0415
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def _build_answer_function(args: argparse.Namespace) -> AnswerFunction:
     model = args.model
     if model is None:
@@ -979,6 +993,8 @@ def main() -> None:
             query_expansion=config.query_expansion,
         ),
     )
+    _release_retrieval_resources(pipeline)
+    del pipeline
     dependencies = BenchmarkDependencies(
         answer_function=_build_answer_function(args) if config.full_generation else None
     )

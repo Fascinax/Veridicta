@@ -2,7 +2,7 @@
 
 Issue : [Fascinax/Veridicta#17](https://github.com/Fascinax/Veridicta/issues/17)
 
-Date d’exécution : 2026-08-31
+Dates d’exécution : 2026-08-31 (CPU) et 2026-09-01 (GPU)
 
 ## Environnement
 
@@ -13,6 +13,9 @@ Date d’exécution : 2026-08-31
 - FlashRank `ms-marco-MultiBERT-L-12` chargé localement.
 - Le fichier BGE téléchargé occupe environ 2,29 Go ; le premier téléchargement est
   donc conforme à l’ordre de grandeur annoncé par l’issue (~2,3 Go).
+- Une RTX 4070 Ti de 12 Go est également disponible (pilote 595.95, runtime CUDA
+  12.6 utilisé par PyTorch). Le premier run CPU venait du wheel installé dans
+  `.venv` (`torch==2.13.0+cpu`), pas d’une absence de GPU.
 
 Les artefacts FAISS versionnés ont été récupérés depuis
 `Fascinax/veridicta-index`. La table LanceDB locale (49 263 lignes) a ensuite été
@@ -69,7 +72,7 @@ pour les deux adaptateurs. Les seules différences de métriques par question
 concernent le MRR de `monaco-024` et `monaco-081` ; le rappel et la précision
 de contexte sont identiques sur les 100 questions.
 
-## Décision
+## Décision CPU
 
 Conserver **FlashRank** comme reranker CPU par défaut : qualité équivalente sur
 le benchmark (Recall@5 et context precision identiques, MRR global légèrement
@@ -83,8 +86,74 @@ Le benchmark est retrieval-only : `citation_faithfulness` est volontairement
 `null` et les métriques de qualité sont les proxies déterministes du contrat
 (mots-clés, MRR, précision de contexte), pas une validation juridique.
 
+## Rerun GPU — RTX 4070 Ti
+
+L’environnement CUDA séparé utilise `E:\Veridicta-venv` avec `torch==2.13.0+cu126`;
+`torch.cuda.is_available() = True` et le périphérique détecté est `NVIDIA GeForce
+RTX 4070 Ti`. Solon et BGE sont donc exécutés sur `cuda:0`. FlashRank conserve
+son exécution ONNX CPU, car son adaptateur n’utilise pas CUDA.
+
+Après la collecte des candidats communs, le benchmark libère l’embedder Solon et
+vide le cache CUDA avant de charger les rerankers. Cette étape est nécessaire
+sur une carte de 12 Go : conserver Solon en VRAM ne laisse qu’environ 6,6 Go
+disponibles et provoque un OOM au chargement de BGE.
+
+Smoke exécuté avec :
+
+```powershell
+E:\Veridicta-venv\Scripts\python.exe -u -m eval.benchmark_rerankers `
+  --questions eval/test_questions_smoke6.json `
+  --allow-custom-questions `
+  --retriever lancedb `
+  --models flashrank,bge `
+  --candidate-pools 5 `
+  --top-k 5 `
+  --out eval/results/reranker_benchmark/issue17_smoke6_pool5_lancedb_cuda_summary.jsonl `
+  --details-out eval/results/reranker_benchmark/issue17_smoke6_pool5_lancedb_cuda_details.jsonl
+```
+
+| Modèle | Recall@5 | MRR | Context precision | Rerank moyen | Rerank p95 | Δ RSS |
+|---|---:|---:|---:|---:|---:|---:|
+| FlashRank | 0,8917 | 1,0000 | 1,0000 | 1 356,18 ms | 2 420,84 ms | +564,54 MB |
+| BGE local CUDA | 0,8917 | 1,0000 | 1,0000 | 1 402,81 ms | 7 839,90 ms | +335,76 MB |
+
+Régression exécutée avec la même configuration sur les 100 questions fixes :
+
+```powershell
+E:\Veridicta-venv\Scripts\python.exe -u -m eval.benchmark_rerankers `
+  --questions eval/test_questions.json `
+  --retriever lancedb `
+  --models flashrank,bge `
+  --candidate-pools 5 `
+  --top-k 5 `
+  --out eval/results/reranker_benchmark/issue17_full100_pool5_lancedb_cuda_summary.jsonl `
+  --details-out eval/results/reranker_benchmark/issue17_full100_pool5_lancedb_cuda_details.jsonl
+```
+
+| Modèle | Recall@5 | MRR | Context precision | Rerank moyen | Rerank p95 | Δ RSS |
+|---|---:|---:|---:|---:|---:|---:|
+| FlashRank | 0,8035 | 0,9950 | 0,9780 | 1 138,15 ms | 1 168,52 ms | +508,96 MB |
+| BGE local CUDA | 0,8035 | 0,9933 | 0,9780 | 185,88 ms | 103,13 ms | -700,34 MB |
+
+Les résultats de qualité restent identiques entre CPU et GPU ; les seuls écarts
+de classement sont les mêmes sur `monaco-024` et `monaco-081`. La moyenne BGE
+inclut son chargement initial, tandis que le p95 reflète principalement le coût
+en régime établi. Sur cette machine GPU, BGE est donc environ **6,1× plus rapide
+en moyenne** et **11,3× plus rapide au p95** que FlashRank, avec le même rappel et
+la même précision de contexte. Le Δ RSS est une mesure de mémoire du processus,
+pas la consommation VRAM.
+
+## Décision GPU
+
+Utiliser **BGE local sur CUDA** lorsque la RTX 4070 Ti est disponible et réservée
+au service : la qualité est équivalente sur ce benchmark et la latence en régime
+établi est nettement meilleure. Conserver **FlashRank** comme fallback CPU pour
+les environnements sans CUDA ou lorsque la VRAM est déjà occupée.
+
 ## Validation
 
 - Smoke : 2 lignes de synthèse et 12 détails.
 - Régression : 2 lignes de synthèse et 200 détails.
+- Smoke GPU : 2 lignes de synthèse et 12 détails, sans OOM.
+- Régression GPU : 2 lignes de synthèse et 200 détails, sans OOM.
 - Tests du harness : `9 passed` (`tests/test_reranker_benchmark.py`).
