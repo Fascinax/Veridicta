@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
+from types import ModuleType
 
 import pytest
 import requests
@@ -9,11 +11,18 @@ from eval.benchmark_rerankers import (
     BenchmarkConfig,
     BenchmarkDependencies,
     EvalQuestion,
+    FlashRankAdapter,
+    FLASHRANK_BATCH_SIZE,
+    FLASHRANK_CPU_PROVIDER,
+    FLASHRANK_CUDA_PROVIDER,
     HuggingFaceInferenceAdapter,
     HuggingFaceInferenceConfig,
     RawRetrievalCase,
     RERANKER_SPECS,
     RerankerSpec,
+    _configure_flashrank_execution_provider,
+    _build_answer_function,
+    _build_parser,
     _parse_int_list,
     _parse_model_specs,
     run_benchmark,
@@ -110,6 +119,107 @@ def test_benchmark_argument_parsers_reject_invalid_values() -> None:
     assert _parse_model_specs("flashrank,bge,bge_hf")[0].key == "flashrank"
     with pytest.raises(ValueError):
         BenchmarkConfig(candidate_pools=(2,), top_ks=(3,)).validate()
+
+
+def test_benchmark_parser_accepts_omniroute_for_full_generation() -> None:
+    args = _build_parser().parse_args(["--full-rag", "--backend", "omniroute"])
+
+    assert args.backend == "omniroute"
+    assert args.full_rag is True
+
+
+def test_answer_function_uses_omniroute_default_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_answer(question: str, chunks: list[dict], **kwargs: object) -> str:
+        captured.update(kwargs)
+        return "Réponse"
+
+    monkeypatch.setattr("eval.benchmark_rerankers.answer", fake_answer)
+    args = _build_parser().parse_args(["--backend", "omniroute"])
+    generate = _build_answer_function(args)
+
+    assert generate(_question(), [{"text": "passage"}]) == "Réponse"
+    assert captured["backend"] == "omniroute"
+    assert captured["model"] == "auto"
+
+
+def test_flashrank_adapter_batches_passages_and_merges_global_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeRequest:
+        def __init__(self, query: str, passages: list[dict]) -> None:
+            self.query = query
+            self.passages = passages
+
+    class _FakeModel:
+        def __init__(self) -> None:
+            self.batch_sizes: list[int] = []
+
+        def rerank(self, request: _FakeRequest) -> list[dict]:
+            self.batch_sizes.append(len(request.passages))
+            for passage in request.passages:
+                passage["score"] = float(passage["text"])
+            return sorted(
+                request.passages,
+                key=lambda passage: passage["score"],
+                reverse=True,
+            )
+
+    fake_flashrank = ModuleType("flashrank")
+    fake_flashrank.RerankRequest = _FakeRequest
+    monkeypatch.setitem(sys.modules, "flashrank", fake_flashrank)
+
+    model = _FakeModel()
+    adapter = FlashRankAdapter(RERANKER_SPECS["flashrank"])
+    adapter._model = model
+    candidates = [
+        {"chunk_id": str(index), "text": str(index)}
+        for index in range(FLASHRANK_BATCH_SIZE + 1)
+    ]
+
+    ranked = adapter.rank("question", candidates)
+
+    assert (
+        model.batch_sizes,
+        [chunk["chunk_id"] for chunk in ranked],
+    ) == (
+        [FLASHRANK_BATCH_SIZE, 1],
+        [str(index) for index in range(FLASHRANK_BATCH_SIZE, -1, -1)],
+    )
+
+
+def test_configure_flashrank_execution_provider_prefers_cuda(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeSession:
+        def __init__(self, path: str, providers: list[str]) -> None:
+            self.path = path
+            self.providers = providers
+
+    class _FakeOrt:
+        @staticmethod
+        def get_available_providers() -> list[str]:
+            return [FLASHRANK_CUDA_PROVIDER, FLASHRANK_CPU_PROVIDER]
+
+        InferenceSession = _FakeSession
+
+    class _FakeConfig(ModuleType):
+        model_file_map = {"model": "model.onnx"}
+
+    fake_flashrank_config = _FakeConfig("flashrank.Config")
+    monkeypatch.setitem(sys.modules, "onnxruntime", _FakeOrt)
+    monkeypatch.setitem(sys.modules, "flashrank.Config", fake_flashrank_config)
+
+    model = type("_FakeModel", (), {"model_dir": "E:/models"})()
+    _configure_flashrank_execution_provider(model, "model")
+
+    assert (model.session.path, model.session.providers) == (
+        "E:\\models\\model.onnx",
+        [FLASHRANK_CUDA_PROVIDER, FLASHRANK_CPU_PROVIDER],
+    )
 
 
 def test_hf_inference_adapter_ranks_batched_pairs() -> None:

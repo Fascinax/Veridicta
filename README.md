@@ -261,7 +261,22 @@ The benchmark retrieves one common pool before comparing rerankers, then
 reports Recall@k, MRR, keyword-based context precision, reranking latency
 (mean/p95) and process RSS. Citation faithfulness is `n/a` in retrieval-only
 mode; add `--full-rag --backend ... --model ...` when provider-backed answer
-generation is explicitly desired.
+generation is explicitly desired. The local OmniRoute gateway is supported for
+this mode:
+
+```powershell
+python -m eval.benchmark_rerankers `
+  --retriever lancedb `
+  --models flashrank,bge `
+  --candidate-pools 20 `
+  --top-k 5 `
+  --full-rag `
+  --backend omniroute `
+  --model auto `
+  --prompt-version 3 `
+  --out eval/results/reranker_benchmark/fullrag_summary.jsonl `
+  --details-out eval/results/reranker_benchmark/fullrag_details.jsonl
+```
 
 To call BGE remotely through Hugging Face instead of downloading its weights,
 set a token with the `Inference Providers` permission and select `bge_hf`:

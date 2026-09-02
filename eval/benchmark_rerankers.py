@@ -17,6 +17,7 @@ import argparse
 import gc
 import importlib.util
 import json
+import logging
 import math
 import os
 import statistics
@@ -54,12 +55,16 @@ from retrievers.baseline_rag import (  # noqa: E402
     _load_embedder,
     answer,
 )
+from retrievers.config import OMNIROUTE_DEFAULT_MODEL  # noqa: E402
 from retrievers.pipeline import RetrievalPipeline  # noqa: E402
 
 
 DEFAULT_CANDIDATE_POOLS = (20, 50, 100)
 DEFAULT_TOP_KS = (5, 10, 20)
 DEFAULT_RERANKER_MAX_LENGTH = 512
+FLASHRANK_BATCH_SIZE = 32
+FLASHRANK_CUDA_PROVIDER = "CUDAExecutionProvider"
+FLASHRANK_CPU_PROVIDER = "CPUExecutionProvider"
 DEFAULT_HF_INFERENCE_BATCH_SIZE = 5
 DEFAULT_HF_INFERENCE_TIMEOUT_SECONDS = 120.0
 HF_INFERENCE_ROUTER_URL = "https://router.huggingface.co/hf-inference/models"
@@ -137,21 +142,37 @@ class FlashRankAdapter:
                 model_name=self.spec.model_name,
                 max_length=DEFAULT_RERANKER_MAX_LENGTH,
             )
+            _configure_flashrank_execution_provider(self._model, self.spec.model_name)
         return self._model
+
+    def _rerank_in_batches(self, query: str, passages: list[dict]) -> list[dict]:
+        from flashrank import RerankRequest  # noqa: PLC0415
+
+        ranked_passages: list[dict] = []
+        for start in range(0, len(passages), FLASHRANK_BATCH_SIZE):
+            batch = passages[start : start + FLASHRANK_BATCH_SIZE]
+            ranked_passages.extend(
+                self._get_model().rerank(
+                    RerankRequest(query=query, passages=batch)
+                )
+            )
+        return sorted(
+            ranked_passages,
+            key=lambda passage: (
+                -float(passage.get("score", 0.0)),
+                int(passage["id"]),
+            ),
+        )
 
     def rank(self, query: str, candidates: list[dict]) -> list[dict]:
         if not candidates:
             return []
 
-        from flashrank import RerankRequest  # noqa: PLC0415
-
         passages = [
             {"id": index, "text": candidate.get("text", "")}
             for index, candidate in enumerate(candidates)
         ]
-        ranked_passages = self._get_model().rerank(
-            RerankRequest(query=query, passages=passages)
-        )
+        ranked_passages = self._rerank_in_batches(query, passages)
         ranked: list[dict] = []
         for rank, passage in enumerate(ranked_passages, 1):
             candidate_index = int(passage["id"])
@@ -164,6 +185,28 @@ class FlashRankAdapter:
                 )
             )
         return ranked
+
+
+def _configure_flashrank_execution_provider(model: object, model_name: str) -> None:
+    """Use ONNX Runtime CUDA when the active environment provides it."""
+    import onnxruntime as ort  # noqa: PLC0415
+
+    if FLASHRANK_CUDA_PROVIDER not in ort.get_available_providers():
+        return
+
+    from flashrank.Config import model_file_map  # noqa: PLC0415
+
+    model_path = Path(model.model_dir) / model_file_map[model_name]
+    try:
+        model.session = ort.InferenceSession(
+            str(model_path),
+            providers=[FLASHRANK_CUDA_PROVIDER, FLASHRANK_CPU_PROVIDER],
+        )
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Unable to initialize FlashRank CUDA provider; keeping CPU session.",
+            exc_info=True,
+        )
 
 
 class BgeCrossEncoderAdapter:
@@ -848,7 +891,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Also generate answers to measure citation faithfulness.",
     )
     parser.add_argument(
-        "--backend", choices=["copilot", "cerebras"], default=LLM_BACKEND
+        "--backend",
+        choices=["copilot", "cerebras", "omniroute"],
+        default=LLM_BACKEND,
+        help="LLM backend used only with --full-rag (default: configured backend).",
     )
     parser.add_argument("--model", default=None)
     parser.add_argument("--prompt-version", type=int, choices=[1, 2, 3], default=1)
@@ -917,11 +963,12 @@ def _release_retrieval_resources(pipeline: RetrievalPipeline) -> None:
 def _build_answer_function(args: argparse.Namespace) -> AnswerFunction:
     model = args.model
     if model is None:
-        model = (
-            COPILOT_DEFAULT_MODEL
-            if args.backend == "copilot"
-            else CEREBRAS_DEFAULT_MODEL
-        )
+        models_by_backend = {
+            "copilot": COPILOT_DEFAULT_MODEL,
+            "cerebras": CEREBRAS_DEFAULT_MODEL,
+            "omniroute": OMNIROUTE_DEFAULT_MODEL,
+        }
+        model = models_by_backend[args.backend]
 
     def generate(question: EvalQuestion, chunks: list[dict]) -> str:
         generated = answer(
