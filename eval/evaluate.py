@@ -53,6 +53,7 @@ from retrievers.config import (
     count_llm_tokens,
     default_model_for_backend,
     get_context_budget_tokens,
+    OMNIROUTE_DEFAULT_MODEL,
     resolve_llm_backend,
 )
 from retrievers.parent_child import ParentChildConfig
@@ -149,6 +150,8 @@ COPILOT_MODELS = [
     "gpt-4.1-mini",
     "gpt-4.1",
 ]
+
+OMNIROUTE_MODELS = [OMNIROUTE_DEFAULT_MODEL]
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -531,6 +534,11 @@ def _call_judge_llm(system: str, user: str, *, backend: str, model: str) -> str:
                 time.sleep(wait)
 
         raise RuntimeError("Cerebras rate limit: max retries exceeded.")
+
+    if backend == "omniroute":
+        from tools.omniroute_client import OmniRouteClient
+
+        return OmniRouteClient(model).chat(system=system, user=user, temperature=0.0)
 
     raise ValueError(f"Unsupported judge backend: {backend!r}")
 
@@ -924,14 +932,52 @@ def _generate_eval_results(
     ) -> tuple[int, EvalResult, dict[str, object]]:
         index, question, retrieved, retrieval_trace = task
         started_at = time.monotonic()
-        answer_result = answer(
-            question.question,
-            retrieved,
-            model=config.model,
-            backend=active_backend,
-            prompt_version=config.prompt_version,
-            return_trace=True,
-        )
+        try:
+            answer_result = answer(
+                question.question,
+                retrieved,
+                model=config.model,
+                backend=active_backend,
+                prompt_version=config.prompt_version,
+                return_trace=True,
+            )
+        except Exception as exc:
+            latency_s = round(time.monotonic() - started_at, 2)
+            trace_id = new_trace_id()
+            prompt_trace = _build_eval_prompt_trace(question, retrieved, config)
+            failure_classification = {
+                "stage": "generation",
+                "reason": f"LLM generation failed: {type(exc).__name__}: {exc}",
+            }
+            result = _build_eval_result(
+                question,
+                retrieved,
+                "",
+                latency_s=latency_s,
+                include_word_f1=True,
+                trace_id=trace_id,
+                failure_classification=failure_classification,
+            )
+            trace_record = _build_trace_record(
+                question,
+                result,
+                retrieval_trace,
+                prompt_trace,
+                {
+                    "backend": active_backend,
+                    "model": config.model,
+                    "prompt_version": config.prompt_version,
+                    "error": str(exc),
+                },
+                failure_classification,
+            )
+            print(
+                f"  [{index:02d}/{question_count}] {question.id}  "
+                f"generation failed ({latency_s:.1f}s): {exc}",
+                flush=True,
+            )
+            return index, result, trace_record
+
         if isinstance(answer_result, tuple):
             generated_answer, generation_trace = answer_result
         else:
@@ -1600,7 +1646,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--backend",
         default=None,
-        choices=["cerebras", "copilot"],
+        choices=["cerebras", "copilot", "omniroute"],
         help=f"LLM backend to use  (default: {LLM_BACKEND})",
     )
     parser.add_argument(
@@ -1699,7 +1745,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ragas-backend",
         default=DEFAULT_RAGAS_BACKEND,
-        choices=[DEFAULT_RAGAS_BACKEND],
+        choices=[DEFAULT_RAGAS_BACKEND, "omniroute"],
         help="Backend used by the Ragas judge  (default: cerebras)",
     )
     parser.add_argument(
@@ -1746,7 +1792,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--judge-backend",
         default="copilot",
-        choices=["copilot", "cerebras"],
+        choices=["copilot", "cerebras", "omniroute"],
         help="Backend used by the minimal LLM judge  (default: copilot)",
     )
     parser.add_argument(
@@ -1827,7 +1873,9 @@ def _build_ragas_evaluator(args: argparse.Namespace) -> RagasEvaluator | None:
     if not _RAGAS_AVAILABLE:
         sys.exit("ERROR: Ragas dependencies unavailable. Run: pip install ragas openai")
 
-    ragas_model = args.ragas_model or DEFAULT_RAGAS_MODEL
+    ragas_model = args.ragas_model or (
+        OMNIROUTE_DEFAULT_MODEL if args.ragas_backend == "omniroute" else DEFAULT_RAGAS_MODEL
+    )
     print("Preparing Ragas judge ...")
     try:
         evaluator = RagasEvaluator(
@@ -1983,7 +2031,12 @@ def _run_all_models_evaluation(
     retriever_label: str,
     active_backend: str,
 ) -> None:
-    models = COPILOT_MODELS if active_backend == "copilot" else CEREBRAS_MODELS
+    models_by_backend = {
+        "copilot": COPILOT_MODELS,
+        "cerebras": CEREBRAS_MODELS,
+        "omniroute": OMNIROUTE_MODELS,
+    }
+    models = models_by_backend[active_backend]
     all_results: dict[str, list[EvalResult]] = {}
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     for model_name in models:
@@ -2034,7 +2087,7 @@ def _run_single_evaluation(
     retriever_label: str,
     active_backend: str,
 ) -> None:
-    default_model = COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
+    default_model = default_model_for_backend(active_backend)
     mode = "retrieval-only" if args.retrieval_only else f"full RAG ({active_backend}/{args.model or default_model})"
     print(f"\nRunning evaluation  [k={args.k}, retriever={retriever_label}, mode={mode}]\n")
 

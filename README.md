@@ -20,7 +20,7 @@ Veridicta combines hybrid retrieval, graph expansion, and strict prompt groundin
 - Hybrid retrieval: bm25s + FAISS with RRF fusion.
 - Graph retrieval: Neo4j expansion with legal relation edges.
 - LanceDB option: vector + FTS in a unified store.
-- Multi-backend LLM: GitHub Copilot or Cerebras.
+- Multi-backend LLM: GitHub Copilot, Cerebras, or local OmniRoute.
 - Evaluation-first workflow: keyword recall, word F1, citation faithfulness, context coverage, optional Ragas and BERTScore.
 - Traceability: query and prompt window audit helpers.
 
@@ -52,7 +52,7 @@ Validated on a 100-question gold standard (Copilot backend gpt-4.1, corpus v3, S
 - Embeddings: OrdalieTech/Solon-embeddings-large-0.1 (1024d)
 - Retrieval: bm25s + FAISS, Hybrid+Graph, LanceDB variants
 - Graph: Neo4j 5
-- LLM backends: GitHub Copilot SDK or Cerebras Cloud
+- LLM backends: GitHub Copilot SDK, Cerebras Cloud, or OmniRoute's OpenAI-compatible gateway
 - UI: Streamlit
 - Artifact distribution: Hugging Face dataset Fascinax/veridicta-index
 
@@ -112,6 +112,26 @@ CEREBRAS_MODEL=gpt-oss-120b
 HF_API_TOKEN=hf_xxx
 ```
 
+OmniRoute backend (local OpenAI-compatible gateway):
+
+```bash
+# Install and start OmniRoute separately, then configure Veridicta:
+npm install -g omniroute
+omniroute
+
+# .env
+LLM_BACKEND=omniroute
+OMNIROUTE_BASE_URL=http://localhost:20128/v1
+OMNIROUTE_API_KEY=  # same gateway key as OmniRoute when its API auth is enabled
+OMNIROUTE_MODEL=auto
+HF_API_TOKEN=hf_xxx
+```
+
+OmniRoute exposes its OpenAI-compatible API at `http://localhost:20128/v1`.
+The `auto` model enables its smart routing; a provider/model identifier can be
+used when a specific route is needed. See the [official OmniRoute repository](https://github.com/diegosouzapw/OmniRoute)
+for provider setup and deployment options.
+
 Run the app:
 
 ```bash
@@ -169,6 +189,15 @@ CEREBRAS_API_KEY = "csk_xxx"
 CEREBRAS_MODEL = "gpt-oss-120b"
 ```
 
+Or OmniRoute:
+
+```toml
+LLM_BACKEND = "omniroute"
+OMNIROUTE_BASE_URL = "http://localhost:20128/v1"
+OMNIROUTE_API_KEY = "sk-..."
+OMNIROUTE_MODEL = "auto"
+```
+
 The app injects Streamlit secrets into environment variables at startup and ensures artifacts are present before retrieval initialization.
 
 ## Evaluation
@@ -204,6 +233,12 @@ Chunk text, prompts and credentials are not written to this trace file.
 
 ```bash
 python -m eval.evaluate --retrieval-only --trace-out eval/results/trace.jsonl
+```
+
+Run full RAG through OmniRoute:
+
+```bash
+python -m eval.evaluate --backend omniroute --model auto --k 8 --retriever lancedb --prompt-version 3 --workers 2
 ```
 
 The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,

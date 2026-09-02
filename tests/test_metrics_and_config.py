@@ -4,7 +4,11 @@ import pytest
 
 from data_ingest.data_processor import _overlap_tail
 from eval.evaluate import _parse_args, _parse_judge_response, keyword_recall
-from retrievers.config import get_context_budget_tokens, resolve_llm_backend
+from retrievers.config import (
+    default_model_for_backend,
+    get_context_budget_tokens,
+    resolve_llm_backend,
+)
 
 
 def test_overlap_tail_keeps_word_boundaries() -> None:
@@ -25,6 +29,16 @@ def test_keyword_recall_matches_french_morphology() -> None:
 def test_resolve_llm_backend_rejects_typos() -> None:
     with pytest.raises(ValueError, match="Unsupported LLM_BACKEND"):
         resolve_llm_backend("copliot")
+
+
+def test_resolve_llm_backend_accepts_omniroute() -> None:
+    assert resolve_llm_backend("omniroute") == "omniroute"
+
+
+def test_omniroute_has_auto_as_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OMNIROUTE_MODEL", raising=False)
+
+    assert default_model_for_backend("omniroute") == "auto"
 
 
 def test_context_budget_is_model_aware() -> None:

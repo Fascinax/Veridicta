@@ -14,12 +14,15 @@ from openai import AsyncOpenAI
 from ragas.llms import llm_factory
 from ragas.metrics.collections import ContextPrecision, Faithfulness
 
+from tools.omniroute_client import omniroute_api_key, omniroute_base_url
+
 logger = logging.getLogger(__name__)
 
 CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_RAGAS_BACKEND = "cerebras"
 DEFAULT_RAGAS_LANGUAGE = "french"
 DEFAULT_RAGAS_MODEL = "llama3.1-8b"
+SUPPORTED_RAGAS_BACKENDS = ("cerebras", "omniroute")
 MAX_RAGAS_ANSWER_CHARS = 1_500
 MAX_RAGAS_CHUNK_CHARS = 900
 MAX_RAGAS_TOTAL_CONTEXT_CHARS = 3_600
@@ -143,19 +146,24 @@ class RagasEvaluator:
 
 def _build_ragas_llm(config: RagasConfig):
 	backend = config.backend.strip().lower()
-	if backend != DEFAULT_RAGAS_BACKEND:
+	if backend not in SUPPORTED_RAGAS_BACKENDS:
 		raise RagasConfigurationError(
-			"Only the Cerebras judge is currently supported for Ragas. "
-			"Use --ragas-backend cerebras."
+			"Supported Ragas judges are Cerebras and OmniRoute."
 		)
 
-	api_key = os.getenv("CEREBRAS_API_KEY")
-	if not api_key:
-		raise RagasConfigurationError(
-			"CEREBRAS_API_KEY not set. Ragas needs a judge model configured in the environment."
+	if backend == "cerebras":
+		api_key = os.getenv("CEREBRAS_API_KEY")
+		if not api_key:
+			raise RagasConfigurationError(
+				"CEREBRAS_API_KEY not set. Ragas needs a judge model configured in the environment."
+			)
+		client = AsyncOpenAI(api_key=api_key, base_url=CEREBRAS_OPENAI_BASE_URL)
+	else:
+		client = AsyncOpenAI(
+			api_key=omniroute_api_key(),
+			base_url=omniroute_base_url(),
 		)
 
-	client = AsyncOpenAI(api_key=api_key, base_url=CEREBRAS_OPENAI_BASE_URL)
 	return llm_factory(config.model, provider="openai", client=client)
 
 

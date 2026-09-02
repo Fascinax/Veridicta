@@ -12,7 +12,7 @@ except ImportError:  # pragma: no cover - optional dependency in some environmen
     tiktoken = None
 
 
-SUPPORTED_LLM_BACKENDS = ("copilot", "cerebras")
+SUPPORTED_LLM_BACKENDS = ("copilot", "cerebras", "omniroute")
 _KNOWN_TIKTOKEN_ENCODINGS = {"cl100k_base", "o200k_base", "p50k_base", "r50k_base"}
 _TOKENIZER_MODEL_ALIASES = {
     "claude-sonnet-4": "o200k_base",
@@ -26,6 +26,7 @@ _MODEL_CONTEXT_WINDOWS = {
         "gpt-oss-120b": 8_192,
         "llama3.1-8b": 8_192,
     },
+    "omniroute": {"default": 32_768},
 }
 
 
@@ -89,6 +90,11 @@ GRAPH_CONFIG = GraphConfig()
 
 CEREBRAS_DEFAULT_MODEL = os.getenv("CEREBRAS_MODEL", "gpt-oss-120b")
 COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "gpt-4.1")
+OMNIROUTE_DEFAULT_BASE_URL = os.getenv(
+    "OMNIROUTE_BASE_URL",
+    "http://localhost:20128/v1",
+)
+OMNIROUTE_DEFAULT_MODEL = os.getenv("OMNIROUTE_MODEL", "auto")
 DEFAULT_RESPONSE_TOKEN_RESERVE = _read_int_env("VERIDICTA_RESPONSE_TOKEN_RESERVE", 2_048)
 DEFAULT_CONTEXT_TOKEN_SHARE = _read_float_env("VERIDICTA_CONTEXT_TOKEN_SHARE", 0.7)
 
@@ -108,7 +114,9 @@ def default_model_for_backend(backend: str) -> str:
     resolved_backend = resolve_llm_backend(backend)
     if resolved_backend == "copilot":
         return COPILOT_DEFAULT_MODEL
-    return CEREBRAS_DEFAULT_MODEL
+    if resolved_backend == "cerebras":
+        return CEREBRAS_DEFAULT_MODEL
+    return OMNIROUTE_DEFAULT_MODEL
 
 
 def get_model_context_window_tokens(backend: str, model: str) -> int:

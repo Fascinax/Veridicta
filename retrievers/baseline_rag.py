@@ -7,6 +7,7 @@ Pipeline:
 LLM backends (set LLM_BACKEND in .env):
     copilot   — GitHub Copilot via github-copilot-sdk Python package (default)
     cerebras  — Cerebras Cloud API (optional, free, ultra-fast)
+    omniroute — Local OpenAI-compatible OmniRoute gateway (http://localhost:20128)
 
 Build index:
     python -m retrievers.baseline_rag --build
@@ -40,6 +41,7 @@ from retrievers.config import (
     EMBEDDING_CONFIG,
     LLM_BACKEND,
     count_llm_tokens,
+    default_model_for_backend,
     get_context_budget_tokens,
     resolve_llm_backend,
 )
@@ -437,6 +439,20 @@ def _answer_copilot_stream(system: str, user: str, model: str) -> Iterator[str]:
         yield from client.chat_stream(system=system, user=user)
 
 
+def _answer_omniroute(system: str, user: str, model: str) -> str:
+    """Call the local OmniRoute OpenAI-compatible gateway."""
+    from tools.omniroute_client import OmniRouteClient
+
+    return OmniRouteClient(model).chat(system=system, user=user)
+
+
+def _answer_omniroute_stream(system: str, user: str, model: str) -> Iterator[str]:
+    """Stream token deltas from the local OmniRoute gateway."""
+    from tools.omniroute_client import OmniRouteClient
+
+    yield from OmniRouteClient(model).chat_stream(system=system, user=user)
+
+
 def answer(
     query: str,
     context_chunks: list[dict],
@@ -453,15 +469,13 @@ def answer(
         query: User question.
         context_chunks: Retrieved chunks from FAISS.
         model: Override LLM model name. Defaults per backend.
-        backend: "cerebras" or "copilot". Defaults to LLM_BACKEND env var.
+        backend: "cerebras", "copilot", or "omniroute". Defaults to LLM_BACKEND env var.
         prompt_version: 1 for original prompt, 2 for structured v2 prompt, 3 for exhaustive+concise v3.
         return_trace: When True, also return prompt-window trace metadata.
         conversation_history: Optional list of prior {role, content} messages for multi-turn context.
     """
     active_backend = resolve_llm_backend(backend or LLM_BACKEND)
-    resolved_model = model or (
-        COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
-    )
+    resolved_model = model or default_model_for_backend(active_backend)
     prompt_trace = build_prompt_trace(
         query,
         context_chunks,
@@ -477,6 +491,8 @@ def answer(
         response_text = _answer_copilot(system, user_message, resolved_model)
     elif active_backend == "cerebras":
         response_text = _answer_cerebras(system, user_message, resolved_model)
+    elif active_backend == "omniroute":
+        response_text = _answer_omniroute(system, user_message, resolved_model)
     else:  # pragma: no cover - guarded by resolve_llm_backend
         raise ValueError(f"Unsupported backend: {active_backend!r}")
 
@@ -514,7 +530,7 @@ def answer_stream(
         query: User question.
         context_chunks: Retrieved chunks from FAISS / hybrid / graph.
         model: Override LLM model name.
-        backend: "cerebras" or "copilot".
+        backend: "cerebras", "copilot", or "omniroute".
         prompt_version: Prompt variant (default: 3 for exhaustive+concise).
         conversation_history: Prior {role, content} messages for multi-turn context.
 
@@ -522,9 +538,7 @@ def answer_stream(
         (token_iterator, trace_metadata_dict)
     """
     active_backend = resolve_llm_backend(backend or LLM_BACKEND)
-    resolved_model = model or (
-        COPILOT_DEFAULT_MODEL if active_backend == "copilot" else CEREBRAS_DEFAULT_MODEL
-    )
+    resolved_model = model or default_model_for_backend(active_backend)
     prompt_trace = build_prompt_trace(
         query,
         context_chunks,
@@ -540,6 +554,8 @@ def answer_stream(
         token_gen: Iterator[str] = _answer_copilot_stream(system, user_message, resolved_model)
     elif active_backend == "cerebras":
         token_gen = _answer_cerebras_stream(system, user_message, resolved_model)
+    elif active_backend == "omniroute":
+        token_gen = _answer_omniroute_stream(system, user_message, resolved_model)
     else:  # pragma: no cover - guarded by resolve_llm_backend
         raise ValueError(f"Unsupported backend: {active_backend!r}")
 

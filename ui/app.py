@@ -22,8 +22,8 @@ load_dotenv()
 # ── Inject Streamlit Cloud secrets into os.environ (no-op locally) ────────────
 # Must happen before any module reads os.getenv() for API keys.
 _SECRET_KEYS = [
-    "CEREBRAS_API_KEY", "GITHUB_PAT", "HF_API_TOKEN",
-    "HUGGINGFACE_TOKEN", "LLM_BACKEND", "LLM_MODEL",
+    "CEREBRAS_API_KEY", "GITHUB_PAT", "OMNIROUTE_API_KEY", "OMNIROUTE_BASE_URL",
+    "OMNIROUTE_MODEL", "HF_API_TOKEN", "HUGGINGFACE_TOKEN", "LLM_BACKEND", "LLM_MODEL",
     "VERIDICTA_AUDIT_ENABLED", "VERIDICTA_AUDIT_DIR", "VERIDICTA_AUDIT_INCLUDE_CONTENT",
 ]
 try:
@@ -51,6 +51,7 @@ from retrievers.baseline_rag import (
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
+    OMNIROUTE_DEFAULT_MODEL,
     answer,
     answer_stream,
     load_index,
@@ -321,13 +322,17 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
         st.divider()
 
         # Backend selector
-        backend_options = ["cerebras", "copilot"]
+        backend_options = ["cerebras", "omniroute", "copilot"]
         default_idx = backend_options.index(LLM_BACKEND) if LLM_BACKEND in backend_options else 0
         backend = st.selectbox(
             "Backend LLM",
             backend_options,
             index=default_idx,
-            format_func=lambda x: {"cerebras": "Cerebras (gratuit)", "copilot": "GitHub Copilot"}[x],
+            format_func=lambda x: {
+                "cerebras": "Cerebras (gratuit)",
+                "omniroute": "OmniRoute (local)",
+                "copilot": "GitHub Copilot",
+            }[x],
         )
 
         # Model selector per backend
@@ -335,10 +340,20 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
             copilot_models = ["gpt-4.1", "gpt-4.1-mini", "claude-sonnet-4", "o3-mini"]
             default_copilot = copilot_models.index(COPILOT_DEFAULT_MODEL) if COPILOT_DEFAULT_MODEL in copilot_models else 0
             model = st.selectbox("Modele Copilot", copilot_models, index=default_copilot)
-        else:
+        elif backend == "cerebras":
             cerebras_models = ["gpt-oss-120b", "llama3.1-8b"]
             default_cerebras = cerebras_models.index(CEREBRAS_DEFAULT_MODEL) if CEREBRAS_DEFAULT_MODEL in cerebras_models else 0
             model = st.selectbox("Modele Cerebras", cerebras_models, index=default_cerebras)
+        else:
+            model = st.text_input(
+                "Modele OmniRoute",
+                value=OMNIROUTE_DEFAULT_MODEL,
+                help="Utilise `auto` pour le routage intelligent, ou un identifiant provider/model.",
+            )
+            st.caption(
+                "Endpoint OmniRoute : "
+                f"{os.getenv('OMNIROUTE_BASE_URL', 'http://localhost:20128/v1')}"
+            )
 
         st.divider()
         retriever_label = _get_retriever_status_label(retriever)
