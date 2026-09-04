@@ -1,0 +1,38 @@
+{
+  "schema_version": "2026-08-31-chunking-benchmark-v1",
+  "mode": "retrieval_only",
+  "config": {
+    "questions_path": "eval\\test_questions.json",
+    "fixed_index_dir": "E:\\CodexTemp\\Veridicta\\issue4-index-fixed",
+    "structural_index_dir": "E:\\CodexTemp\\Veridicta\\issue4-index-structural",
+    "k": 8,
+    "query_expansion": false,
+    "parent_child": false,
+    "neighbor_radius": 1,
+    "max_chunks": null
+  },
+  "strategies": {
+    "fixed": {
+      "question_count": 100,
+      "mean_keyword_recall": 0.849,
+      "mean_useful_passage_precision": 0.9363,
+      "mean_context_noise": 0.0637,
+      "mean_retrieved_chunks": 8.0,
+      "mean_latency_s": 0.0917,
+      "p95_latency_s": 0.0892,
+      "citation_faithfulness": null,
+      "faithfulness_note": "not_measured_in_retrieval_only_mode"
+    },
+    "structural": {
+      "question_count": 100,
+      "mean_keyword_recall": 0.743,
+      "mean_useful_passage_precision": 0.865,
+      "mean_context_noise": 0.135,
+      "mean_retrieved_chunks": 8.0,
+      "mean_latency_s": 0.1389,
+      "p95_latency_s": 0.2269,
+      "citation_faithfulness": null,
+      "faithfulness_note": "not_measured_in_retrieval_only_mode"
+    }
+  }
+}

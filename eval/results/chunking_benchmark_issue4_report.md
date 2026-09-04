@@ -5,10 +5,10 @@ Date de l'exécution : 2026-09-04
 ## Verdict
 
 Le chunking structural est implémenté, versionné et validé sous sa contrainte
-de 2 200 caractères. Sur le benchmark de 100 questions disponible dans cet
-environnement, le baseline fixe reste nettement meilleur avec le retriever
-BM25. Le chunking fixe reste donc le défaut de production ; le structural reste
-une stratégie opt-in, sans changement de défaut fondé sur ce proxy.
+de 2 200 caractères. Sur le benchmark de 100 questions, le baseline fixe reste
+nettement meilleur avec BM25 comme avec Solon/FAISS. Le chunking fixe reste
+donc le défaut de production ; le structural reste une stratégie opt-in, sans
+changement de défaut fondé sur ces mesures.
 
 ## Protocole
 
@@ -74,22 +74,34 @@ Le parent/child augmente le rappel de 0,8430 à 0,8650 sur le fixe et de
 la précision utile. Le structural brut perd environ 0,2445 point de rappel
 par rapport au fixe sur ce proxy et présente davantage de bruit.
 
+## Résultats dense Solon/FAISS (GPU local)
+
+Le benchmark contractuel `eval/benchmark_chunking.py` a été exécuté avec
+Solon-embeddings-large-0.1 sur CUDA, avec 100 questions et `k=8`.
+
+| Variante | Rappel mots-clés | Précision utile | Bruit contexte | Chunks récupérés | Latence moyenne (s) | P95 (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fixed | 0,8490 | 0,9363 | 0,0637 | 8,00 | 0,0917 | 0,0892 |
+| structural | 0,7430 | 0,8650 | 0,1350 | 8,00 | 0,1389 | 0,2269 |
+
+Le structural perd 0,1060 point de rappel et 0,0713 point de précision utile
+par rapport au fixe, avec davantage de bruit et une latence moyenne supérieure.
+La fidélité des citations n'est pas mesurée en mode retrieval-only.
+
 ## Limites et suite
 
-Le benchmark contractuel prévu par `eval/benchmark_chunking.py` utilise les
-embeddings Solon et FAISS. Il n'a pas été exécuté ici : le runtime installé est
-CPU-only, l'indexation dense complète était impraticable sur CPU et le smoke
-test du wheel CUDA isolé s'est bloqué à l'import. Le fichier
-`eval/results/chunking_benchmark_issue4_bm25.json` est donc explicitement un
-proxy BM25, pas une validation finale du retriever dense ni de la génération.
-
-La prochaine validation avant toute évolution du défaut est d'exécuter le
-benchmark Solon/FAISS sur un environnement GPU, puis l'évaluation complète avec
-fidélité des citations sur le corpus Journal complet.
+Le dense est maintenant validé en retrieval-only sur le snapshot disponible.
+Cette validation ne couvre pas encore la génération ni la fidélité des
+citations, et le Journal de Monaco reste un snapshot partiel. La suite utile
+est donc l'évaluation end-to-end avec génération et citations sur un corpus
+Journal complet avant toute évolution du défaut.
 
 Artefacts principaux :
 
 - `data_ingest/chunking.py` — chunking fixe et structural v2 ;
 - `data_ingest/monaco_scraper.py` — reprise, retries et circuit breaker du
   scraper Journal ;
-- `eval/results/chunking_benchmark_issue4_bm25.json` — résultats bruts du proxy.
+- `eval/results/chunking_benchmark_issue4_bm25.json` — résultats bruts du proxy
+  BM25 ;
+- `eval/results/chunking_benchmark_issue4_dense.json` — résultats bruts Solon/FAISS
+  sur GPU local.
