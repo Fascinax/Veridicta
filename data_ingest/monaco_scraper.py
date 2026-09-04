@@ -23,7 +23,10 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import urljoin
 
+import requests
+from bs4 import BeautifulSoup
 import jsonlines
 from playwright.sync_api import Browser, Page, sync_playwright
 from tqdm import tqdm
@@ -39,7 +42,12 @@ BASE_URL = "https://journaldemonaco.gouv.mc"
 SEARCH_URL = BASE_URL + "/content/search"
 PAGE_LIMIT = 15          # items per search page (site default)
 POLITE_DELAY = 1.2       # seconds between requests
-LOAD_TIMEOUT = 30_000    # ms
+LOAD_TIMEOUT = 15_000    # ms
+CHECKPOINT_INTERVAL = 20
+ARTICLE_RETRY_ATTEMPTS = 2
+RETRY_BACKOFF_SECONDS = 2.0
+MAX_CONSECUTIVE_FAILURES = 10
+SEARCH_TIMEOUT_SECONDS = 30.0
 
 # Labour law keywords to search
 LABOUR_KEYWORDS: list[str] = [
@@ -91,6 +99,16 @@ class ArticleRecord:
         return asdict(self)
 
 
+@dataclass
+class ScrapeCheckpoint:
+    processed_urls: set[str]
+    failed_urls: set[str]
+
+
+class ArticleFetchError(RuntimeError):
+    """Raised when an article cannot be loaded or read."""
+
+
 # ---------------------------------------------------------------------------
 # Browser helpers
 # ---------------------------------------------------------------------------
@@ -100,9 +118,8 @@ def _make_browser(playwright) -> Browser:
 
 
 def _goto(page: Page, url: str) -> None:
-    """Navigate and wait for network idle, then polite delay."""
-    page.goto(url, timeout=LOAD_TIMEOUT)
-    page.wait_for_load_state("networkidle", timeout=LOAD_TIMEOUT)
+    """Navigate after the document is ready, then apply the polite delay."""
+    page.goto(url, timeout=LOAD_TIMEOUT, wait_until="domcontentloaded")
     time.sleep(POLITE_DELAY)
 
 
@@ -110,7 +127,11 @@ def _goto(page: Page, url: str) -> None:
 # Search pagination
 # ---------------------------------------------------------------------------
 
-def _search_page_urls(page: Page, keyword: str, offset: int) -> list[str]:
+def _search_page_urls(
+    session: requests.Session,
+    keyword: str,
+    offset: int,
+) -> list[str]:
     """Return article URLs from one search result page."""
     if offset == 0:
         url = f"{SEARCH_URL}?SearchText={keyword}&sort=score_desc&page_limit={PAGE_LIMIT}"
@@ -120,31 +141,37 @@ def _search_page_urls(page: Page, keyword: str, offset: int) -> list[str]:
             f"?SearchText={keyword}&sort=score_desc&page_limit={PAGE_LIMIT}"
         )
     try:
-        _goto(page, url)
-    except Exception as exc:
+        response = session.get(url, timeout=SEARCH_TIMEOUT_SECONDS)
+        response.raise_for_status()
+    except requests.RequestException as exc:
         logger.warning("Search page load failed (kw=%s offset=%d): %s", keyword, offset, exc)
         return []
 
-    links = page.query_selector_all("a[href*='/Journaux/']")
+    soup = BeautifulSoup(response.text, "html.parser")
+    links = soup.select("a[href*='/Journaux/']")
     urls: list[str] = []
     for link in links:
-        href = link.get_attribute("href") or ""
+        href = link.get("href") or ""
         # Only article detail pages: /Journaux/YYYY/Journal-NNN/slug
         parts = [p for p in href.split("/") if p]
         if len(parts) >= 4:
-            full = BASE_URL + href if href.startswith("/") else href
+            full = urljoin(BASE_URL, href)
             urls.append(full)
     return urls
 
 
-def iter_search_results(page: Page, keyword: str, max_results: int) -> Iterator[str]:
+def iter_search_results(
+    session: requests.Session,
+    keyword: str,
+    max_results: int,
+) -> Iterator[str]:
     """Yield deduplicated article URLs for a keyword, paginating to exhaustion."""
     seen: set[str] = set()
     offset = 0
     fetched = 0
 
     while fetched < max_results:
-        urls = _search_page_urls(page, keyword, offset)
+        urls = _search_page_urls(session, keyword, offset)
         if not urls:
             break
         new_urls = [u for u in urls if u not in seen]
@@ -247,14 +274,13 @@ def fetch_article(page: Page, url: str) -> ArticleRecord | None:
     try:
         _goto(page, url)
     except Exception as exc:
-        logger.warning("Failed to load %s: %s", url, exc)
-        return None
+        raise ArticleFetchError(url) from exc
 
     # Detect 404
     try:
         body_text = page.inner_text("body")
-    except Exception:
-        return None
+    except Exception as exc:
+        raise ArticleFetchError(url) from exc
 
     if "Erreur 404" in body_text or "erreur 404" in body_text.lower():
         logger.debug("404: %s", url)
@@ -315,23 +341,96 @@ def fetch_article(page: Page, url: str) -> ArticleRecord | None:
     )
 
 
+def fetch_article_with_retries(page: Page, url: str) -> ArticleRecord | None:
+    """Fetch an article, retrying transient browser or network failures."""
+    for attempt in range(1, ARTICLE_RETRY_ATTEMPTS + 1):
+        try:
+            return fetch_article(page, url)
+        except ArticleFetchError as exc:
+            if attempt == ARTICLE_RETRY_ATTEMPTS:
+                raise
+            delay = RETRY_BACKOFF_SECONDS * attempt
+            logger.warning(
+                "Retrying article after failure (%d/%d) in %.1fs: %s",
+                attempt,
+                ARTICLE_RETRY_ATTEMPTS - 1,
+                delay,
+                exc,
+            )
+            time.sleep(delay)
+
+    raise ArticleFetchError(url)
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint helpers
 # ---------------------------------------------------------------------------
 
-def _load_checkpoint(path: Path) -> set[str]:
-    if not path.exists():
+def _load_saved_article_urls(output_path: Path) -> set[str]:
+    if not output_path.exists():
         return set()
+
+    saved_urls: set[str] = set()
+    try:
+        decoder = json.JSONDecoder()
+        with output_path.open(encoding="utf-8") as source_file:
+            for line_number, line in enumerate(source_file, start=1):
+                cursor = 0
+                while cursor < len(line):
+                    while cursor < len(line) and line[cursor].isspace():
+                        cursor += 1
+                    if cursor >= len(line):
+                        break
+                    try:
+                        record, cursor = decoder.raw_decode(line, cursor)
+                    except json.JSONDecodeError as exc:
+                        logger.warning(
+                            "Skipping invalid JSON in %s line %d: %s",
+                            output_path,
+                            line_number,
+                            exc,
+                        )
+                        break
+                    if not isinstance(record, dict):
+                        continue
+                    source = record.get("source")
+                    if isinstance(source, str) and source:
+                        saved_urls.add(source)
+    except OSError as exc:
+        logger.warning("Could not reconcile saved article URLs: %s", exc)
+    return saved_urls
+
+
+def _load_checkpoint(path: Path, output_path: Path) -> ScrapeCheckpoint:
+    if not path.exists():
+        return ScrapeCheckpoint(set(), set())
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return set(data.get("done_urls", []))
-    except Exception:
-        return set()
+        failed_urls = set(data.get("failed_urls", []))
+        if "processed_urls" in data:
+            processed_urls = set(data.get("processed_urls", []))
+        else:
+            processed_urls = _load_saved_article_urls(output_path)
+            if not processed_urls:
+                processed_urls = set(data.get("done_urls", []))
+        processed_urls.difference_update(failed_urls)
+        return ScrapeCheckpoint(processed_urls, failed_urls)
+    except (OSError, json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Could not load checkpoint %s: %s", path, exc)
+        return ScrapeCheckpoint(set(), set())
 
 
-def _save_checkpoint(path: Path, done_urls: set[str]) -> None:
+def _save_checkpoint(path: Path, checkpoint: ScrapeCheckpoint) -> None:
     path.write_text(
-        json.dumps({"done_urls": list(done_urls)}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "version": 2,
+                "processed_urls": sorted(checkpoint.processed_urls),
+                "failed_urls": sorted(checkpoint.failed_urls),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -349,51 +448,88 @@ def scrape(
     """Run the full scrape. Returns number of articles written."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_path.parent / CHECKPOINT_FILE
-    done_urls = _load_checkpoint(checkpoint_path)
-    logger.info("Checkpoint: %d URLs already processed", len(done_urls))
+    checkpoint = _load_checkpoint(checkpoint_path, output_path)
+    processed_urls = checkpoint.processed_urls
+    failed_urls = checkpoint.failed_urls
+    logger.info(
+        "Checkpoint: %d URLs processed, %d failed and pending retry",
+        len(processed_urls),
+        len(failed_urls),
+    )
 
     candidate_urls: set[str] = set()
 
     logger.info("Phase 1/2: collecting candidate URLs (%d keywords)...", len(keywords))
-    with sync_playwright() as pw:
-        browser = _make_browser(pw)
-        search_page = browser.new_page()
-
+    with requests.Session() as search_session:
         for kw in tqdm(keywords, desc="Keywords"):
-            for url in iter_search_results(search_page, kw, max_per_keyword):
+            for url in iter_search_results(search_session, kw, max_per_keyword):
                 candidate_urls.add(url)
 
-        new_urls = sorted(candidate_urls - done_urls)
-        logger.info(
-            "Phase 1 done: %d total candidates, %d to fetch",
-            len(candidate_urls), len(new_urls),
-        )
+    new_urls = sorted(candidate_urls - processed_urls)
+    logger.info(
+        "Phase 1 done: %d total candidates, %d to fetch (%d pending retries)",
+        len(candidate_urls),
+        len(new_urls),
+        len(set(new_urls).intersection(failed_urls)),
+    )
 
-        if dry_run:
-            logger.info("[DRY-RUN] %d articles would be fetched", len(new_urls))
-            for u in new_urls[:20]:
-                logger.info("  %s", u)
+    if dry_run:
+        logger.info("[DRY-RUN] %d articles would be fetched", len(new_urls))
+        for u in new_urls[:20]:
+            logger.info("  %s", u)
+        return 0
+
+    # Phase 2: fetch each article
+    written = 0
+    mode = "a" if output_path.exists() else "w"
+
+    logger.info("Phase 2/2: fetching article texts...")
+    with sync_playwright() as pw:
+        browser = _make_browser(pw)
+        try:
+            with jsonlines.open(output_path, mode=mode) as writer:
+                article_page = browser.new_page()
+                consecutive_failures = 0
+                try:
+                    for url in tqdm(new_urls, desc="Articles"):
+                        try:
+                            record = fetch_article_with_retries(article_page, url)
+                        except ArticleFetchError as exc:
+                            failed_urls.add(url)
+                            processed_urls.discard(url)
+                            consecutive_failures += 1
+                            logger.error(
+                                "Article deferred after retries (%d consecutive failures): %s",
+                                consecutive_failures,
+                                exc,
+                            )
+                            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                                logger.error(
+                                    "Stopping article phase after %d consecutive failures; "
+                                    "failed URLs remain pending in the checkpoint.",
+                                    MAX_CONSECUTIVE_FAILURES,
+                                )
+                                break
+                        else:
+                            processed_urls.add(url)
+                            failed_urls.discard(url)
+                            consecutive_failures = 0
+                            if record:
+                                writer.write(record.to_dict())
+                                written += 1
+
+                        if (len(processed_urls) + len(failed_urls)) % CHECKPOINT_INTERVAL == 0:
+                            _save_checkpoint(
+                                checkpoint_path,
+                                ScrapeCheckpoint(processed_urls, failed_urls),
+                            )
+                finally:
+                    _save_checkpoint(
+                        checkpoint_path,
+                        ScrapeCheckpoint(processed_urls, failed_urls),
+                    )
+        finally:
             browser.close()
-            return 0
-
-        # Phase 2: fetch each article
-        written = 0
-        mode = "a" if (output_path.exists() and done_urls) else "w"
-
-        logger.info("Phase 2/2: fetching article texts...")
-        with jsonlines.open(output_path, mode=mode) as writer:
-            article_page = browser.new_page()
-            for url in tqdm(new_urls, desc="Articles"):
-                record = fetch_article(article_page, url)
-                if record:
-                    writer.write(record.to_dict())
-                    written += 1
-                done_urls.add(url)
-                if len(done_urls) % 20 == 0:
-                    _save_checkpoint(checkpoint_path, done_urls)
-
-        _save_checkpoint(checkpoint_path, done_urls)
-        browser.close()
 
     logger.info("Done: %d articles saved to %s", written, output_path)
     return written

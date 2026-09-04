@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 
 
-STRUCTURAL_CHUNKING_VERSION = "2026-08-31-structural-v1"
+STRUCTURAL_CHUNKING_VERSION = "2026-09-04-structural-v2"
 
 
 @dataclass(frozen=True)
@@ -247,7 +247,7 @@ def structural_chunk_fragments(
 
     fragments: list[ChunkFragment] = []
     for unit in _build_structural_units(cleaned, hard_max_chunk):
-        parts = _split_into_paragraphs(unit.text, hard_max_chunk)
+        parts = _split_into_paragraphs(unit.text, min(chunk_size, hard_max_chunk))
         packed = _pack_parts(
             parts,
             chunk_size=chunk_size,

@@ -59,6 +59,15 @@ def test_structural_chunking_keeps_long_article_tail_and_parent() -> None:
     )
 
 
+def test_structural_chunking_respects_hard_max_after_overlap() -> None:
+    chunks = chunk_document_with_metadata(
+        "Article 8\n" + ("La règle s'applique au salarié. " * 250),
+        strategy="structural",
+    )
+
+    assert max(len(chunk["text"]) for chunk in chunks) <= 2200
+
+
 def test_structural_chunking_falls_back_to_paragraphs_without_headings() -> None:
     text = "Règle générale.\n\nCondition : le délai est respecté.\nException : accord contraire."
 

@@ -1,0 +1,61 @@
+{
+  "schema_version": "2026-09-04-chunking-benchmark-bm25-proxy-v1",
+  "mode": "retrieval_only",
+  "retriever": "bm25s",
+  "embedding_model": null,
+  "config": {
+    "questions_path": "C:\\Users\\Dark_\\Workspace\\Perso\\Veridicta\\eval\\test_questions.json",
+    "question_count": 100,
+    "k": 8,
+    "parent_child_max_chunks": 12,
+    "same_raw_snapshot": true,
+    "parent_child_relationships_precomputed_for_measurement": true,
+    "corpus_note": "BM25 proxy because the installed CPU runtime made dense Solon indexing impractical and the isolated CUDA wheel smoke test blocked at import."
+  },
+  "strategies": {
+    "fixed": {
+      "question_count": 100,
+      "mean_keyword_recall": 0.843,
+      "mean_useful_passage_precision": 0.9587,
+      "mean_context_noise": 0.0413,
+      "mean_retrieved_chunks": 8.0,
+      "mean_latency_s": 0.002,
+      "p95_latency_s": 0.0027,
+      "citation_faithfulness": null,
+      "faithfulness_note": "not_measured_in_retrieval_only_mode"
+    },
+    "fixed+parent_child": {
+      "question_count": 100,
+      "mean_keyword_recall": 0.865,
+      "mean_useful_passage_precision": 0.9058,
+      "mean_context_noise": 0.0942,
+      "mean_retrieved_chunks": 11.96,
+      "mean_latency_s": 0.0015,
+      "p95_latency_s": 0.002,
+      "citation_faithfulness": null,
+      "faithfulness_note": "not_measured_in_retrieval_only_mode"
+    },
+    "structural": {
+      "question_count": 100,
+      "mean_keyword_recall": 0.5985,
+      "mean_useful_passage_precision": 0.8163,
+      "mean_context_noise": 0.1837,
+      "mean_retrieved_chunks": 8.0,
+      "mean_latency_s": 0.0336,
+      "p95_latency_s": 0.0528,
+      "citation_faithfulness": null,
+      "faithfulness_note": "not_measured_in_retrieval_only_mode"
+    },
+    "structural+parent_child": {
+      "question_count": 100,
+      "mean_keyword_recall": 0.6485,
+      "mean_useful_passage_precision": 0.6498,
+      "mean_context_noise": 0.3502,
+      "mean_retrieved_chunks": 11.99,
+      "mean_latency_s": 0.0254,
+      "p95_latency_s": 0.0776,
+      "citation_faithfulness": null,
+      "faithfulness_note": "not_measured_in_retrieval_only_mode"
+    }
+  }
+}
