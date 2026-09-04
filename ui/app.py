@@ -64,6 +64,7 @@ from retrievers.traceability import (
     build_prompt_trace,
     citation_source_numbers,
     get_audit_log_path,
+    normalize_citations,
     new_trace_id,
 )
 
@@ -839,6 +840,7 @@ def _handle_prompt(
         except Exception as exc:
             err_suffix = f"\n\n⚠️ Erreur de génération : {exc}"
             response_text = (response_text + err_suffix) if response_text else f"⚠️ Erreur : {exc}"
+        response_text = normalize_citations(response_text)
 
         elapsed = time.perf_counter() - t0
         used_chunks = generation_trace.get("used_chunks", [])

@@ -45,7 +45,12 @@ from retrievers.config import (
     get_context_budget_tokens,
     resolve_llm_backend,
 )
-from retrievers.traceability import append_audit_event, build_prompt_trace, new_trace_id
+from retrievers.traceability import (
+    append_audit_event,
+    build_prompt_trace,
+    new_trace_id,
+    normalize_citations,
+)
 
 load_dotenv()
 
@@ -495,6 +500,7 @@ def answer(
         response_text = _answer_omniroute(system, user_message, resolved_model)
     else:  # pragma: no cover - guarded by resolve_llm_backend
         raise ValueError(f"Unsupported backend: {active_backend!r}")
+    response_text = normalize_citations(response_text)
 
     if not return_trace:
         return response_text

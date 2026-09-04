@@ -7,6 +7,8 @@ from retrievers.traceability import (
     append_audit_event,
     build_prompt_trace,
     prompt_trace_to_dict,
+    citation_source_numbers,
+    normalize_citations,
 )
 
 
@@ -89,3 +91,39 @@ def test_append_audit_event_persists_safe_retrieval_and_prompt_trace(tmp_path, m
     assert record["retrieval"]["trace"]["raw_top20"][0]["stage"] == "raw_top20"
     assert record["prompt"]["used_chunks"][0]["cited_in_answer"] is True
     assert '"text"' not in serialized
+
+
+def test_normalize_citations_converts_parenthesized_source() -> None:
+    normalized = normalize_citations("Le préavis est encadré (Source 3).")
+
+    assert normalized == "Le préavis est encadré [Source 3]."
+
+
+def test_normalize_citations_expands_grouped_sources() -> None:
+    normalized = normalize_citations("La règle repose sur (Sources 1 et 2).")
+
+    assert normalized == "La règle repose sur [Source 1][Source 2]."
+
+
+def test_normalize_citations_expands_nested_source_list() -> None:
+    normalized = normalize_citations("Les textes applicables sont [Sources [1], [3]].")
+
+    assert normalized == "Les textes applicables sont [Source 1][Source 3]."
+
+
+def test_normalize_citations_preserves_article_detail() -> None:
+    normalized = normalize_citations("La règle est [Source 3, Art. 104].")
+
+    assert normalized == "La règle est [Source 3], Art. 104."
+
+
+def test_normalize_citations_leaves_canonical_markers_and_law_numbers() -> None:
+    answer = "La loi [Source 1] vise l'article [Article 3]."
+
+    assert normalize_citations(answer) == answer
+
+
+def test_normalize_citations_produces_numbers_for_traceability() -> None:
+    answer = normalize_citations("Fondé sur (Sources 1 et 8).")
+
+    assert citation_source_numbers(answer) == [1, 8]

@@ -24,6 +24,39 @@ MAX_ASSISTANT_SNIPPET_CHARS = 600
 PROMPT_ORDERING_POLICY = "retrieval_rank_ascending"
 PROMPT_TRUNCATION_POLICY = "drop_remaining_after_context_budget"
 _SOURCE_CITATION_PATTERN = re.compile(r"\[Source\s+(\d+)\]", flags=re.IGNORECASE)
+_SOURCE_REFERENCE_ITEM = r"(?:\[\s*\d+\s*\]|\d+)"
+_SOURCE_REFERENCE_SEPARATOR = r"(?:,|;|\bet\b|\band\b)"
+_SOURCE_PAREN_GROUP_PATTERN = re.compile(
+    rf"\(\s*Sources?\s+(?P<body>{_SOURCE_REFERENCE_ITEM}"
+    rf"(?:\s*{_SOURCE_REFERENCE_SEPARATOR}\s*{_SOURCE_REFERENCE_ITEM})*)\s*\)",
+    flags=re.IGNORECASE,
+)
+_SOURCE_BRACKET_GROUP_PATTERN = re.compile(
+    rf"\[\s*Sources?\s+(?P<body>{_SOURCE_REFERENCE_ITEM}"
+    rf"(?:\s*{_SOURCE_REFERENCE_SEPARATOR}\s*{_SOURCE_REFERENCE_ITEM})*)\s*\]",
+    flags=re.IGNORECASE,
+)
+_SOURCE_BRACKET_DETAIL_PATTERN = re.compile(
+    r"\[\s*Source\s+(?P<number>\d+)(?P<detail>\s*,[^\]\n]*)\]",
+    flags=re.IGNORECASE,
+)
+_SOURCE_BRACKETED_NUMBER_PATTERN = re.compile(
+    r"(?<![\w\[])\bSources?\s+\[\s*(\d+)\s*\]",
+    flags=re.IGNORECASE,
+)
+_SOURCE_BARE_GROUP_PATTERN = re.compile(
+    rf"(?<![\w\[])\bSources?\s+(?P<body>{_SOURCE_REFERENCE_ITEM}"
+    rf"(?:\s*{_SOURCE_REFERENCE_SEPARATOR}\s*{_SOURCE_REFERENCE_ITEM})+)",
+    flags=re.IGNORECASE,
+)
+_SOURCE_BARE_PATTERN = re.compile(
+    r"(?<![\w\[])\bSources?\s+(\d+)\b",
+    flags=re.IGNORECASE,
+)
+_PARENTHESIZED_CANONICAL_PATTERN = re.compile(
+    r"\(\s*(?P<markers>(?:\[Source\s+\d+\]\s*)+)\)",
+    flags=re.IGNORECASE,
+)
 
 
 def _read_bool_env(name: str, default: bool) -> bool:
@@ -302,6 +335,40 @@ def summarize_chunks(chunks: list[dict], stage: str) -> list[dict]:
 def citation_source_numbers(answer: str) -> list[int]:
     """Extract unique source numbers cited in an answer, in ascending order."""
     return sorted({int(match) for match in _SOURCE_CITATION_PATTERN.findall(answer)})
+
+
+def _replace_source_group(match: re.Match[str]) -> str:
+    numbers = re.findall(r"\d+", match.group("body"))
+    return "".join(f"[Source {number}]" for number in numbers)
+
+
+def _replace_source_detail(match: re.Match[str]) -> str:
+    number = match.group("number")
+    detail = match.group("detail")
+    return f"[Source {number}]" + detail
+
+
+def normalize_citations(answer: str) -> str:
+    """Canonicalize common LLM citation variants without changing legal text.
+
+    The evaluator and UI use ``[Source N]`` as the stable citation marker.
+    Local models sometimes emit parenthesized or grouped variants such as
+    ``(Sources 1 et 2)`` or ``[Sources [1], [3]]``.  Only explicit ``Source``
+    references are rewritten; article and law references remain untouched.
+    """
+    normalized = _SOURCE_PAREN_GROUP_PATTERN.sub(_replace_source_group, answer)
+    normalized = _SOURCE_BRACKET_GROUP_PATTERN.sub(_replace_source_group, normalized)
+    normalized = _SOURCE_BRACKET_DETAIL_PATTERN.sub(_replace_source_detail, normalized)
+    normalized = _SOURCE_BRACKETED_NUMBER_PATTERN.sub(
+        lambda match: f"[Source {match.group(1)}]",
+        normalized,
+    )
+    normalized = _SOURCE_BARE_GROUP_PATTERN.sub(_replace_source_group, normalized)
+    normalized = _SOURCE_BARE_PATTERN.sub(
+        lambda match: f"[Source {match.group(1)}]",
+        normalized,
+    )
+    return _PARENTHESIZED_CANONICAL_PATTERN.sub(r"\g<markers>", normalized)
 
 
 def prompt_trace_to_dict(

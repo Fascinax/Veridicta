@@ -88,13 +88,39 @@ Le structural perd 0,1060 point de rappel et 0,0713 point de précision utile
 par rapport au fixe, avec davantage de bruit et une latence moyenne supérieure.
 La fidélité des citations n'est pas mesurée en mode retrieval-only.
 
+## Validation end-to-end locale du fixe
+
+Le fixe gagnant a ensuite été évalué sur les 100 questions avec génération
+locale via LM Studio (`carnice-9b`), l'index FAISS fixe, `k=8`,
+`prompt_version=3` et une fenêtre de contexte de 4 096 tokens. La génération
+normalise les variantes de citation émises par le modèle (`(Source 3)`,
+`(Sources 1 et 2)`, listes imbriquées) vers le marqueur contractuel
+`[Source N]`, sans modifier le texte légal autour.
+
+| Signal | Résultat | Seuil / statut |
+| --- | ---: | --- |
+| Questions générées | 100 / 100 | aucune réponse vide |
+| Traces | 100 / 100 | identifiants alignés |
+| Rappel mots-clés | 0,6960 | diagnostic |
+| Word F1 | 0,2768 | diagnostic |
+| Fidélité des citations | 1,0000 | seuil 0,99 — PASS |
+| Couverture de contexte | 0,6409 | seuil 0,60 — PASS |
+| Latence moyenne / P95 | 26,51 s / 39,02 s | opérationnel |
+
+Le validateur du contrat retourne `OK`. BERTScore et le judge ne sont pas
+calculés sur ce run, et le provider local n'expose pas de coût. Cette mesure
+confirme le comportement de citation sur le snapshot disponible ; elle ne
+constitue pas une acceptation juridique ou une mesure de production avec le
+backend distant.
+
 ## Limites et suite
 
 Le dense est maintenant validé en retrieval-only sur le snapshot disponible.
-Cette validation ne couvre pas encore la génération ni la fidélité des
-citations, et le Journal de Monaco reste un snapshot partiel. La suite utile
-est donc l'évaluation end-to-end avec génération et citations sur un corpus
-Journal complet avant toute évolution du défaut.
+La validation end-to-end locale confirme également le fixe pour la génération
+et les citations. Le structural reste donc opt-in et le fixe reste le défaut.
+Le Journal de Monaco reste toutefois un snapshot partiel ; une validation de
+production devra rejouer le contrat avec le corpus complet et le backend
+déployé, puis activer les signaux BERTScore et judge si nécessaires.
 
 Artefacts principaux :
 
@@ -105,3 +131,7 @@ Artefacts principaux :
   BM25 ;
 - `eval/results/chunking_benchmark_issue4_dense.json` — résultats bruts Solon/FAISS
   sur GPU local.
+- `eval/results/issue4_e2e_fixed_local_normalized/eval_20260905_010123.jsonl` —
+  résultats end-to-end locaux validés par le contrat ;
+- `eval/results/issue4_e2e_fixed_local_normalized/trace_20260905_010123.jsonl` —
+  traces metadata-only associées.
