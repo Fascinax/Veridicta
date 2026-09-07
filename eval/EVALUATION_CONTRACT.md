@@ -1,10 +1,19 @@
 # Veridicta RAG evaluation contract
 
-Version: `1.0.0`
+Version: `1.1.0`
 
 This contract is the stable reference for comparing retrievers, prompts and
 generation models. The machine-readable source is
 [`evaluation_contract.json`](evaluation_contract.json).
+
+The canonical Stage 1 baseline is `lancedb_graph`, `k=5`, prompt version 3,
+Copilot `gpt-4.1`. Its full 100-question artifact is
+[`eval/results/stage1/lancedb_graph_baseline/eval_20260312_100255.jsonl`](results/stage1/lancedb_graph_baseline/eval_20260312_100255.jsonl).
+The canonical evaluation command is:
+
+```powershell
+python -m eval.evaluate --backend copilot --model gpt-4.1 --retriever lancedb_graph --k 5 --prompt-version 3 --bertscore --judge
+```
 
 ## Fixed datasets
 

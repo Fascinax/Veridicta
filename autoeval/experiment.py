@@ -12,14 +12,18 @@ Usage:
 from __future__ import annotations
 
 import csv
+import statistics
 import sys
 import time
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from eval.contract import ContractValidationError, load_contract, validate_questions_file
 
 # ============================================================================
 # ============================================================================
@@ -48,7 +52,7 @@ if str(ROOT) not in sys.path:
 # ============================================================================
 
 RETRIEVER = "lancedb_graph"
-K = 6
+K = 5
 
 # RRF weights — LanceDB retrievers only
 VECTOR_WEIGHT = 0.25
@@ -59,7 +63,7 @@ HYBRID_FAISS_WEIGHT = 0.5
 HYBRID_BM25_WEIGHT = 0.5
 
 # Reranker
-USE_RERANKER = True
+USE_RERANKER = False
 RERANKER_CANDIDATE_MULTIPLIER = 4
 RERANKER_MIN_SCORE = None
 
@@ -73,7 +77,7 @@ MODEL = "gpt-4.1"
 WORKERS = 4
 
 # Experiment note (one line describing your hypothesis)
-NOTE = "lancedb_graph k=6 FTS=0.75 + reranker mult=4: exp14 (best score=0.4671) never tested reranker; reranker re-selects top-6 from 24 FTS-heavy candidates for better semantic alignment, targeting F1>=0.30 while FTS dominance maintains KW>=0.67"
+NOTE = "canonical Stage 1 baseline: fixed 100-question contract, lancedb_graph k=5, prompt-v3, gpt-4.1"
 
 # ============================================================================
 # === END TUNABLE PARAMETERS ===
@@ -81,14 +85,26 @@ NOTE = "lancedb_graph k=6 FTS=0.75 + reranker mult=4: exp14 (best score=0.4671) 
 
 RESULTS_FILE = Path(__file__).parent / "results.tsv"
 QUESTIONS_PATH = ROOT / "eval" / "test_questions.json"
+CONTRACT_PATH = ROOT / "eval" / "evaluation_contract.json"
+P95_QUANTILE = 0.95
 
 _VALID_RETRIEVERS = {"faiss", "hybrid", "lancedb", "graph", "hybrid_graph", "lancedb_graph"}
 _TSV_HEADERS = [
-    "exp_id", "timestamp", "retriever", "k",
+    "exp_id", "timestamp", "contract_version", "question_count", "retriever", "k",
     "vector_w", "fts_w", "hybrid_faiss_w", "hybrid_bm25_w",
     "reranker", "reranker_mult", "reranker_min", "query_exp", "prompt_v",
-    "KW", "F1", "CitFaith", "CtxCov", "Lat", "score", "note",
+    "KW", "WordF1", "BERTScore", "Judge", "CitFaith", "CtxCov",
+    "LatMean", "LatP95", "Cost", "score", "note",
 ]
+
+
+def _load_evaluation_contract():
+    try:
+        contract = load_contract(CONTRACT_PATH)
+        validate_questions_file(QUESTIONS_PATH, contract)
+    except ContractValidationError as exc:
+        raise SystemExit(f"ERROR: evaluation contract: {exc}") from exc
+    return contract
 
 
 def _next_exp_id() -> int:
@@ -112,6 +128,7 @@ def _apply_lancedb_weight_overrides() -> None:
 
 def _load_resources(full: bool):
     """Load indexes, embedder, and questions — mirrors evaluate.py main()."""
+    _load_evaluation_contract()
     from eval.evaluate import (
         EvalRunConfig,
         load_questions,
@@ -172,32 +189,41 @@ def _load_resources(full: bool):
 
 
 def _compute_metrics(results) -> dict:
-    """Extract aggregate metrics from EvalResult list."""
-    kw_vals = [r.keyword_recall for r in results]
-    f1_vals = [r.word_f1 for r in results if r.word_f1 is not None]
-    cit_vals = [r.citation_faithfulness for r in results]
-    cov_vals = [r.context_coverage for r in results]
-    lat_vals = [r.latency_s for r in results]
+    """Extract contract metrics and diagnostics from EvalResult objects."""
+    def average(values):
+        return statistics.fmean(values) if values else None
 
-    def avg(xs):
-        return sum(xs) / len(xs) if xs else 0.0
-
-    kw = avg(kw_vals)
-    f1 = avg(f1_vals) if f1_vals else None
-    cit = avg(cit_vals)
-    has_f1 = f1 is not None
-    score = round(0.5 * kw + 0.5 * f1, 4) if has_f1 else round(kw, 4)
+    latency_values = [result.latency_s for result in results]
+    word_f1 = average([result.word_f1 for result in results if result.word_f1 is not None])
+    bertscore = average(
+        [result.bertscore_f1 for result in results if result.bertscore_f1 is not None]
+    )
+    judge = average([result.judge_score for result in results if result.judge_score is not None])
+    cost_values = [result.cost_usd for result in results if result.cost_usd is not None]
+    semantic_values = [value for value in (bertscore, judge) if value is not None]
+    score = average(semantic_values)
     return {
-        "KW": round(kw, 4),
-        "F1": round(f1, 4) if has_f1 else "",
-        "CitFaith": round(cit, 4),
-        "CtxCov": round(avg(cov_vals), 4),
-        "Lat": round(avg(lat_vals), 2),
-        "score": score,
+        "KW": round(statistics.fmean(result.keyword_recall for result in results), 4),
+        "WordF1": round(word_f1, 4) if word_f1 is not None else "",
+        "BERTScore": round(bertscore, 4) if bertscore is not None else "",
+        "Judge": round(judge, 4) if judge is not None else "",
+        "CitFaith": round(
+            statistics.fmean(result.citation_faithfulness for result in results), 4
+        ),
+        "CtxCov": round(statistics.fmean(result.context_coverage for result in results), 4),
+        "LatMean": round(statistics.fmean(latency_values), 4),
+        "LatP95": round(
+            sorted(latency_values)[
+                min(len(latency_values) - 1, ceil(len(latency_values) * P95_QUANTILE) - 1)
+            ],
+            4,
+        ),
+        "Cost": round(sum(cost_values), 6) if cost_values else "",
+        "score": round(score, 4) if score is not None else "",
     }
 
 
-def _append_result(exp_id: int, metrics: dict) -> None:
+def _append_result(exp_id: int, metrics: dict, contract) -> None:
     """Append one TSV row to results.tsv."""
     write_header = not RESULTS_FILE.exists()
     with open(RESULTS_FILE, "a", encoding="utf-8", newline="") as fh:
@@ -207,6 +233,8 @@ def _append_result(exp_id: int, metrics: dict) -> None:
         writer.writerow({
             "exp_id": exp_id,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "contract_version": contract.version,
+            "question_count": contract.regression_set.expected_count,
             "retriever": RETRIEVER,
             "k": K,
             "vector_w": VECTOR_WEIGHT,
@@ -251,47 +279,37 @@ def run() -> None:
 
     print_report(results)
 
+    baseline = _load_evaluation_contract()
     metrics = _compute_metrics(results)
-    _append_result(exp_id, metrics)
-
-    kw_ok = "✅" if metrics["KW"] >= 0.67 else "❌"
-    has_f1 = metrics["F1"] != ""
-    f1_ok = "✅" if has_f1 and metrics["F1"] >= 0.30 else ("❌" if has_f1 else "—")
-    cit_ok = "✅" if has_f1 and metrics["CitFaith"] >= 0.95 else ("❌" if has_f1 else "—")
-
-    f1_display = f"{metrics['F1']:.4f}" if has_f1 else "n/a"
-    cit_display = f"{metrics['CitFaith']:.4f}" if has_f1 else "n/a"
+    _append_result(exp_id, metrics, baseline)
+    gates = baseline.quality_gates
+    f1_display = metrics["WordF1"] or "n/a"
+    bert_display = metrics["BERTScore"] or "n/a"
+    judge_display = metrics["Judge"] or "n/a"
 
     print(f"\n{'='*70}")
     print(f"  EXPERIMENT #{exp_id} RESULTS")
-    print(f"  KW={metrics['KW']:.4f} {kw_ok}  F1={f1_display} {f1_ok}  "
-          f"CitFaith={cit_display} {cit_ok}")
-    print(f"  CtxCov={metrics['CtxCov']:.4f}  Lat={metrics['Lat']:.2f}s")
-    print(f"  COMPOSITE SCORE = {metrics['score']:.4f}"
-          f"{'  (KW only — run --full for F1)' if not has_f1 else ''}")
+    print(f"  BERTScore={bert_display}  Judge={judge_display}  WordF1={f1_display} (diagnostic)")
+    print(f"  CitFaith={metrics['CitFaith']:.4f}  CtxCov={metrics['CtxCov']:.4f}")
+    print(f"  LatMean={metrics['LatMean']:.4f}s  LatP95={metrics['LatP95']:.4f}s  Cost={metrics['Cost'] or 'n/a'}")
+    print(f"  COMPOSITE SCORE = {metrics['score'] or 'n/a'}")
     print(f"  Total wall time: {elapsed:.1f}s")
     print(f"  Result appended to {RESULTS_FILE}")
     print(f"{'='*70}\n")
 
-    if has_f1:
-        all_passed = metrics["KW"] >= 0.67 and metrics["F1"] >= 0.30 and metrics["CitFaith"] >= 0.95
-    else:
-        all_passed = False
-
-    if all_passed:
-        print("  🎉 ALL CONSTRAINTS SATISFIED! This config meets the target.")
-    else:
-        targets = []
-        if metrics["KW"] < 0.67:
-            targets.append(f"KW needs +{0.67 - metrics['KW']:.4f}")
-        if has_f1 and metrics["F1"] < 0.30:
-            targets.append(f"F1 needs +{0.30 - metrics['F1']:.4f}")
-        if has_f1 and metrics["CitFaith"] < 0.95:
-            targets.append(f"CitFaith needs +{0.95 - metrics['CitFaith']:.4f}")
-        if not has_f1:
-            targets.append("F1/CitFaith unavailable — run with --full")
-        print(f"  ⚠️  Gaps remaining: {' | '.join(targets)}")
-        print("  → Edit the TUNABLE PARAMETERS section and run again.\n")
+    for metric_name, gate in gates.items():
+        key = {
+            "citation_faithfulness": "CitFaith",
+            "context_coverage": "CtxCov",
+            "bertscore_f1": "BERTScore",
+            "judge_score": "Judge",
+        }.get(metric_name)
+        if key is None or gate.minimum is None:
+            continue
+        value = metrics[key]
+        status = "n/a" if value == "" else ("PASS" if value >= gate.minimum else "FAIL")
+        print(f"  Gate {metric_name} >= {gate.minimum:.2f}: {status}")
+    print("  Word F1 remains diagnostic-only; do not use it as a gate.")
 
 
 if __name__ == "__main__":

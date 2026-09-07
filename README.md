@@ -26,25 +26,36 @@ Veridicta combines hybrid retrieval, graph expansion, and strict prompt groundin
 
 ## Results Snapshot
 
-Validated on a 100-question gold standard (Copilot backend gpt-4.1, corpus v3, Solon embeddings 1024d).
+The single canonical baseline is the Stage 1 full run on the fixed 100-question
+contract: `lancedb_graph`, `k=5`, prompt version 3, Copilot `gpt-4.1`.
+All numbers below come from the versioned
+[baseline artifact](eval/results/stage1/lancedb_graph_baseline/eval_20260312_100255.jsonl).
 
-| Architecture | KW Recall | Word F1 | Cit. Faith | Context Cov | Latency |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Hybrid k=5 | 0.363 | 0.267 | 0.990 | 0.517 | 8.98 s |
-| Hybrid k=8 (Solon + bm25s + v3) | 0.608 | 0.318 | 1.000 | 0.733 | 15.10 s |
-| Graph RAG (LightRAG) | 0.481 | 0.256 | 0.470 | 0.449 | 7.70 s |
-| Hybrid+Graph k=5 | 0.552 | 0.338 | 1.000 | 0.742 | 23.40 s |
-| LanceDB k=5 (vector+FTS+RRF) | 0.676 | 0.263 | 0.990 | 0.733 | 9.28 s |
+| Canonical baseline | Value | Role |
+| --- | ---: | --- |
+| Keyword Recall | 0.7085 | Retrieval diagnostic |
+| Word F1 | 0.2732 | Diagnostic only; never a gate |
+| BERTScore F1 | 0.8105 | Semantic quality gate (>= 0.75) |
+| Judge score | 0.7810 | Semantic quality gate (>= 0.60) |
+| Citation Faithfulness | 0.9900 | Safety gate (>= 0.99) |
+| Context Coverage | 0.7111 | Grounding guardrail (>= 0.60) |
+| Mean latency | 13.92 s | Operational metric |
 
 ### v1 KPI Status
 
 | KPI | Target | Result |
 | --- | --- | --- |
-| Keyword Recall | >= 55% | 67.6% (LanceDB) |
-| Word F1 | >= 28% | 31.8% (Hybrid k=8) |
-| Citation Faithfulness | >= 99% | 100% |
-| Context Coverage | >= 60% | 73.3% |
-| Variable Cost | 0 EUR | 0 EUR |
+| Citation Faithfulness | >= 0.99 | 0.9900 |
+| Context Coverage | >= 0.60 | 0.7111 |
+| BERTScore F1 | >= 0.75 when enabled | 0.8105 |
+| Judge score | >= 0.60 when enabled | 0.7810 |
+| Word F1 | Diagnostic only | 0.2732 |
+| Variable Cost | Provider-reported or null | null (not exposed) |
+
+Other architectures remain useful diagnostic comparisons, but they are not
+the regression gate. Their benchmark artifacts and trade-offs are recorded in
+[`ROADMAP.md`](ROADMAP.md) and must not be presented as alternate baselines.
+Word F1 is diagnostic-only and must never be used as a pass/fail gate.
 
 ## Tech Stack
 
@@ -219,10 +230,19 @@ The strict human-review check now confirms that all 40 selected answers in
 python -m eval.validate_contract --strict-human-labels
 ```
 
-Run full evaluation:
+Run the canonical full evaluation:
 
 ```bash
-python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever hybrid_graph --prompt-version 3 --workers 4
+python -m eval.evaluate --backend copilot --model gpt-4.1 --retriever lancedb_graph --k 5 --prompt-version 3 --bertscore --judge --workers 4
+```
+
+The exact baseline artifact and command are versioned in
+[`eval/evaluation_contract.json`](eval/evaluation_contract.json). Run the
+documentation/AutoEval consistency check before publishing new benchmark
+numbers:
+
+```bash
+python -m eval.validate_consistency
 ```
 
 Every run also writes a metadata-only trace JSONL beside the results (or at

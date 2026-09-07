@@ -28,6 +28,19 @@ class RegressionSetSpec:
 
 
 @dataclass(frozen=True)
+class BaselineSpec:
+    name: str
+    retriever: str
+    k: int
+    prompt_version: int
+    backend: str
+    model: str
+    command: str
+    artifact: str
+    artifact_sha256: str
+
+
+@dataclass(frozen=True)
 class HumanGoldSetSpec:
     packet_path: str
     labels_path: str
@@ -49,6 +62,7 @@ class EvaluationContract:
     project_root: Path
     version: str
     regression_set: RegressionSetSpec
+    baseline: BaselineSpec
     human_gold_set: HumanGoldSetSpec
     quality_gates: dict[str, MetricGate]
     diagnostic_metrics: tuple[str, ...]
@@ -183,6 +197,32 @@ def load_contract(path: Path) -> EvaluationContract:
     ):
         raise ContractValidationError("regression_set.sha256 must be a SHA-256 hex digest.")
 
+    baseline_payload = _mapping(payload.get("baseline"), "baseline")
+    baseline_hash = _required_string(
+        baseline_payload,
+        "artifact_sha256",
+        "baseline",
+    ).lower()
+    if len(baseline_hash) != 64 or any(
+        character not in "0123456789abcdef" for character in baseline_hash
+    ):
+        raise ContractValidationError("baseline.artifact_sha256 must be a SHA-256 hex digest.")
+    baseline = BaselineSpec(
+        name=_required_string(baseline_payload, "name", "baseline"),
+        retriever=_required_string(baseline_payload, "retriever", "baseline"),
+        k=_required_positive_int(baseline_payload, "k", "baseline"),
+        prompt_version=_required_positive_int(
+            baseline_payload,
+            "prompt_version",
+            "baseline",
+        ),
+        backend=_required_string(baseline_payload, "backend", "baseline"),
+        model=_required_string(baseline_payload, "model", "baseline"),
+        command=_required_string(baseline_payload, "command", "baseline"),
+        artifact=_required_string(baseline_payload, "artifact", "baseline"),
+        artifact_sha256=baseline_hash,
+    )
+
     human_payload = _mapping(payload.get("human_gold_set"), "human_gold_set")
     required_labels = human_payload.get("required_labels")
     if not isinstance(required_labels, list) or set(required_labels) != HUMAN_LABELS:
@@ -240,6 +280,7 @@ def load_contract(path: Path) -> EvaluationContract:
         project_root=project_root,
         version=version,
         regression_set=regression_set,
+        baseline=baseline,
         human_gold_set=human_gold_set,
         quality_gates=quality_gates,
         diagnostic_metrics=tuple(diagnostics),
@@ -500,6 +541,7 @@ def validate_results_file(
 
 __all__ = [
     "DEFAULT_CONTRACT_PATH",
+    "BaselineSpec",
     "EvaluationContract",
     "ContractValidationError",
     "DatasetFingerprint",

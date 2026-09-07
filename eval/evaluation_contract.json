@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "1.1.0",
   "domain": {
     "jurisdiction": "Monaco",
     "scope": "droit du travail",
@@ -10,6 +10,17 @@
     "format": "json",
     "expected_count": 100,
     "sha256": "4b86f8333075fbaef9b9d19a372e78a6e56f0aefe13b6600ceb5593821a6e6b2"
+  },
+  "baseline": {
+    "name": "stage1_lancedb_graph",
+    "retriever": "lancedb_graph",
+    "k": 5,
+    "prompt_version": 3,
+    "backend": "copilot",
+    "model": "gpt-4.1",
+    "command": "python -m eval.evaluate --backend copilot --model gpt-4.1 --retriever lancedb_graph --k 5 --prompt-version 3 --bertscore --judge",
+    "artifact": "eval/results/stage1/lancedb_graph_baseline/eval_20260312_100255.jsonl",
+    "artifact_sha256": "7d0921973a93fe636435cb3fb194e659f1c596b97f9840b813e3581384d4be96"
   },
   "human_gold_set": {
     "packet_path": "eval/results/stage0/annotation_packet.jsonl",
