@@ -397,6 +397,34 @@ python -m eval.benchmark_adaptive_router \
   --out eval/results/adaptive/comparison.json
 ```
 
+### Generation model matrix
+
+Issue-level generation comparisons use the same fixed question IDs for every
+provider. The planner itself is offline and deterministic: it classifies each
+question as factual lookup or complex legal analysis, then records the selected
+model, ordered fallbacks and policy version without calling a provider:
+
+```bash
+python -m eval.model_matrix \
+  --out eval/results/model_matrix/routing_plan.jsonl
+```
+
+Provider-backed runs can be compared only after producing one JSONL row per
+question. The report rejects missing, extra or duplicate IDs and aggregates
+quality, latency, cost and optional grounding fields:
+
+```bash
+python -m eval.model_matrix \
+  --out eval/results/model_matrix/routing_plan.jsonl \
+  --report eval/results/model_matrix/comparison.json \
+  --results copilot_gpt41=eval/results/model_matrix/copilot_gpt41.jsonl \
+  --results cerebras_llama=eval/results/model_matrix/cerebras_llama.jsonl
+```
+
+The matrix is a routing and measurement aid, not an automatic legal decision
+system. Credentials and provider outputs remain outside the repository unless
+they are deliberately captured as reviewed benchmark artifacts.
+
 ## Test and Quality
 
 Run all tests with coverage:
