@@ -198,6 +198,7 @@ class EvalResult:
 @dataclass(frozen=True)
 class EvalRunConfig:
     k: int = 5
+    retriever: str | None = None
     retrieval_only: bool = False
     model: str | None = None
     backend: str | None = None
@@ -723,10 +724,16 @@ def _retrieve_contexts_with_trace(
     lancedb_table=None,
 ) -> tuple[list[list[dict]], list[RetrievalTrace]]:
     question_count = len(questions)
-    retriever_label = _retriever_label(bm25=bm25, neo4j_mgr=neo4j_mgr, lancedb_table=lancedb_table)
+    retriever_label = config.retriever or _retriever_label(
+        bm25=bm25,
+        neo4j_mgr=neo4j_mgr,
+        lancedb_table=lancedb_table,
+    )
     print(f"  Retrieving context for {question_count} questions  [{retriever_label}] ...", flush=True)
 
-    if lancedb_table is not None and neo4j_mgr is not None and _LANCEDB_GRAPH_AVAILABLE:
+    if config.retriever is not None:
+        retriever_name = config.retriever
+    elif lancedb_table is not None and neo4j_mgr is not None and _LANCEDB_GRAPH_AVAILABLE:
         retriever_name = "lancedb_graph"
     elif lancedb_table is not None:
         retriever_name = "lancedb"
@@ -1669,11 +1676,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--retriever",
         default="faiss",
-        choices=["faiss", "hybrid", "graph", "hybrid_graph", "lancedb", "lancedb_graph"],
+        choices=["faiss", "hybrid", "graph", "hybrid_graph", "lancedb", "lancedb_graph", "adaptive"],
         help=(
             "Retriever to use: faiss (dense only), hybrid (BM25+FAISS), "
             "graph (FAISS+Neo4j), hybrid_graph (BM25+FAISS+Neo4j), "
-            "or lancedb (LanceDB vector+FTS+RRF)  (default: faiss)"
+            "lancedb (LanceDB vector+FTS+RRF), or adaptive (query-routed with safe fallbacks) "
+            "(default: faiss)"
         ),
     )
     parser.add_argument(
@@ -1804,40 +1812,55 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tuple[object | None, object | None, object | None]:
+    adaptive = args.retriever == "adaptive"
     bm25 = None
-    if args.retriever in ("hybrid", "hybrid_graph"):
+    if args.retriever in ("hybrid", "hybrid_graph") or adaptive:
         if not _HYBRID_AVAILABLE:
-            sys.exit("ERROR: hybrid retriever unavailable. Run: pip install bm25s PyStemmer")
-        print("Loading BM25 index ...")
-        try:
-            bm25 = load_bm25_index(index_dir)
-        except FileNotFoundError as exc:
-            sys.exit(f"ERROR: {exc}")
+            if not adaptive:
+                sys.exit("ERROR: hybrid retriever unavailable. Run: pip install bm25s PyStemmer")
+        else:
+            print("Loading BM25 index ...")
+            try:
+                bm25 = load_bm25_index(index_dir)
+            except FileNotFoundError as exc:
+                if not adaptive:
+                    sys.exit(f"ERROR: {exc}")
+                print(f"  Adaptive fallback: BM25 unavailable ({exc})")
 
     neo4j_mgr = None
-    if args.retriever in ("graph", "hybrid_graph", "lancedb_graph"):
+    if args.retriever in ("graph", "hybrid_graph", "lancedb_graph") or adaptive:
         if not _GRAPH_AVAILABLE:
-            sys.exit("ERROR: graph_rag module unavailable. Check retrievers/graph_rag.py.")
-        print("Connecting to Neo4j ...")
-        neo4j_mgr = load_neo4j_manager()
-        if neo4j_mgr is None:
-            sys.exit(
-                "ERROR: Neo4j unreachable. Check NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD.\n"
-                "Build the graph first: python -m retrievers.neo4j_setup --build"
-            )
-        stats = neo4j_mgr.stats()
-        print(f"  Graph connected: {stats}")
+            if not adaptive:
+                sys.exit("ERROR: graph_rag module unavailable. Check retrievers/graph_rag.py.")
+        else:
+            print("Connecting to Neo4j ...")
+            neo4j_mgr = load_neo4j_manager()
+            if neo4j_mgr is None:
+                if not adaptive:
+                    sys.exit(
+                        "ERROR: Neo4j unreachable. Check NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD.\n"
+                        "Build the graph first: python -m retrievers.neo4j_setup --build"
+                    )
+                print("  Adaptive fallback: Neo4j unavailable")
+            else:
+                stats = neo4j_mgr.stats()
+                print(f"  Graph connected: {stats}")
 
     lancedb_table = None
-    if args.retriever in ("lancedb", "lancedb_graph"):
+    if args.retriever in ("lancedb", "lancedb_graph") or adaptive:
         if not _LANCEDB_AVAILABLE:
-            sys.exit("ERROR: lancedb retriever unavailable. Run: pip install lancedb")
-        print("Loading LanceDB table ...")
-        try:
-            lancedb_table = load_lancedb_index()
-        except FileNotFoundError as exc:
-            sys.exit(f"ERROR: {exc}")
-        print(f"  LanceDB: {lancedb_table.count_rows()} rows")
+            if not adaptive:
+                sys.exit("ERROR: lancedb retriever unavailable. Run: pip install lancedb")
+        else:
+            print("Loading LanceDB table ...")
+            try:
+                lancedb_table = load_lancedb_index()
+            except FileNotFoundError as exc:
+                if not adaptive:
+                    sys.exit(f"ERROR: {exc}")
+                print(f"  Adaptive fallback: LanceDB unavailable ({exc})")
+            else:
+                print(f"  LanceDB: {lancedb_table.count_rows()} rows")
 
     return bm25, neo4j_mgr, lancedb_table
 
@@ -1974,6 +1997,13 @@ def _load_primary_index(args: argparse.Namespace, index_dir: Path, lancedb_table
     try:
         index, chunks = load_index(index_dir)
     except (FileNotFoundError, RuntimeError) as exc:
+        if args.retriever == "adaptive" and lancedb_table is not None:
+            from retrievers.lancedb_rag import _table_to_chunks
+
+            chunks = _table_to_chunks(lancedb_table)
+            print(f"  Adaptive fallback: FAISS unavailable ({exc})")
+            print(f"  LanceDB chunks exported: {len(chunks)}")
+            return None, chunks
         sys.exit(f"ERROR: {exc}")
     print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
     return index, chunks
@@ -1989,6 +2019,7 @@ def _build_run_config(
 ) -> EvalRunConfig:
     return EvalRunConfig(
         k=args.k,
+        retriever=args.retriever,
         retrieval_only=args.retrieval_only,
         model=model if model is not None else args.model,
         backend=args.backend or LLM_BACKEND,

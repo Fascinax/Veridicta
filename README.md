@@ -374,6 +374,21 @@ python -m eval.evaluate --backend copilot --model gpt-4.1 --k 5 --retriever lanc
 
 # Add Ragas metrics
 python -m eval.evaluate --backend copilot --model gpt-4.1 --k 8 --retriever hybrid --prompt-version 3 --workers 2 --ragas --ragas-model llama3.1-8b
+
+# Adaptive routing: lexical, hybrid, or graph route with safe fallbacks
+python -m eval.evaluate --retriever adaptive --retrieval-only --questions eval/test_questions.json --trace-out eval/results/adaptive/trace.jsonl
+```
+
+The adaptive router records its query class, selected retriever, available
+fallbacks, and routing signals in each retrieval trace. After running the
+fixed baseline and adaptive artifacts, compare them with:
+
+```bash
+python -m eval.benchmark_adaptive_router \
+  --baseline eval/results/stage1/lancedb_graph_baseline/eval_20260312_100255.jsonl \
+  --adaptive eval/results/adaptive/eval.jsonl \
+  --adaptive-trace eval/results/adaptive/trace.jsonl \
+  --out eval/results/adaptive/comparison.json
 ```
 
 ## Test and Quality

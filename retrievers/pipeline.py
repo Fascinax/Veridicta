@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from retrievers.adaptive_router import RouteDecision, choose_retrieval_route
 from retrievers.baseline_rag import DEFAULT_TOP_K, retrieve
 from retrievers.parent_child import ParentChildConfig, expand_parent_child_candidates
 from retrievers.query_expansion import expand_query_legal_fr
@@ -60,6 +61,8 @@ class RetrievalTrace:
     final_candidates: list[dict]
     decisions: list[dict]
     parent_child_enabled: bool = False
+    requested_retriever: str = "faiss"
+    route_decision: dict | None = None
 
     def to_dict(self) -> dict:
         """Return a safe trace payload without chunk text or credentials."""
@@ -68,6 +71,8 @@ class RetrievalTrace:
             "query": text_summary(self.query),
             "retrieval_query": text_summary(self.retrieval_query),
             "retriever": self.retriever,
+            "requested_retriever": self.requested_retriever,
+            "route_decision": self.route_decision,
             "requested_k": self.requested_k,
             "raw_candidate_k": self.raw_candidate_k,
             "raw_candidate_count": len(self.raw_candidates),
@@ -105,10 +110,11 @@ class RetrievalPipeline:
         hybrid_bm25_weight: float | None = None,
         parent_child_config: ParentChildConfig | None = None,
     ) -> list[dict]:
+        selected_retriever, _ = self._resolve_retriever(query, retriever)
         retrieval_query = expand_query_legal_fr(query) if query_expansion else query
         retrieval_k = k * max(1, reranker_candidate_multiplier) if use_reranker else k
         retrieved = self._dispatch_retriever(
-            retriever=retriever,
+            retriever=selected_retriever,
             query=retrieval_query,
             k=retrieval_k,
             hybrid_faiss_weight=hybrid_faiss_weight,
@@ -157,6 +163,7 @@ class RetrievalPipeline:
         if trace_candidate_k < 1:
             raise ValueError("trace_candidate_k must be >= 1")
 
+        selected_retriever, route_decision = self._resolve_retriever(query, retriever)
         retrieval_query = expand_query_legal_fr(query) if query_expansion else query
         raw_candidate_k = max(k, trace_candidate_k)
         if use_reranker:
@@ -166,14 +173,23 @@ class RetrievalPipeline:
             )
 
         raw_candidates = self._dispatch_retriever(
-            retriever=retriever,
+            retriever=selected_retriever,
             query=retrieval_query,
             k=raw_candidate_k,
             hybrid_faiss_weight=hybrid_faiss_weight,
             hybrid_bm25_weight=hybrid_bm25_weight,
         )
 
-        decisions = [
+        decisions = []
+        if route_decision is not None:
+            decisions.append(
+                {
+                    "stage": "routing",
+                    "policy": "deterministic_adaptive_router",
+                    **route_decision.to_dict(),
+                }
+            )
+        decisions.extend([
             {
                 "stage": "retrieval",
                 "policy": "retrieval_score_descending",
@@ -184,7 +200,7 @@ class RetrievalPipeline:
                 "policy": "first_20_candidates",
                 "candidate_count": min(len(raw_candidates), RAW_TRACE_CANDIDATE_K),
             },
-        ]
+        ])
 
         reranked_candidates: list[dict] = []
         if use_reranker:
@@ -249,7 +265,7 @@ class RetrievalPipeline:
         trace = RetrievalTrace(
             query=query,
             retrieval_query=retrieval_query,
-            retriever=retriever,
+            retriever=selected_retriever,
             requested_k=k,
             raw_candidate_k=raw_candidate_k,
             query_expansion=query_expansion,
@@ -259,8 +275,52 @@ class RetrievalPipeline:
             final_candidates=final_candidates,
             decisions=decisions,
             parent_child_enabled=parent_child_config is not None,
+            requested_retriever=retriever,
+            route_decision=route_decision.to_dict() if route_decision else None,
         )
         return final_candidates, trace
+
+    def _resolve_retriever(
+        self,
+        query: str,
+        retriever: str,
+    ) -> tuple[str, RouteDecision | None]:
+        if retriever != "adaptive":
+            return retriever, None
+        decision = choose_retrieval_route(query, self._available_retrievers())
+        return decision.selected_retriever, decision
+
+    def _available_retrievers(self) -> set[str]:
+        available: set[str] = set()
+        if self.index is not None and self.chunks is not None:
+            available.add("faiss")
+        if (
+            self.index is not None
+            and self.chunks is not None
+            and self.bm25 is not None
+            and hybrid_retrieve is not None
+        ):
+            available.add("hybrid")
+        if (
+            self.index is not None
+            and self.chunks is not None
+            and self.neo4j_manager is not None
+            and graph_retrieve is not None
+        ):
+            available.add("graph")
+        if (
+            self.index is not None
+            and self.chunks is not None
+            and self.bm25 is not None
+            and self.neo4j_manager is not None
+            and hybrid_graph_retrieve is not None
+        ):
+            available.add("hybrid_graph")
+        if self.lancedb_table is not None and lancedb_hybrid_retrieve is not None:
+            available.add("lancedb")
+        if self.lancedb_table is not None and lancedb_graph_retrieve is not None:
+            available.add("lancedb_graph")
+        return available
 
     def _dispatch_retriever(
         self,
