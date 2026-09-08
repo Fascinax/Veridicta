@@ -71,6 +71,7 @@ from retrievers.traceability import (
     normalize_citations,
     new_trace_id,
 )
+from workspaces.store import WorkspaceStore
 
 FAISS_OPTION = "FAISS"
 HYBRID_OPTION = "Hybrid (BM25+FAISS)"
@@ -237,6 +238,11 @@ def _get_lancedb():
     except Exception:
         return None
 
+
+@st.cache_resource
+def _get_workspace_store() -> WorkspaceStore:
+    return WorkspaceStore(os.getenv("VERIDICTA_WORKSPACE_DIR", "data/cases"))
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
@@ -283,7 +289,72 @@ def _get_retriever_mode(use_lancedb: bool, use_graph: bool, use_hybrid: bool) ->
     return "faiss"
 
 
-def _render_sidebar() -> tuple[int, bool, str, str, str]:
+def _render_workspace_controls(store: WorkspaceStore) -> str | None:
+    workspaces = store.list()
+    workspace_options = {workspace.workspace_id: workspace.name for workspace in workspaces}
+    workspace_options["__new__"] = "＋ Nouveau dossier"
+    with st.sidebar:
+        st.markdown("#### 📁 Dossiers")
+        selected_id = st.selectbox(
+            "Dossier actif",
+            list(workspace_options),
+            format_func=lambda value: workspace_options[value],
+            key="workspace_selector",
+        )
+        if selected_id == "__new__":
+            name = st.text_input("Nom du dossier", key="new_workspace_name")
+            if st.button("Créer le dossier", use_container_width=True, key="create_workspace"):
+                if not name.strip():
+                    st.warning("Donne un nom au dossier.")
+                else:
+                    created = store.create(name)
+                    st.session_state["workspace_selector"] = created.workspace_id
+                    st.rerun()
+            return None
+
+        workspace = store.get(selected_id)
+        with st.expander("Gérer le dossier", expanded=False):
+            renamed = st.text_input("Nom", value=workspace.name, key=f"rename_{selected_id}")
+            if st.button("Renommer", use_container_width=True, key=f"rename_button_{selected_id}"):
+                store.rename(selected_id, renamed)
+                st.rerun()
+            note = st.text_area("Note privée", key=f"note_{selected_id}", height=80)
+            if st.button("Ajouter la note", use_container_width=True, key=f"note_button_{selected_id}"):
+                if note.strip():
+                    store.add_private_note(selected_id, note)
+                    st.rerun()
+            if st.button("Archiver", use_container_width=True, key=f"archive_{selected_id}"):
+                store.archive(selected_id)
+                st.session_state.pop("workspace_selector", None)
+                st.rerun()
+            if st.button("Supprimer définitivement", use_container_width=True, key=f"delete_{selected_id}"):
+                store.delete(selected_id)
+                st.session_state.pop("workspace_selector", None)
+                st.session_state.pop("loaded_workspace_id", None)
+                st.session_state.messages = []
+                st.rerun()
+
+        markdown = store.export_markdown(selected_id)
+        st.download_button(
+            "Télécharger le mémo Markdown",
+            data=markdown,
+            file_name=f"{workspace.name}.md",
+            mime="text/markdown",
+            use_container_width=True,
+            key=f"download_md_{selected_id}",
+        )
+        st.download_button(
+            "Télécharger le mémo PDF",
+            data=store.export_pdf(selected_id),
+            file_name=f"{workspace.name}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key=f"download_pdf_{selected_id}",
+        )
+    return selected_id
+
+
+def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, str | None]:
     with st.sidebar:
         st.markdown(
             "<div style='font-family:Playfair Display,serif;font-size:1.3rem;"
@@ -379,7 +450,7 @@ def _render_sidebar() -> tuple[int, bool, str, str, str]:
             st.session_state.messages = []
             st.rerun()
 
-    return k, show_sources, backend, model, retriever
+    return k, show_sources, backend, model, retriever, _render_workspace_controls(store)
 
 
 # ── Citation formatting ───────────────────────────────────────────────────────
@@ -419,7 +490,13 @@ def _chunk_meta_labels(chunk: dict) -> str:
 # ── Source cards ──────────────────────────────────────────────────────────────
 
 
-def _render_sources(chunks: list[dict]) -> None:
+def _render_sources(
+    chunks: list[dict],
+    *,
+    workspace_store: WorkspaceStore | None = None,
+    workspace_id: str | None = None,
+    trace_id: str | None = None,
+) -> None:
     for i, c in enumerate(chunks, 1):
         score_pct = int(float(c.get("score", 0.0)) * 100)
         title = html.escape(c.get("titre", "Source inconnue")[:80])
@@ -465,6 +542,22 @@ def _render_sources(chunks: list[dict]) -> None:
             </div>""",
             unsafe_allow_html=True,
         )
+        if workspace_store is not None and workspace_id is not None:
+            source_id = str(c.get("chunk_id") or c.get("source") or f"source-{i}")
+            if st.button(
+                "Épingler cette source",
+                key=f"pin_{workspace_id}_{source_id}_{i}",
+                use_container_width=True,
+            ):
+                workspace_store.pin_source(
+                    workspace_id,
+                    source_id,
+                    str(c.get("titre") or "Source inconnue"),
+                    str(c.get("text") or ""),
+                    stable_url=str(c.get("source")) if c.get("source") else None,
+                    trace_id=trace_id,
+                )
+                st.success("Source épinglée dans le dossier.")
 
 
 def _render_trace(trace: dict) -> None:
@@ -755,14 +848,27 @@ def _build_trace_payload(
     }
 
 
-def _render_source_sections(show_sources: bool, used_chunks: list[dict], omitted_chunks: list[dict]) -> None:
+def _render_source_sections(
+    show_sources: bool,
+    used_chunks: list[dict],
+    omitted_chunks: list[dict],
+    *,
+    workspace_store: WorkspaceStore | None = None,
+    workspace_id: str | None = None,
+    trace_id: str | None = None,
+) -> None:
     if not show_sources or not used_chunks:
         return
     label = f"📄 {len(used_chunks)} source(s) injectée(s) au prompt"
     if omitted_chunks:
         label += f" (+{len(omitted_chunks)} tronquée(s))"
     with st.expander(label):
-        _render_sources(used_chunks)
+        _render_sources(
+            used_chunks,
+            workspace_store=workspace_store,
+            workspace_id=workspace_id,
+            trace_id=trace_id,
+        )
     if omitted_chunks:
         with st.expander(f"🧾 {len(omitted_chunks)} source(s) récupérée(s) mais non injectée(s)"):
             _render_sources(omitted_chunks)
@@ -878,10 +984,14 @@ def _handle_prompt(
     bm25,
     use_lancedb: bool = False,
     lancedb_table=None,
+    workspace_store: WorkspaceStore | None = None,
+    workspace_id: str | None = None,
 ) -> None:
     conversation_history = _collect_conversation_history(st.session_state.messages)
 
     st.session_state.messages.append({"role": "user", "content": prompt})
+    if workspace_store is not None and workspace_id is not None:
+        workspace_store.append_message(workspace_id, "user", prompt)
     with st.chat_message("user"):
         st.markdown(prompt)
 
@@ -978,7 +1088,14 @@ def _handle_prompt(
             f"_{len(used_chunks)} source(s) injectée(s) / {len(retrieved)} récupérée(s) · {elapsed:.1f}s · trace {trace_id}_"
         )
 
-        _render_source_sections(show_sources, used_chunks, omitted_chunks)
+        _render_source_sections(
+            show_sources,
+            used_chunks,
+            omitted_chunks,
+            workspace_store=workspace_store,
+            workspace_id=workspace_id,
+            trace_id=trace_id,
+        )
         with st.expander("🔎 Trace de requête"):
             _render_trace(trace_payload)
 
@@ -991,6 +1108,14 @@ def _handle_prompt(
             "trace": trace_payload,
         }
     )
+    if workspace_store is not None and workspace_id is not None:
+        workspace_store.append_message(
+            workspace_id,
+            "assistant",
+            response_text,
+            trace=trace_payload,
+            sources=used_chunks,
+        )
 
 
 # ── AutoEval Results Tab ──────────────────────────────────────────────────────
@@ -1092,7 +1217,8 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    k, show_sources, backend, model, retriever = _render_sidebar()
+    workspace_store = _get_workspace_store()
+    k, show_sources, backend, model, retriever, workspace_id = _render_sidebar(workspace_store)
 
     tab_chat, tab_autoeval = st.tabs(["💬 Chat", "📊 AutoEval"])
 
@@ -1120,6 +1246,14 @@ def main() -> None:
 
         if "messages" not in st.session_state:
             st.session_state.messages = []
+
+        if workspace_id is not None and st.session_state.get("loaded_workspace_id") != workspace_id:
+            workspace = workspace_store.get(workspace_id)
+            st.session_state.messages = list(workspace.conversations)
+            st.session_state.loaded_workspace_id = workspace_id
+        elif workspace_id is None and st.session_state.get("loaded_workspace_id") is not None:
+            st.session_state.messages = []
+            st.session_state.pop("loaded_workspace_id", None)
 
         chip_prompt = st.session_state.pop("_chip_query", None)
 
@@ -1154,6 +1288,8 @@ def main() -> None:
                 bm25,
                 use_lancedb,
                 lancedb_table,
+                workspace_store,
+                workspace_id,
             )
 
 

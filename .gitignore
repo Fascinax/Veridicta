@@ -41,6 +41,7 @@ data/raw/*
 data/processed/*
 data/embeddings/*
 data/index/*
+data/cases/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/embeddings/.gitkeep

@@ -224,6 +224,10 @@ deployment.
 Graph relation normalization, bounded traversal and provenance are documented
 in [`docs/graph-contract.md`](docs/graph-contract.md).
 
+Local case workspaces, isolated traces, pinned passages, private notes and
+Markdown/PDF memo export are documented in
+[`docs/workspaces.md`](docs/workspaces.md).
+
 ## Evaluation
 
 The versioned evaluation contract is documented in
