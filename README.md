@@ -217,6 +217,10 @@ Provider boundaries and environment selection are documented in
 remains compatible while source and infrastructure adapters can be introduced
 behind the same contracts.
 
+The optional Qdrant adapter and reproducible local comparison flow are covered
+in [`docs/qdrant.md`](docs/qdrant.md). Qdrant is never required by the default
+deployment.
+
 ## Evaluation
 
 The versioned evaluation contract is documented in
