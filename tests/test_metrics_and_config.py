@@ -5,6 +5,7 @@ import pytest
 from data_ingest.data_processor import _overlap_tail
 from eval.evaluate import _parse_args, _parse_judge_response, keyword_recall
 from retrievers.config import (
+    count_llm_tokens,
     default_model_for_backend,
     get_context_budget_tokens,
     resolve_llm_backend,
@@ -47,6 +48,18 @@ def test_context_budget_is_model_aware() -> None:
 
     assert copilot_budget > cerebras_budget
     assert cerebras_budget >= 1024
+
+
+def test_count_llm_tokens_falls_back_when_remote_tokenizer_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenTokenizer:
+        def encoding_for_model(self, _model: str):
+            raise RuntimeError("tokenizer data unavailable")
+
+    monkeypatch.setattr("retrievers.config.tiktoken", BrokenTokenizer())
+
+    assert count_llm_tokens("Bonjour, Monaco !", "gpt-4.1") == 4
 
 
 def test_parse_args_bertscore_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -142,11 +142,15 @@ def get_context_budget_tokens(backend: str, model: str) -> int:
     return max(1_024, usable_budget)
 
 
+def _fallback_token_count(text: str) -> int:
+    return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+
+
 def count_llm_tokens(text: str, model: str) -> int:
     if not text:
         return 0
     if tiktoken is None:
-        return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+        return _fallback_token_count(text)
 
     tokenizer_name = _TOKENIZER_MODEL_ALIASES.get(model, model)
     try:
@@ -154,6 +158,6 @@ def count_llm_tokens(text: str, model: str) -> int:
             encoding = tiktoken.get_encoding(tokenizer_name)
         else:
             encoding = tiktoken.encoding_for_model(tokenizer_name)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    return len(encoding.encode(text))
+        return len(encoding.encode(text))
+    except Exception:  # Tokenizer data may be unavailable in offline environments.
+        return _fallback_token_count(text)
