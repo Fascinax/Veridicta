@@ -425,6 +425,25 @@ The matrix is a routing and measurement aid, not an automatic legal decision
 system. Credentials and provider outputs remain outside the repository unless
 they are deliberately captured as reviewed benchmark artifacts.
 
+### Stage 2 fixed-context packets
+
+The six-case generation experiment has a strict packet validator. It checks
+that the question order, contract version, ordered context digest, prompt
+versions, human label, failure classification and decision are reproducible;
+answer metrics are required before the packet can be used as a completed
+comparison:
+
+```bash
+python -m eval.fixed_context \
+  --packet eval/results/stage2/fixed_context_packet.json \
+  --out eval/results/stage2/fixed_context_report.json
+```
+
+Use `--allow-pending-answers` only while preparing the packet before provider
+runs. It does not mark the experiment complete and never fabricates answers or
+metrics. Any retrieval or chunking change still requires the full 100-question
+regression gate.
+
 ## Test and Quality
 
 Run all tests with coverage:
