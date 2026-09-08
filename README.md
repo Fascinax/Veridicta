@@ -255,6 +255,14 @@ Chunk text, prompts and credentials are not written to this trace file.
 python -m eval.evaluate --retrieval-only --trace-out eval/results/trace.jsonl
 ```
 
+The optional explicit RAG state graph makes `classify → retrieve → rerank →
+graph_expand → assemble_context → answer → verify` transitions visible and
+independently testable. The legacy path remains the default; enable the graph
+for evaluation with `--orchestrator`, or for Streamlit with
+`VERIDICTA_ORCHESTRATOR_ENABLED=1`. See
+[`docs/orchestration.md`](docs/orchestration.md) for failure routing and trace
+details.
+
 Run full RAG through OmniRoute:
 
 ```bash

@@ -57,6 +57,7 @@ from retrievers.config import (
     resolve_llm_backend,
 )
 from retrievers.parent_child import ParentChildConfig
+from retrievers.orchestrator import OrchestrationEscalation, OrchestrationState, run_orchestration
 from retrievers.pipeline import RetrievalPipeline, RetrievalTrace
 from retrievers.query_expansion import (
     expand_query_legal_fr as _expand_query_legal_fr,
@@ -225,6 +226,7 @@ class EvalRunConfig:
     judge_backend: str = "copilot"
     judge_model: str | None = None
     trace_out: Path | None = None
+    orchestrator_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -950,15 +952,35 @@ def _generate_eval_results(
     ) -> tuple[int, EvalResult, dict[str, object]]:
         index, question, retrieved, retrieval_trace = task
         started_at = time.monotonic()
+        generation_trace: dict[str, object] = {}
         try:
-            answer_result = answer(
-                question.question,
-                retrieved,
-                model=config.model,
-                backend=active_backend,
-                prompt_version=config.prompt_version,
-                return_trace=True,
-            )
+            if config.orchestrator_enabled:
+                generated_answer, generation_trace = _generate_orchestrated_answer(
+                    question,
+                    retrieved,
+                    config,
+                )
+                orchestration_trace = generation_trace.get("orchestration")
+                if (
+                    isinstance(orchestration_trace, dict)
+                    and orchestration_trace.get("decision") == "escalate"
+                ):
+                    raise OrchestrationEscalation(
+                        str(generation_trace.get("orchestration_error") or "orchestration_failed")
+                    )
+            else:
+                answer_result = answer(
+                    question.question,
+                    retrieved,
+                    model=config.model,
+                    backend=active_backend,
+                    prompt_version=config.prompt_version,
+                    return_trace=True,
+                )
+                if isinstance(answer_result, tuple):
+                    generated_answer, generation_trace = answer_result
+                else:
+                    generated_answer = answer_result
         except Exception as exc:
             latency_s = round(time.monotonic() - started_at, 2)
             trace_id = new_trace_id()
@@ -986,6 +1008,7 @@ def _generate_eval_results(
                     "model": config.model,
                     "prompt_version": config.prompt_version,
                     "error": str(exc),
+                    "orchestration": generation_trace.get("orchestration"),
                 },
                 failure_classification,
             )
@@ -996,11 +1019,6 @@ def _generate_eval_results(
             )
             return index, result, trace_record
 
-        if isinstance(answer_result, tuple):
-            generated_answer, generation_trace = answer_result
-        else:
-            generated_answer = answer_result
-            generation_trace = {}
         prompt_trace = generation_trace.get("prompt_trace")
         if not isinstance(prompt_trace, PromptTrace):
             prompt_trace = _build_eval_prompt_trace(question, retrieved, config)
@@ -1043,6 +1061,7 @@ def _generate_eval_results(
                 "model": generation_trace.get("model", config.model),
                 "prompt_version": generation_trace.get("prompt_version", config.prompt_version),
                 "grounding": generation_trace.get("grounding"),
+                "orchestration": generation_trace.get("orchestration"),
             },
             failure_classification,
         )
@@ -1074,6 +1093,62 @@ def _generate_eval_results(
         [ordered_results[index] for index in range(1, question_count + 1)],
         [ordered_traces[index] for index in range(1, question_count + 1)],
     )
+
+
+def _generate_orchestrated_answer(
+    question: EvalQuestion,
+    retrieved: list[dict],
+    config: EvalRunConfig,
+) -> tuple[str, dict[str, object]]:
+    """Run generation through the explicit, independently testable graph."""
+
+    state = OrchestrationState(query=question.question, retrieved_chunks=retrieved)
+
+    def classify(current: OrchestrationState) -> None:
+        current.metadata["query_class"] = "legal_rag"
+
+    def retrieve(current: OrchestrationState) -> None:
+        current.metadata["retrieved_count"] = len(current.retrieved_chunks)
+
+    def assemble_context(current: OrchestrationState) -> None:
+        current.metadata["context_ready"] = bool(current.retrieved_chunks)
+
+    def answer_node(current: OrchestrationState) -> None:
+        answer_result = answer(
+            question.question,
+            current.retrieved_chunks,
+            model=config.model,
+            backend=config.backend,
+            prompt_version=config.prompt_version,
+            return_trace=True,
+        )
+        if isinstance(answer_result, tuple):
+            current.answer_text, generation_trace = answer_result
+        else:
+            current.answer_text = answer_result
+            generation_trace = {}
+        current.metadata["generation_trace"] = generation_trace
+
+    def verify(current: OrchestrationState) -> None:
+        if not current.answer_text.strip():
+            raise OrchestrationEscalation("empty_answer")
+
+    state_nodes = {
+        "classify": classify,
+        "retrieve": retrieve,
+        "assemble_context": assemble_context,
+        "answer": answer_node,
+        "verify": verify,
+    }
+    run_orchestration(state, state_nodes)
+    generation_trace = state.metadata.get("generation_trace", {})
+    if not isinstance(generation_trace, dict):
+        generation_trace = {}
+    generation_trace = dict(generation_trace)
+    generation_trace["orchestration"] = state.to_trace()
+    if state.decision == "escalate":
+        generation_trace["orchestration_error"] = state.failure_reason or "orchestration_failed"
+    return state.answer_text, generation_trace
 
 
 def _open_stream_file(stream_out: Path | None):
@@ -1665,6 +1740,11 @@ def _parse_args() -> argparse.Namespace:
         help="Skip LLM generation; score keyword recall against retrieved chunk text",
     )
     parser.add_argument(
+        "--orchestrator",
+        action="store_true",
+        help="Run generation through the explicit classify-to-verify RAG state graph",
+    )
+    parser.add_argument(
         "--backend",
         default=None,
         choices=["cerebras", "copilot", "omniroute"],
@@ -2059,6 +2139,7 @@ def _build_run_config(
         judge_backend=args.judge_backend,
         judge_model=args.judge_model,
         trace_out=trace_out,
+        orchestrator_enabled=args.orchestrator,
     )
 
 

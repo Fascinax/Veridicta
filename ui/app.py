@@ -25,6 +25,7 @@ _SECRET_KEYS = [
     "CEREBRAS_API_KEY", "GITHUB_PAT", "OMNIROUTE_API_KEY", "OMNIROUTE_BASE_URL",
     "OMNIROUTE_MODEL", "HF_API_TOKEN", "HUGGINGFACE_TOKEN", "LLM_BACKEND", "LLM_MODEL",
     "VERIDICTA_AUDIT_ENABLED", "VERIDICTA_AUDIT_DIR", "VERIDICTA_AUDIT_INCLUDE_CONTENT",
+    "VERIDICTA_ORCHESTRATOR_ENABLED",
 ]
 try:
     for _k in _SECRET_KEYS:
@@ -59,6 +60,7 @@ from retrievers.baseline_rag import (
 )
 from retrievers.config import count_llm_tokens, get_context_budget_tokens, resolve_llm_backend
 from retrievers.grounding import enforce_grounding
+from retrievers.orchestrator import OrchestrationEscalation, OrchestrationState, run_orchestration
 from retrievers.pipeline import RetrievalPipeline
 from retrievers.readiness import public_error_message
 from retrievers.traceability import (
@@ -485,6 +487,10 @@ def _render_trace(trace: dict) -> None:
         st.caption("Trace metadata-only : le texte des chunks et les secrets ne sont pas exposés dans ce détail.")
         with st.expander("Détail retrieval · top 20 → final"):
             st.json(retrieval_trace)
+    orchestration = trace.get("orchestration")
+    if orchestration:
+        with st.expander("Détail orchestration · transitions"):
+            st.json(orchestration)
 
 
 _MAX_HISTORY_TURNS = 3
@@ -640,6 +646,81 @@ def _generate_response(
     return trace_id, response_text, generation_trace
 
 
+def _orchestrator_enabled() -> bool:
+    return os.getenv("VERIDICTA_ORCHESTRATOR_ENABLED", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _generate_orchestrated_response(
+    prompt: str,
+    retrieved: list[dict],
+    backend: str,
+    model: str,
+    conversation_history: list[dict],
+) -> tuple[str, dict]:
+    """Generate one non-streaming response through the explicit RAG graph."""
+
+    state = OrchestrationState(query=prompt, retrieved_chunks=retrieved)
+
+    def classify(current: OrchestrationState) -> None:
+        current.metadata["query_class"] = "legal_rag"
+
+    def retrieve(current: OrchestrationState) -> None:
+        current.metadata["retrieved_count"] = len(current.retrieved_chunks)
+
+    def assemble_context(current: OrchestrationState) -> None:
+        current.metadata["context_ready"] = bool(current.retrieved_chunks)
+
+    def answer_node(current: OrchestrationState) -> None:
+        answer_result = answer(
+            prompt,
+            current.retrieved_chunks,
+            model=model,
+            backend=backend,
+            return_trace=True,
+            conversation_history=conversation_history,
+        )
+        if isinstance(answer_result, tuple):
+            current.answer_text, generation_trace = answer_result
+        else:
+            current.answer_text = answer_result
+            generation_trace = {}
+        current.metadata["generation_trace"] = generation_trace
+
+    def verify(current: OrchestrationState) -> None:
+        if not current.answer_text.strip():
+            raise OrchestrationEscalation("empty_answer")
+
+    state_nodes = {
+        "classify": classify,
+        "retrieve": retrieve,
+        "assemble_context": assemble_context,
+        "answer": answer_node,
+        "verify": verify,
+    }
+    run_orchestration(state, state_nodes)
+    generation_trace = state.metadata.get("generation_trace", {})
+    if not isinstance(generation_trace, dict):
+        generation_trace = {}
+    generation_trace = dict(generation_trace)
+    generation_trace["orchestration"] = state.to_trace()
+    if state.decision == "escalate":
+        generation_trace = {
+            **_fallback_generation_trace(prompt, backend, model),
+            **generation_trace,
+            "failure_stage": state.failure_stage,
+            "failure_reason": state.failure_reason,
+        }
+        response_text = "⚠️ La réponse doit être vérifiée par un opérateur humain."
+    else:
+        response_text = state.answer_text
+    return response_text, generation_trace
+
+
 def _build_trace_payload(
     trace_id: str,
     retriever_label: str,
@@ -669,6 +750,7 @@ def _build_trace_payload(
         "max_context_tokens": generation_trace.get("max_context_tokens", 0),
         "cited_source_numbers": citation_source_numbers(response_text),
         "retrieval_trace": serialized_retrieval_trace,
+        "orchestration": generation_trace.get("orchestration"),
         "audit_log_path": str(audit_log_path) if audit_log_path is not None else str(get_audit_log_path()),
     }
 
@@ -826,19 +908,32 @@ def _handle_prompt(
         response_text = ""
         generation_trace = _fallback_generation_trace(prompt, backend, model)
         try:
-            token_gen, generation_trace = answer_stream(
-                prompt,
-                retrieved,
-                model=model,
-                backend=backend,
-                conversation_history=conversation_history,
-            )
-            for token in token_gen:
-                response_text += token
+            if _orchestrator_enabled():
+                response_text, generation_trace = _generate_orchestrated_response(
+                    prompt,
+                    retrieved,
+                    backend,
+                    model,
+                    conversation_history,
+                )
                 response_placeholder.markdown(
-                    _format_answer_with_citations(response_text) + " ▌",
+                    _format_answer_with_citations(response_text),
                     unsafe_allow_html=True,
                 )
+            else:
+                token_gen, generation_trace = answer_stream(
+                    prompt,
+                    retrieved,
+                    model=model,
+                    backend=backend,
+                    conversation_history=conversation_history,
+                )
+                for token in token_gen:
+                    response_text += token
+                    response_placeholder.markdown(
+                        _format_answer_with_citations(response_text) + " ▌",
+                        unsafe_allow_html=True,
+                    )
         except Exception as exc:
             err_suffix = f"\n\n⚠️ {public_error_message(exc)}"
             response_text = (response_text + err_suffix) if response_text else f"⚠️ {public_error_message(exc)}"
