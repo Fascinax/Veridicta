@@ -58,6 +58,7 @@ from retrievers.baseline_rag import (
     _load_embedder,
 )
 from retrievers.config import count_llm_tokens, get_context_budget_tokens, resolve_llm_backend
+from retrievers.grounding import enforce_grounding
 from retrievers.pipeline import RetrievalPipeline
 from retrievers.traceability import (
     append_audit_event,
@@ -840,7 +841,11 @@ def _handle_prompt(
         except Exception as exc:
             err_suffix = f"\n\n⚠️ Erreur de génération : {exc}"
             response_text = (response_text + err_suffix) if response_text else f"⚠️ Erreur : {exc}"
-        response_text = normalize_citations(response_text)
+        response_text, grounding_report = enforce_grounding(
+            response_text,
+            generation_trace.get("used_chunks", []),
+        )
+        generation_trace["grounding"] = grounding_report.to_dict()
 
         elapsed = time.perf_counter() - t0
         used_chunks = generation_trace.get("used_chunks", [])

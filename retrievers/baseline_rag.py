@@ -51,6 +51,7 @@ from retrievers.traceability import (
     new_trace_id,
     normalize_citations,
 )
+from retrievers.grounding import enforce_grounding
 
 load_dotenv()
 
@@ -500,7 +501,10 @@ def answer(
         response_text = _answer_omniroute(system, user_message, resolved_model)
     else:  # pragma: no cover - guarded by resolve_llm_backend
         raise ValueError(f"Unsupported backend: {active_backend!r}")
-    response_text = normalize_citations(response_text)
+    response_text, grounding_report = enforce_grounding(
+        response_text,
+        prompt_trace.used_chunks,
+    )
 
     if not return_trace:
         return response_text
@@ -515,6 +519,7 @@ def answer(
         "backend": active_backend,
         "model": resolved_model,
         "prompt_version": prompt_version,
+        "grounding": grounding_report.to_dict(),
     }
 
 
@@ -575,6 +580,7 @@ def answer_stream(
         "backend": active_backend,
         "model": resolved_model,
         "prompt_version": prompt_version,
+        "grounding": None,
     }
     return token_gen, trace
 

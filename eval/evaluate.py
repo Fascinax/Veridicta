@@ -193,6 +193,7 @@ class EvalResult:
     trace_id: str | None = None
     failure_stage: str | None = None
     failure_reason: str | None = None
+    unsupported_claim_rate: float | None = None
 
 
 @dataclass(frozen=True)
@@ -786,6 +787,14 @@ def _source_titles(retrieved_chunks: list[dict]) -> list[str]:
     return [chunk.get("title") or chunk.get("source_type", "?") for chunk in retrieved_chunks]
 
 
+def _grounding_rate(generation_trace: dict[str, object]) -> float | None:
+    grounding = generation_trace.get("grounding")
+    if not isinstance(grounding, dict):
+        return None
+    value = grounding.get("unsupported_claim_rate")
+    return float(value) if isinstance(value, (int, float)) else None
+
+
 def _build_eval_result(
     question: EvalQuestion,
     retrieved_chunks: list[dict],
@@ -795,6 +804,7 @@ def _build_eval_result(
     include_word_f1: bool,
     trace_id: str | None = None,
     failure_classification: dict[str, object] | None = None,
+    unsupported_claim_rate: float | None = None,
 ) -> EvalResult:
     coverage = context_coverage(generated_answer, retrieved_chunks)
     word_f1_score = word_f1(generated_answer, question.reference_answer) if include_word_f1 else None
@@ -825,6 +835,7 @@ def _build_eval_result(
         trace_id=trace_id,
         failure_stage=failure_stage,
         failure_reason=failure_reason,
+        unsupported_claim_rate=unsupported_claim_rate,
     )
 
 
@@ -1003,6 +1014,7 @@ def _generate_eval_results(
             latency_s=latency_s,
             include_word_f1=True,
             trace_id=trace_id,
+            unsupported_claim_rate=_grounding_rate(generation_trace),
         )
         failure_classification = classify_failure(
             question,
@@ -1019,6 +1031,7 @@ def _generate_eval_results(
             include_word_f1=True,
             trace_id=trace_id,
             failure_classification=failure_classification,
+            unsupported_claim_rate=_grounding_rate(generation_trace),
         )
         trace_record = _build_trace_record(
             question,
@@ -1029,6 +1042,7 @@ def _generate_eval_results(
                 "backend": generation_trace.get("backend", active_backend),
                 "model": generation_trace.get("model", config.model),
                 "prompt_version": generation_trace.get("prompt_version", config.prompt_version),
+                "grounding": generation_trace.get("grounding"),
             },
             failure_classification,
         )

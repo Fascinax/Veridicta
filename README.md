@@ -265,6 +265,12 @@ The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,
 `generation`, and `none`. They identify the first observable loss against the
 reference keywords; they do not replace the human verdict or a legal review.
 
+Generated answers also carry a claim-level grounding report. Citations outside
+the injected context are removed, claims with insufficient evidence are
+replaced by an abstention, and new evaluation rows expose the optional
+`unsupported_claim_rate` metric. This deterministic guard is a safety layer,
+not a semantic legal-proof system.
+
 Benchmark the current FlashRank model against the local multilingual BGE
 reranker:
 

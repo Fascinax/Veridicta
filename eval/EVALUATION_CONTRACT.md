@@ -146,6 +146,21 @@ copying the legal corpus or provider credentials. Failure stages are
 heuristic diagnostics (`retrieval`, `ranking`, `context_assembly`,
 `generation`, or `none`) and never override the human annotation labels.
 
+## Claim-level grounding guard
+
+Generated answers pass through `retrievers.grounding` after citation
+normalisation. Each answer segment is checked for source markers that exist in
+the injected prompt window and for lexical overlap with the cited evidence.
+Unsupported segments are omitted from the returned answer and replaced with a
+clear abstention sentence. The optional result field
+`unsupported_claim_rate` is:
+
+`unsupported claims / (supported claims + unsupported claims)`.
+
+Explicit source-limitations are recorded as `abstained` and excluded from that
+ratio. This is a conservative deterministic safety check, not a substitute
+for human legal review or a semantic entailment model.
+
 ## Structural chunking benchmark contract
 
 `python -m eval.benchmark_chunking` compares the compatibility fixed-size index
