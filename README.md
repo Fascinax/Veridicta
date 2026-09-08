@@ -228,6 +228,11 @@ Local case workspaces, isolated traces, pinned passages, private notes and
 Markdown/PDF memo export are documented in
 [`docs/workspaces.md`](docs/workspaces.md).
 
+Fail-closed temporal retrieval, explicit effective-date windows and generic
+version comparison are documented in
+[`docs/temporal.md`](docs/temporal.md). Sources without proven effective dates
+are excluded from an `as_of` query instead of being mixed with historical law.
+
 ## Evaluation
 
 The versioned evaluation contract is documented in

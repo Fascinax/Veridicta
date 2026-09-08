@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -354,7 +355,7 @@ def _render_workspace_controls(store: WorkspaceStore) -> str | None:
     return selected_id
 
 
-def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, str | None]:
+def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, str | None, date | None]:
     with st.sidebar:
         st.markdown(
             "<div style='font-family:Playfair Display,serif;font-size:1.3rem;"
@@ -367,6 +368,18 @@ def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, st
 
         k = st.slider("Nombre de sources", min_value=1, max_value=10, value=DEFAULT_TOP_K)
         show_sources = st.toggle("Afficher les sources", value=True)
+        temporal_enabled = st.toggle(
+            "Filtrer par date d’effet",
+            value=False,
+            help="N’utilise que les sources portant des dates d’effet explicites.",
+        )
+        as_of = st.date_input(
+            "Droit applicable au",
+            value=date.today(),
+            disabled=not temporal_enabled,
+        )
+        if temporal_enabled:
+            st.caption("Les sources sans dates d’effet explicites sont exclues.")
 
         # Retriever selector
         if _HYBRID_AVAILABLE or _GRAPH_AVAILABLE or _LANCEDB_AVAILABLE:
@@ -450,7 +463,7 @@ def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, st
             st.session_state.messages = []
             st.rerun()
 
-    return k, show_sources, backend, model, retriever, _render_workspace_controls(store)
+    return k, show_sources, backend, model, retriever, _render_workspace_controls(store), as_of if temporal_enabled else None
 
 
 # ── Citation formatting ───────────────────────────────────────────────────────
@@ -652,6 +665,7 @@ def _retrieve_chunks_with_trace(
     bm25,
     use_lancedb: bool = False,
     lancedb_table=None,
+    as_of: date | None = None,
 ) -> tuple[list[dict], object]:
     if use_lancedb and use_graph:
         retriever = "lancedb_graph"
@@ -680,6 +694,7 @@ def _retrieve_chunks_with_trace(
         k=k,
         query_expansion=True,
         trace_candidate_k=20,
+        as_of=as_of,
     )
 
 
@@ -695,6 +710,7 @@ def _retrieve_chunks(
     bm25,
     use_lancedb: bool = False,
     lancedb_table=None,
+    as_of: date | None = None,
 ) -> list[dict]:
     retrieved, _ = _retrieve_chunks_with_trace(
         prompt,
@@ -708,6 +724,7 @@ def _retrieve_chunks(
         bm25,
         use_lancedb,
         lancedb_table,
+        as_of=as_of,
     )
     return retrieved
 
@@ -986,6 +1003,7 @@ def _handle_prompt(
     lancedb_table=None,
     workspace_store: WorkspaceStore | None = None,
     workspace_id: str | None = None,
+    as_of: date | None = None,
 ) -> None:
     conversation_history = _collect_conversation_history(st.session_state.messages)
 
@@ -1011,6 +1029,7 @@ def _handle_prompt(
                 bm25,
                 use_lancedb,
                 lancedb_table,
+                as_of=as_of,
             )
 
         response_placeholder = st.empty()
@@ -1218,7 +1237,7 @@ def main() -> None:
     )
 
     workspace_store = _get_workspace_store()
-    k, show_sources, backend, model, retriever, workspace_id = _render_sidebar(workspace_store)
+    k, show_sources, backend, model, retriever, workspace_id, as_of = _render_sidebar(workspace_store)
 
     tab_chat, tab_autoeval = st.tabs(["💬 Chat", "📊 AutoEval"])
 
@@ -1290,6 +1309,7 @@ def main() -> None:
                 lancedb_table,
                 workspace_store,
                 workspace_id,
+                as_of=as_of,
             )
 
 

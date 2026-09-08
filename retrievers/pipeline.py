@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from retrievers.adaptive_router import RouteDecision, choose_retrieval_route
 from retrievers.baseline_rag import DEFAULT_TOP_K, retrieve
 from retrievers.parent_child import ParentChildConfig, expand_parent_child_candidates
 from retrievers.query_expansion import expand_query_legal_fr
 from retrievers.traceability import summarize_chunks, text_summary
+from retrievers.temporal import select_as_of
 
 try:
     from retrievers.hybrid_rag import hybrid_retrieve
@@ -63,6 +65,8 @@ class RetrievalTrace:
     parent_child_enabled: bool = False
     requested_retriever: str = "faiss"
     route_decision: dict | None = None
+    as_of: str | None = None
+    temporal_unknown_count: int = 0
 
     def to_dict(self) -> dict:
         """Return a safe trace payload without chunk text or credentials."""
@@ -84,6 +88,8 @@ class RetrievalTrace:
             "reranked_candidates": summarize_chunks(self.reranked_candidates, "reranked"),
             "final_candidates": summarize_chunks(self.final_candidates, "final"),
             "decisions": self.decisions,
+            "as_of": self.as_of,
+            "temporal_unknown_count": self.temporal_unknown_count,
         }
 
 
@@ -109,6 +115,7 @@ class RetrievalPipeline:
         hybrid_faiss_weight: float | None = None,
         hybrid_bm25_weight: float | None = None,
         parent_child_config: ParentChildConfig | None = None,
+        as_of: date | None = None,
     ) -> list[dict]:
         selected_retriever, _ = self._resolve_retriever(query, retriever)
         retrieval_query = expand_query_legal_fr(query) if query_expansion else query
@@ -120,15 +127,18 @@ class RetrievalPipeline:
             hybrid_faiss_weight=hybrid_faiss_weight,
             hybrid_bm25_weight=hybrid_bm25_weight,
         )
+        if as_of is not None:
+            retrieved = select_as_of(retrieved, as_of).selected
 
         if not use_reranker:
             if parent_child_config is None:
                 return retrieved
-            return expand_parent_child_candidates(
+            expanded = expand_parent_child_candidates(
                 retrieved,
                 self.chunks or [],
                 parent_child_config,
             )
+            return select_as_of(expanded, as_of).selected if as_of is not None else expanded
         if rerank is None:
             raise RuntimeError("FlashRank reranker unavailable. Install flashrank to enable reranking.")
         final_candidates = rerank(
@@ -140,7 +150,8 @@ class RetrievalPipeline:
         )
         if parent_child_config is None:
             return final_candidates
-        return expand_parent_child_candidates(final_candidates, self.chunks or [], parent_child_config)
+        expanded = expand_parent_child_candidates(final_candidates, self.chunks or [], parent_child_config)
+        return select_as_of(expanded, as_of).selected if as_of is not None else expanded
 
     def retrieve_with_trace(
         self,
@@ -156,6 +167,7 @@ class RetrievalPipeline:
         hybrid_bm25_weight: float | None = None,
         trace_candidate_k: int = RAW_TRACE_CANDIDATE_K,
         parent_child_config: ParentChildConfig | None = None,
+        as_of: date | None = None,
     ) -> tuple[list[dict], RetrievalTrace]:
         """Retrieve final chunks and preserve every ranking decision."""
         if k < 1:
@@ -179,6 +191,19 @@ class RetrievalPipeline:
             hybrid_faiss_weight=hybrid_faiss_weight,
             hybrid_bm25_weight=hybrid_bm25_weight,
         )
+        temporal_unknown_count = 0
+        temporal_decisions: list[dict[str, object]] = []
+        temporal_unknown_ids: set[str] = set()
+        if as_of is not None:
+            temporal_selection = select_as_of(raw_candidates, as_of)
+            raw_candidates = temporal_selection.selected
+            temporal_unknown_count = temporal_selection.unknown_count
+            temporal_decisions = temporal_selection.decisions
+            temporal_unknown_ids = {
+                str(decision["chunk_id"])
+                for decision in temporal_decisions
+                if decision["decision"] == "unknown"
+            }
 
         decisions = []
         if route_decision is not None:
@@ -201,6 +226,16 @@ class RetrievalPipeline:
                 "candidate_count": min(len(raw_candidates), RAW_TRACE_CANDIDATE_K),
             },
         ])
+        temporal_trace_decision: dict[str, object] | None = None
+        if as_of is not None:
+            temporal_trace_decision = {
+                "stage": "temporal_filter",
+                "policy": "explicit_effective_window",
+                "as_of": as_of.isoformat(),
+                "unknown_count": temporal_unknown_count,
+                "decision_count": len(temporal_decisions),
+            }
+            decisions.append(temporal_trace_decision)
 
         reranked_candidates: list[dict] = []
         if use_reranker:
@@ -253,6 +288,22 @@ class RetrievalPipeline:
                 self.chunks,
                 parent_child_config,
             )
+            if as_of is not None:
+                expanded_temporal = select_as_of(final_candidates, as_of)
+                final_candidates = expanded_temporal.selected
+                temporal_unknown_ids.update(
+                    str(decision["chunk_id"])
+                    for decision in expanded_temporal.decisions
+                    if decision["decision"] == "unknown"
+                )
+                temporal_unknown_count = len(temporal_unknown_ids)
+                if temporal_trace_decision is not None:
+                    temporal_trace_decision["unknown_count"] = temporal_unknown_count
+                    temporal_trace_decision["decision_count"] = (
+                        int(temporal_trace_decision["decision_count"])
+                        + len(expanded_temporal.decisions)
+                    )
+                    temporal_trace_decision["post_expansion_candidate_count"] = len(final_candidates)
             decisions.append(
                 {
                     "stage": "parent_child",
@@ -277,6 +328,8 @@ class RetrievalPipeline:
             parent_child_enabled=parent_child_config is not None,
             requested_retriever=retriever,
             route_decision=route_decision.to_dict() if route_decision else None,
+            as_of=as_of.isoformat() if as_of is not None else None,
+            temporal_unknown_count=temporal_unknown_count,
         )
         return final_candidates, trace
 

@@ -30,7 +30,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import Stemmer
@@ -227,6 +227,7 @@ class EvalRunConfig:
     judge_model: str | None = None
     trace_out: Path | None = None
     orchestrator_enabled: bool = False
+    as_of: date | None = None
 
 
 @dataclass(frozen=True)
@@ -779,6 +780,7 @@ def _retrieve_contexts_with_trace(
             hybrid_faiss_weight=config.hybrid_faiss_weight,
             hybrid_bm25_weight=config.hybrid_bm25_weight,
             parent_child_config=parent_child_config,
+            as_of=config.as_of,
         )
         retrieved_all.append(retrieved)
         traces.append(trace)
@@ -1694,6 +1696,13 @@ def print_comparison(all_results: dict[str, list[EvalResult]]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _parse_iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected ISO date YYYY-MM-DD") from exc
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Evaluate Veridicta RAG pipeline on Monaco labour law questions."
@@ -1738,6 +1747,12 @@ def _parse_args() -> argparse.Namespace:
         "--retrieval-only",
         action="store_true",
         help="Skip LLM generation; score keyword recall against retrieved chunk text",
+    )
+    parser.add_argument(
+        "--as-of",
+        type=_parse_iso_date,
+        default=None,
+        help="Filter retrieval to sources explicitly effective on this ISO date (YYYY-MM-DD)",
     )
     parser.add_argument(
         "--orchestrator",
@@ -2140,6 +2155,7 @@ def _build_run_config(
         judge_model=args.judge_model,
         trace_out=trace_out,
         orchestrator_enabled=args.orchestrator,
+        as_of=args.as_of,
     )
 
 
