@@ -292,6 +292,7 @@ def _chunk_summary(chunk: dict, used_in_prompt: bool) -> dict:
         "vector_rrf": chunk.get("vector_rrf"),
         "fts_rrf": chunk.get("fts_rrf"),
         "graph_cite_boost": chunk.get("graph_cite_boost"),
+        "graph_relation_path": chunk.get("graph_relation_path"),
         "rerank_rank": chunk.get("rerank_rank"),
         "rerank_score": chunk.get("rerank_score"),
         "used_in_prompt": used_in_prompt,

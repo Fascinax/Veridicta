@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 
 from retrievers.config import GRAPH_CONFIG
+from retrievers.graph_contract import bounded_graph_paths, graph_path_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,13 @@ def graph_retrieve(
 
     # ── 2. Graph expansion ────────────────────────────────────────────────
     seed_doc_ids = list({c["doc_id"] for c in seed_chunks if c.get("doc_id")})
+    graph_paths = bounded_graph_paths(
+        neo4j_manager,
+        seed_doc_ids,
+        max_depth=1,
+        max_nodes=max(20, k * SEED_MULTIPLIER),
+    )
+    path_by_target = {path.target_id: path for path in graph_paths}
 
     # Collect neighbor doc_ids and per-doc boost totals from all edge types
     boost_score: dict[str, float] = {}
@@ -150,6 +158,9 @@ def graph_retrieve(
     _add_boost(neo4j_manager.get_modifie_doc_ids(seed_doc_ids), MODIFIE_BOOST)
     # VOIR_ARTICLE (legislation cross-refs → target doc)
     _add_boost(neo4j_manager.get_voir_article_doc_ids(seed_doc_ids), VOIR_ARTICLE_BOOST)
+    for target_id in path_by_target:
+        if target_id not in seed_doc_ids:
+            boost_score.setdefault(target_id, CITE_BOOST)
 
     neighbor_doc_ids = set(boost_score.keys())
 
@@ -178,6 +189,8 @@ def graph_retrieve(
                 neighbor["score"] = neighbor.get("score", 0.5) + total_boost
                 neighbor["retrieval_method"] = "graph_neighbor"
                 neighbor["graph_cite_boost"] = round(total_boost, 6)
+                if doc_id in path_by_target:
+                    neighbor["graph_relation_path"] = graph_path_metadata(path_by_target[doc_id])
                 pool.append(neighbor)
 
     # ── 4. Rank & return ──────────────────────────────────────────────────

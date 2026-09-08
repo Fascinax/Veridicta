@@ -36,6 +36,9 @@ from pathlib import Path
 import jsonlines
 from dotenv import load_dotenv
 
+from retrievers.graph_contract import NEO4J_TRAVERSAL_RELATIONS, normalize_relation
+from retrievers.providers import GraphPath
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -504,6 +507,48 @@ class Neo4jManager:
                 ids=doc_ids,
             )
             return [r["id"] for r in result]
+
+    def expand_graph_paths(
+        self,
+        seed_ids: list[str],
+        *,
+        max_depth: int = 1,
+        max_nodes: int = 50,
+    ) -> list[GraphPath]:
+        """Return bounded paths using legacy or generic relation names."""
+        if not 1 <= max_depth <= 3:
+            raise ValueError("max_depth must be between 1 and 3")
+        if not 1 <= max_nodes <= 500:
+            raise ValueError("max_nodes must be between 1 and 500")
+        if not seed_ids or not self._driver:
+            return []
+        relation_names = list(NEO4J_TRAVERSAL_RELATIONS)
+        query = f"""
+            MATCH p=(seed:Doc)-[*1..{max_depth}]-(target:Doc)
+            WHERE seed.id IN $seed_ids
+              AND seed.id <> target.id
+              AND ALL(edge IN relationships(p) WHERE type(edge) IN $relation_names)
+            RETURN seed.id AS source_id,
+                   target.id AS target_id,
+                   [edge IN relationships(p) | type(edge)] AS relations,
+                   [node IN nodes(p) | node.id] AS node_ids
+            LIMIT {max_nodes}
+        """
+        with self._driver.session() as session:
+            result = session.run(
+                query,
+                seed_ids=list(dict.fromkeys(seed_ids)),
+                relation_names=relation_names,
+            )
+            return [
+                GraphPath(
+                    source_id=str(row["source_id"]),
+                    target_id=str(row["target_id"]),
+                    relations=tuple(normalize_relation(str(relation)) for relation in row["relations"]),
+                    node_ids=tuple(str(node_id) for node_id in row["node_ids"]),
+                )
+                for row in result
+            ]
 
     def stats(self) -> dict:
         """Return a dict of node/edge counts."""

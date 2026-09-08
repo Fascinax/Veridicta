@@ -221,6 +221,9 @@ The optional Qdrant adapter and reproducible local comparison flow are covered
 in [`docs/qdrant.md`](docs/qdrant.md). Qdrant is never required by the default
 deployment.
 
+Graph relation normalization, bounded traversal and provenance are documented
+in [`docs/graph-contract.md`](docs/graph-contract.md).
+
 ## Evaluation
 
 The versioned evaluation contract is documented in
