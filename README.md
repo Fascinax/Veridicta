@@ -444,6 +444,22 @@ runs. It does not mark the experiment complete and never fabricates answers or
 metrics. Any retrieval or chunking change still requires the full 100-question
 regression gate.
 
+## Synthetic support RAG demo
+
+The architecture can be exercised without confidential company data or a live
+provider through a small synthetic Confluence/SharePoint-like support corpus:
+
+```bash
+python -m demo.support_rag --check
+python -m demo.support_rag
+```
+
+The demo covers billing, connectivity and activation/troubleshooting. It
+shows document citations, one related-document graph hop, and an
+insufficient-evidence refusal that escalates to a human. It is an architecture
+smoke test only; the Monegasque legal corpus remains the primary regression
+benchmark.
+
 ## Test and Quality
 
 Run all tests with coverage:
