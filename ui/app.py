@@ -60,6 +60,7 @@ from retrievers.baseline_rag import (
 from retrievers.config import count_llm_tokens, get_context_budget_tokens, resolve_llm_backend
 from retrievers.grounding import enforce_grounding
 from retrievers.pipeline import RetrievalPipeline
+from retrievers.readiness import public_error_message
 from retrievers.traceability import (
     append_audit_event,
     build_prompt_trace,
@@ -631,10 +632,10 @@ def _generate_response(
             conversation_history=conversation_history,
         )
     except EnvironmentError as exc:
-        response_text = f"⚠️ Clé API manquante : {exc}"
+        response_text = f"⚠️ {public_error_message(exc)}"
         generation_trace = _fallback_generation_trace(prompt, backend, model)
     except Exception as exc:
-        response_text = f"⚠️ Erreur : {exc}"
+        response_text = f"⚠️ {public_error_message(exc)}"
         generation_trace = _fallback_generation_trace(prompt, backend, model)
     return trace_id, response_text, generation_trace
 
@@ -839,8 +840,8 @@ def _handle_prompt(
                     unsafe_allow_html=True,
                 )
         except Exception as exc:
-            err_suffix = f"\n\n⚠️ Erreur de génération : {exc}"
-            response_text = (response_text + err_suffix) if response_text else f"⚠️ Erreur : {exc}"
+            err_suffix = f"\n\n⚠️ {public_error_message(exc)}"
+            response_text = (response_text + err_suffix) if response_text else f"⚠️ {public_error_message(exc)}"
         response_text, grounding_report = enforce_grounding(
             response_text,
             generation_trace.get("used_chunks", []),

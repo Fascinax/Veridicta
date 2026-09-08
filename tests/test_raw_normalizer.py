@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -40,7 +41,11 @@ def test_normalize_jsonl_snapshot_deduplicates_ids_and_writes_manifest(tmp_path)
 
     assert report.duplicate_ids == 1
     assert report.objects_written == 1
-    assert json.loads(manifest.read_text(encoding="utf-8"))["output_sha256"] == report.output_sha256
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert manifest_payload["output_sha256"] == report.output_sha256
+    assert manifest_payload["input_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert manifest_payload["source_filename"] == "raw.jsonl"
+    assert manifest_payload["generated_at_utc"]
     assert json.loads(output.read_text(encoding="utf-8").splitlines()[0])["text"] == "first"
 
 

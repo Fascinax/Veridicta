@@ -66,6 +66,9 @@ EMBED_DIMENSION = EMBEDDING_CONFIG.dimension
 EMBED_BATCH_SIZE = EMBEDDING_CONFIG.batch_size
 QUERY_EMBED_CACHE_SIZE = EMBEDDING_CONFIG.query_cache_size
 DEFAULT_TOP_K = 5
+NO_SOURCES_RESPONSE = (
+    "Les sources fournies ne permettent pas de répondre de manière fiable à cette question."
+)
 
 # LLM backend configuration
 
@@ -489,6 +492,24 @@ def answer(
         conversation_history=conversation_history,
         token_counter=lambda text: count_llm_tokens(text, resolved_model),
     )
+    if not context_chunks:
+        response_text, grounding_report = enforce_grounding(NO_SOURCES_RESPONSE, [])
+        if not return_trace:
+            return response_text
+        return response_text, {
+            "prompt_trace": prompt_trace,
+            "used_chunks": prompt_trace.used_chunks,
+            "omitted_chunks": prompt_trace.omitted_chunks,
+            "context_chars": prompt_trace.context_chars,
+            "context_tokens": prompt_trace.context_tokens,
+            "max_context_tokens": prompt_trace.max_context_tokens,
+            "backend": active_backend,
+            "model": resolved_model,
+            "prompt_version": prompt_version,
+            "grounding": grounding_report.to_dict(),
+            "failure_stage": "retrieval",
+            "failure_reason": "no_sources",
+        }
     user_message = prompt_trace.user_message
     
     system = _resolve_system_prompt(prompt_version)
@@ -557,6 +578,21 @@ def answer_stream(
         conversation_history=conversation_history,
         token_counter=lambda text: count_llm_tokens(text, resolved_model),
     )
+    if not context_chunks:
+        return iter((NO_SOURCES_RESPONSE,)), {
+            "prompt_trace": prompt_trace,
+            "used_chunks": prompt_trace.used_chunks,
+            "omitted_chunks": prompt_trace.omitted_chunks,
+            "context_chars": prompt_trace.context_chars,
+            "context_tokens": prompt_trace.context_tokens,
+            "max_context_tokens": prompt_trace.max_context_tokens,
+            "backend": active_backend,
+            "model": resolved_model,
+            "prompt_version": prompt_version,
+            "grounding": None,
+            "failure_stage": "retrieval",
+            "failure_reason": "no_sources",
+        }
     user_message = prompt_trace.user_message
 
     system = _resolve_system_prompt(prompt_version)

@@ -87,9 +87,14 @@ class OmniRouteClient:
         """Send one request and return its text content."""
         client = self._client()
         for _ in range(MAX_EMPTY_OUTPUT_ATTEMPTS):
-            completion = client.chat.completions.create(
-                **self._request_payload(system=system, user=user, temperature=temperature)
-            )
+            try:
+                completion = client.chat.completions.create(
+                    **self._request_payload(system=system, user=user, temperature=temperature)
+                )
+            except Exception as exc:
+                if isinstance(exc, TimeoutError) or type(exc).__name__ == "APITimeoutError":
+                    raise OmniRouteError("OmniRoute provider timeout.") from exc
+                raise
             choices = getattr(completion, "choices", [])
             if not choices:
                 raise OmniRouteError("OmniRoute returned no choices.")
@@ -114,18 +119,23 @@ class OmniRouteClient:
         client = self._client()
         for _ in range(MAX_EMPTY_OUTPUT_ATTEMPTS):
             emitted_text = False
-            stream = client.chat.completions.create(
-                **self._request_payload(system=system, user=user, temperature=temperature),
-                stream=True,
-            )
-            for chunk in stream:
-                choices = getattr(chunk, "choices", [])
-                if not choices:
-                    continue
-                delta = getattr(getattr(choices[0], "delta", None), "content", None)
-                if isinstance(delta, str) and delta:
-                    emitted_text = True
-                    yield delta
+            try:
+                stream = client.chat.completions.create(
+                    **self._request_payload(system=system, user=user, temperature=temperature),
+                    stream=True,
+                )
+                for chunk in stream:
+                    choices = getattr(chunk, "choices", [])
+                    if not choices:
+                        continue
+                    delta = getattr(getattr(choices[0], "delta", None), "content", None)
+                    if isinstance(delta, str) and delta:
+                        emitted_text = True
+                        yield delta
+            except Exception as exc:
+                if isinstance(exc, TimeoutError) or type(exc).__name__ == "APITimeoutError":
+                    raise OmniRouteError("OmniRoute provider timeout.") from exc
+                raise
             if emitted_text:
                 return
 

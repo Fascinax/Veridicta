@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -21,6 +22,9 @@ class NormalizationReport:
     invalid_lines: int
     missing_ids: int
     output_sha256: str
+    input_sha256: str
+    source_filename: str
+    generated_at_utc: str
 
     def to_dict(self) -> dict[str, int | str]:
         return asdict(self)
@@ -117,6 +121,9 @@ def normalize_jsonl_snapshot(
         invalid_lines=invalid_lines,
         missing_ids=missing_ids,
         output_sha256=output_digest,
+        input_sha256=hashlib.sha256(input_path.read_bytes()).hexdigest(),
+        source_filename=input_path.name,
+        generated_at_utc=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     )
     target_manifest = manifest_path or output_path.with_suffix(output_path.suffix + ".manifest.json")
     target_manifest.parent.mkdir(parents=True, exist_ok=True)

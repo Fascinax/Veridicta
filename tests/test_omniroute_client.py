@@ -79,6 +79,19 @@ def test_chat_uses_openai_compatible_request(monkeypatch: pytest.MonkeyPatch) ->
     )
 
 
+def test_chat_normalizes_provider_timeout_without_exposing_error_details() -> None:
+    mock_openai_client = MagicMock()
+    mock_openai_client.chat.completions.create.side_effect = TimeoutError(
+        "api_key=sk-secret-value"
+    )
+
+    with patch("tools.omniroute_client.OpenAI", return_value=mock_openai_client):
+        with pytest.raises(OmniRouteError, match="provider timeout") as raised:
+            OmniRouteClient("auto").chat(system="system", user="question")
+
+    assert "sk-secret-value" not in str(raised.value)
+
+
 def test_chat_retries_empty_output_until_text_is_returned() -> None:
     mock_openai_client = MagicMock()
     mock_openai_client.chat.completions.create.side_effect = [
