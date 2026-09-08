@@ -23,6 +23,7 @@ Veridicta combines hybrid retrieval, graph expansion, and strict prompt groundin
 - Multi-backend LLM: GitHub Copilot, Cerebras, or local OmniRoute.
 - Evaluation-first workflow: keyword recall, word F1, citation faithfulness, context coverage, optional Ragas and BERTScore.
 - Traceability: query and prompt window audit helpers.
+- Provider contracts: portable source, vector, graph and LLM boundaries with validated configuration.
 
 ## Results Snapshot
 
@@ -210,6 +211,11 @@ OMNIROUTE_MODEL = "auto"
 ```
 
 The app injects Streamlit secrets into environment variables at startup and ensures artifacts are present before retrieval initialization.
+
+Provider boundaries and environment selection are documented in
+[`docs/providers.md`](docs/providers.md). The default LegiMonaco/LanceDB path
+remains compatible while source and infrastructure adapters can be introduced
+behind the same contracts.
 
 ## Evaluation
 
