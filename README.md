@@ -460,6 +460,21 @@ insufficient-evidence refusal that escalates to a human. It is an architecture
 smoke test only; the Monegasque legal corpus remains the primary regression
 benchmark.
 
+### Read-only support MCP boundary
+
+The same synthetic corpus exposes a local MCP-shaped `tools/list` / `tools/call`
+boundary:
+
+```bash
+python -m demo.support_mcp
+```
+
+Only `search_support` and `get_support_document` are advertised, both with
+read-only and idempotent annotations. Every call records tool, input class,
+result and duration without copying the query into the audit event. Unknown or
+mutating tools, timeouts and insufficient evidence fail closed and preserve the
+conversation context plus cited document IDs for human escalation.
+
 ## Test and Quality
 
 Run all tests with coverage:
