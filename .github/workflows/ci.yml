@@ -1,0 +1,70 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: veridicta-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Validate and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q data_ingest eval retrievers tools ui autoeval tests
+
+      - name: Validate evaluation contract
+        run: python -m eval.validate_contract --strict-human-labels
+
+      - name: Validate evaluation consistency
+        run: python -m eval.validate_consistency
+
+      - name: Run fast regression suite
+        run: python -m pytest -m "not slow and not benchmark" --maxfail=1 -p no:cacheprovider
+
+  package:
+    name: Package release artifact
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build source archive
+        shell: bash
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz \
+            --prefix="veridicta-${GITHUB_REF_NAME}/" \
+            --output="dist/veridicta-${GITHUB_REF_NAME}.tar.gz" HEAD
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veridicta-source-${{ github.ref_name }}
+          path: dist/veridicta-${{ github.ref_name }}.tar.gz
+          if-no-files-found: error

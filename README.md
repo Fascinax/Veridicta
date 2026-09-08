@@ -390,6 +390,18 @@ Run performance benchmarks:
 pytest tests/test_performance.py --benchmark-only
 ```
 
+## CI/CD
+
+GitHub Actions runs the contract checks, consistency validation, source
+compilation, and fast regression suite on every push to `main` and every pull
+request. The workflow is defined in `.github/workflows/ci.yml` and does not
+require provider credentials because the checked-in tests use local fixtures
+and mocks.
+
+For a `v*` tag, the same checks must pass before a reproducible source archive
+is uploaded as a workflow artifact. A deployment target is intentionally not
+configured until the hosting provider is selected.
+
 ## Data Sources
 
 - LegiMonaco API (legislation + jurisprudence)
