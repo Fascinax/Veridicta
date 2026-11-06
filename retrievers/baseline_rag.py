@@ -21,10 +21,12 @@ from __future__ import annotations
 import argparse
 from collections import OrderedDict
 from collections.abc import Iterator
+from dataclasses import dataclass
 import json
 import logging
 import os
 import sys
+import weakref
 from threading import Lock
 import time
 from pathlib import Path
@@ -164,11 +166,11 @@ def _resolve_system_prompt(prompt_version: int) -> str:
 # --- Embedding ---
 
 
-_QUERY_EMBED_CACHE: OrderedDict[tuple[int, str], np.ndarray] = OrderedDict()
+_QUERY_EMBED_CACHE: OrderedDict[tuple[object, str], np.ndarray] = OrderedDict()
 _QUERY_EMBED_CACHE_LOCK = Lock()
 
 
-def _query_embed_cache_get(cache_key: tuple[int, str]) -> np.ndarray | None:
+def _query_embed_cache_get(cache_key: tuple[object, str]) -> np.ndarray | None:
     if QUERY_EMBED_CACHE_SIZE <= 0:
         return None
     with _QUERY_EMBED_CACHE_LOCK:
@@ -179,7 +181,7 @@ def _query_embed_cache_get(cache_key: tuple[int, str]) -> np.ndarray | None:
         return cached_vector
 
 
-def _query_embed_cache_set(cache_key: tuple[int, str], vector: np.ndarray) -> None:
+def _query_embed_cache_set(cache_key: tuple[object, str], vector: np.ndarray) -> None:
     if QUERY_EMBED_CACHE_SIZE <= 0:
         return
     with _QUERY_EMBED_CACHE_LOCK:
@@ -217,14 +219,19 @@ def _embed_passages(texts: list[str], embedder: SentenceTransformer) -> np.ndarr
 def _embed_query(query: str, embedder: SentenceTransformer) -> np.ndarray:
     """Embed a single query with L2 normalisation."""
     formatted_query = _format_query_for_embedding(query)
-    cache_key = (id(embedder), formatted_query)
-    cached_vector = _query_embed_cache_get(cache_key)
+    try:
+        cache_key = (weakref.ref(embedder), formatted_query)
+        hash(cache_key)
+    except TypeError:
+        cache_key = None
+    cached_vector = _query_embed_cache_get(cache_key) if cache_key is not None else None
     if cached_vector is not None:
         return cached_vector
 
     vector = embedder.encode(formatted_query, normalize_embeddings=True)
     cached_array = np.array(vector, dtype="float32").reshape(1, -1)
-    _query_embed_cache_set(cache_key, cached_array)
+    if cache_key is not None:
+        _query_embed_cache_set(cache_key, cached_array)
     return cached_array
 
 
@@ -476,6 +483,37 @@ def _answer_omniroute_stream(system: str, user: str, model: str) -> Iterator[str
 DEFAULT_PROMPT_VERSION = 3
 
 
+@dataclass(frozen=True)
+class GenerationPrompt:
+    query: str
+    chunks: list[dict]
+    backend: str
+    model: str
+    prompt_version: int = DEFAULT_PROMPT_VERSION
+    history: list[dict] | None = None
+
+
+def _prepare_generation_prompt(request: GenerationPrompt):
+    count_tokens = lambda text: count_llm_tokens(text, request.model)
+    skeleton = build_prompt_trace(
+        request.query, [], 0, conversation_history=request.history,
+        token_counter=count_tokens,
+    )
+    system = _resolve_system_prompt(request.prompt_version)
+    overhead = count_tokens(system + skeleton.user_message)
+    limit = get_context_budget_tokens(request.backend, request.model)
+    budget = max(0, limit - overhead)
+    while True:
+        trace = build_prompt_trace(
+            request.query, request.chunks, budget,
+            conversation_history=request.history, token_counter=count_tokens,
+        )
+        if not trace.used_chunks or count_tokens(system + trace.user_message) <= limit:
+            return trace
+        # Drop the last source as well as counting headers and separators.
+        budget = max(0, trace.context_tokens - 1)
+
+
 def answer(
     query: str,
     context_chunks: list[dict],
@@ -499,13 +537,10 @@ def answer(
     """
     active_backend = resolve_llm_backend(backend or LLM_BACKEND)
     resolved_model = model or default_model_for_backend(active_backend)
-    prompt_trace = build_prompt_trace(
-        query,
-        context_chunks,
-        get_context_budget_tokens(active_backend, resolved_model),
-        conversation_history=conversation_history,
-        token_counter=lambda text: count_llm_tokens(text, resolved_model),
-    )
+    prompt_trace = _prepare_generation_prompt(GenerationPrompt(
+        query, context_chunks, backend=active_backend, model=resolved_model,
+        prompt_version=prompt_version, history=conversation_history,
+    ))
     if not prompt_trace.used_chunks:
         response_text, grounding_report = enforce_grounding(NO_SOURCES_RESPONSE, [])
         if not return_trace:
@@ -585,13 +620,10 @@ def answer_stream(
     """
     active_backend = resolve_llm_backend(backend or LLM_BACKEND)
     resolved_model = model or default_model_for_backend(active_backend)
-    prompt_trace = build_prompt_trace(
-        query,
-        context_chunks,
-        get_context_budget_tokens(active_backend, resolved_model),
-        conversation_history=conversation_history,
-        token_counter=lambda text: count_llm_tokens(text, resolved_model),
-    )
+    prompt_trace = _prepare_generation_prompt(GenerationPrompt(
+        query, context_chunks, backend=active_backend, model=resolved_model,
+        prompt_version=prompt_version, history=conversation_history,
+    ))
     if not prompt_trace.used_chunks:
         return iter((NO_SOURCES_RESPONSE,)), {
             "prompt_trace": prompt_trace,

@@ -93,8 +93,7 @@ def rerank_with_trace(
             for passage in reranked_passages
             if float(passage.get("score", 0.0)) >= min_score
         ]
-        if filtered:
-            reranked_passages = filtered
+        reranked_passages = filtered
 
     ranked_candidates: list[dict] = []
     for rerank_rank, passage in enumerate(reranked_passages, 1):

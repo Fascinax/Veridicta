@@ -442,8 +442,11 @@ class Neo4jManager:
                 MATCH (src:Doc)-[:CITE]->(tgt:Doc)
                 WHERE src.id IN $ids
                 RETURN DISTINCT tgt.id AS id
+                ORDER BY id
+                LIMIT $limit
                 """,
-                ids=doc_ids,
+                ids=list(dict.fromkeys(doc_ids))[:40],
+                limit=200,
             )
             return [r["id"] for r in result]
 
@@ -457,8 +460,11 @@ class Neo4jManager:
                 MATCH (src:Doc)-[:CITE]->(tgt:Doc)
                 WHERE tgt.id IN $ids
                 RETURN DISTINCT src.id AS id
+                ORDER BY id
+                LIMIT $limit
                 """,
-                ids=doc_ids,
+                ids=list(dict.fromkeys(doc_ids))[:40],
+                limit=200,
             )
             return [r["id"] for r in result]
 
@@ -472,8 +478,11 @@ class Neo4jManager:
                 MATCH (src:Doc)-[:CITE_ARTICLE]->(a:Article)-[:CONTENU_DANS]->(tgt:Doc)
                 WHERE src.id IN $ids
                 RETURN DISTINCT tgt.id AS id
+                ORDER BY id
+                LIMIT $limit
                 """,
-                ids=doc_ids,
+                ids=list(dict.fromkeys(doc_ids))[:40],
+                limit=200,
             )
             return [r["id"] for r in result]
 
@@ -488,8 +497,11 @@ class Neo4jManager:
                 WHERE a.id IN $ids OR b.id IN $ids
                 RETURN DISTINCT
                     CASE WHEN a.id IN $ids THEN b.id ELSE a.id END AS id
+                ORDER BY id
+                LIMIT $limit
                 """,
-                ids=doc_ids,
+                ids=list(dict.fromkeys(doc_ids))[:40],
+                limit=200,
             )
             return [r["id"] for r in result]
 
@@ -503,8 +515,11 @@ class Neo4jManager:
                 MATCH (src:Doc)-[:VOIR_ARTICLE]->(a:Article)-[:CONTENU_DANS]->(tgt:Doc)
                 WHERE src.id IN $ids
                 RETURN DISTINCT tgt.id AS id
+                ORDER BY id
+                LIMIT $limit
                 """,
-                ids=doc_ids,
+                ids=list(dict.fromkeys(doc_ids))[:40],
+                limit=200,
             )
             return [r["id"] for r in result]
 

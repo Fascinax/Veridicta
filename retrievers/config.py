@@ -145,11 +145,11 @@ def get_context_budget_tokens(backend: str, model: str) -> int:
         context_window - response_reserve,
         int(context_window * DEFAULT_CONTEXT_TOKEN_SHARE),
     )
-    return max(1_024, usable_budget)
+    return max(0, usable_budget)
 
 
 def _fallback_token_count(text: str) -> int:
-    return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+    return len(text.encode("utf-8"))
 
 
 def count_llm_tokens(text: str, model: str) -> int:

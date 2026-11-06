@@ -59,7 +59,7 @@ def test_count_llm_tokens_falls_back_when_remote_tokenizer_is_unavailable(
 
     monkeypatch.setattr("retrievers.config.tiktoken", BrokenTokenizer())
 
-    assert count_llm_tokens("Bonjour, Monaco !", "gpt-4.1") == 4
+    assert count_llm_tokens("Bonjour, Monaco !", "gpt-4.1") == len("Bonjour, Monaco !".encode("utf-8"))
 
 
 def test_parse_args_bertscore_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

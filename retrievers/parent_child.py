@@ -27,7 +27,9 @@ def _chunk_id(chunk: dict, fallback: str) -> str:
 
 
 def _document_id(chunk: dict) -> str:
-    return str(chunk.get("parent_document_id") or chunk.get("doc_id") or "")
+    document_id = str(chunk.get("parent_document_id") or chunk.get("doc_id") or "")
+    version_id = chunk.get("version_id") or (chunk.get("metadata") or {}).get("version_id")
+    return f"{document_id}\0{version_id}" if version_id else document_id
 
 
 def _chunk_index(chunk: dict, fallback: int) -> int:
