@@ -13,6 +13,7 @@ import sys
 import time
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pandas as pd
 import streamlit as st
@@ -294,6 +295,9 @@ def _render_workspace_controls(store: WorkspaceStore) -> str | None:
     workspaces = store.list()
     workspace_options = {workspace.workspace_id: workspace.name for workspace in workspaces}
     workspace_options["__new__"] = "＋ Nouveau dossier"
+    pending_id = st.session_state.pop("pending_workspace_id", None)
+    if pending_id in workspace_options:
+        st.session_state["workspace_selector"] = pending_id
     with st.sidebar:
         st.markdown("#### 📁 Dossiers")
         selected_id = st.selectbox(
@@ -309,7 +313,7 @@ def _render_workspace_controls(store: WorkspaceStore) -> str | None:
                     st.warning("Donne un nom au dossier.")
                 else:
                     created = store.create(name)
-                    st.session_state["workspace_selector"] = created.workspace_id
+                    st.session_state["pending_workspace_id"] = created.workspace_id
                     st.rerun()
             return None
 
@@ -511,7 +515,7 @@ def _render_sources(
     trace_id: str | None = None,
 ) -> None:
     for i, c in enumerate(chunks, 1):
-        score_pct = int(float(c.get("score", 0.0)) * 100)
+        score_label = f"Rang {c.get('retrieval_rank', i)}"
         title = html.escape(c.get("titre", "Source inconnue")[:80])
         doc_type = c.get("type", "")
         date = html.escape(c.get("date", ""))
@@ -546,7 +550,7 @@ def _render_sources(
             f"""<div class="source-card">
               <div class="source-title">
                 {title_prefix} {title}
-                <span class="score-badge">{score_pct}%</span>
+                <span class="score-badge">{score_label}</span>
               </div>
               <div class="source-meta">{type_label} · {date}</div>
               <div class="source-meta">{traceability_meta}</div>
@@ -555,6 +559,10 @@ def _render_sources(
             </div>""",
             unsafe_allow_html=True,
         )
+        source_url = str(c.get("source") or "")
+        parsed_url = urlsplit(source_url)
+        if parsed_url.scheme in {"http", "https"} and parsed_url.hostname:
+            st.link_button("Consulter la source officielle", source_url)
         if workspace_store is not None and workspace_id is not None:
             source_id = str(c.get("chunk_id") or c.get("source") or f"source-{i}")
             if st.button(
@@ -1169,21 +1177,20 @@ def _render_autoeval_tab() -> None:
         best_idx = df["score"].idxmax()
         best = df.loc[best_idx]
         kw_val = best.get("kw", 0)
-        f1_val = best.get("f1", 0)
+        f1_val = best.get("wordf1", float("nan"))
         score_val = best.get("score", 0)
         kw_ok = kw_val >= _KW_THRESHOLD if pd.notna(kw_val) else False
-        f1_ok = f1_val >= _F1_THRESHOLD if pd.notna(f1_val) else False
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Meilleur score", f"{score_val:.4f}", delta=f"exp {best.get('exp_id', '?')}")
         col2.metric("KW Recall", f"{kw_val:.4f}", delta="✅" if kw_ok else "❌ < 0.67")
-        col3.metric("Word F1", f"{f1_val:.4f}" if pd.notna(f1_val) else "n/a", delta="✅" if f1_ok else "❌ < 0.30")
+        col3.metric("Word F1 · diagnostic", f"{f1_val:.4f}" if pd.notna(f1_val) else "n/a")
         col4.metric("Expériences", str(len(df)))
 
     st.divider()
 
     # ── Metrics evolution charts ──────────────────────────────────────────
-    metric_cols = [c for c in ["kw", "f1", "score"] if c in df.columns]
+    metric_cols = [c for c in ["kw", "wordf1", "bertscore", "judge", "score"] if c in df.columns]
     if metric_cols and len(df) > 1:
         st.markdown("#### Évolution des métriques")
 
@@ -1194,8 +1201,8 @@ def _render_autoeval_tab() -> None:
 
         # Threshold reference info
         st.caption(
-            f"Seuils cibles : KW ≥ {_KW_THRESHOLD} · F1 ≥ {_F1_THRESHOLD} · "
-            f"Score composite = 0.5×KW + 0.5×F1"
+            "Score : moyenne des métriques sémantiques disponibles (BERTScore et juge). "
+            "Word F1 et rappel de mots-clés restent des diagnostics."
         )
 
     # ── Parameter evolution ───────────────────────────────────────────────
@@ -1212,8 +1219,8 @@ def _render_autoeval_tab() -> None:
     st.markdown("#### Tableau complet des expériences")
     display_cols = [c for c in [
         "exp_id", "retriever", "k", "vector_w", "fts_w",
-        "reranker", "query_exp", "kw", "f1", "citfaith",
-        "lat", "score", "note",
+        "reranker", "query_exp", "kw", "wordf1", "bertscore", "judge", "citfaith",
+        "latmean", "latp95", "cost", "score", "note",
     ] if c in df.columns]
     st.dataframe(
         df[display_cols] if display_cols else df,

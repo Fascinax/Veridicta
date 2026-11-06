@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,7 +41,6 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1800
 CHUNK_OVERLAP = 200
-MIN_CHUNK_SIZE = 100
 HARD_MAX_CHUNK = 2200  # absolute ceiling — splits on spaces when no structure exists
 METADATA_SCHEMA_VERSION = "2026-03-traceability-v1"
 CHUNKING_STRATEGIES = ("fixed", "structural")
@@ -72,7 +72,8 @@ def _clean_text(text: str) -> str:
 
 
 def _split_oversized_paragraph(paragraph: str) -> list[str]:
-    if len(paragraph) <= HARD_MAX_CHUNK:
+    segment_limit = min(CHUNK_SIZE, HARD_MAX_CHUNK - CHUNK_OVERLAP - 1)
+    if len(paragraph) <= segment_limit:
         return [paragraph]
 
     words = paragraph.split(" ")
@@ -80,7 +81,14 @@ def _split_oversized_paragraph(paragraph: str) -> list[str]:
     current_words: list[str] = []
     current_length = 0
     for word in words:
-        if current_length + len(word) + 1 > HARD_MAX_CHUNK and current_words:
+        if len(word) > segment_limit:
+            if current_words:
+                segments.append(" ".join(current_words))
+                current_words = []
+                current_length = 0
+            segments.extend(word[index:index + segment_limit] for index in range(0, len(word), segment_limit))
+            continue
+        if current_length + len(word) + 1 > segment_limit and current_words:
             segments.append(" ".join(current_words))
             current_words = []
             current_length = 0
@@ -123,7 +131,7 @@ def _build_chunks(paragraphs: list[str]) -> list[str]:
         additional_len = len(para) if not current_parts else len(para) + 1
         if current_len + additional_len > CHUNK_SIZE and current_parts:
             chunk_text = " ".join(current_parts).strip()
-            if len(chunk_text) >= MIN_CHUNK_SIZE:
+            if chunk_text:
                 chunks.append(chunk_text)
             overlap = _overlap_tail(chunk_text, CHUNK_OVERLAP)
             current_parts = [overlap] if overlap else []
@@ -132,7 +140,7 @@ def _build_chunks(paragraphs: list[str]) -> list[str]:
         current_len += len(para) if len(current_parts) == 1 else len(para) + 1
     if current_parts:
         final = " ".join(current_parts).strip()
-        if len(final) >= MIN_CHUNK_SIZE:
+        if final:
             chunks.append(final)
     return chunks
 
@@ -222,7 +230,7 @@ def _build_ingestion_metadata(
     strategy: str = DEFAULT_CHUNKING_STRATEGY,
 ) -> dict:
     chunking_version = (
-        STRUCTURAL_CHUNKING_VERSION if strategy == "structural" else "fixed-v1"
+        STRUCTURAL_CHUNKING_VERSION if strategy == "structural" else "fixed-v2-preserve-short"
     )
     return {
         "processed_at_utc": PROCESSING_STARTED_AT,
@@ -361,15 +369,23 @@ def process(
     total_docs = 0
     total_chunks = 0
     skipped = 0
-    with jsonlines.open(output_path, mode="w") as writer:
-        for source_filename, doc in tqdm(_iter_raw_documents(raw_dir), desc="Processing docs"):
-            total_docs += 1
-            chunk_records = _document_to_chunks(doc, source_filename, strategy)
-            if not chunk_records:
-                skipped += 1
-                continue
-            writer.write_all(r.to_dict() for r in chunk_records)
-            total_chunks += len(chunk_records)
+    with tempfile.NamedTemporaryFile(dir=output_path.parent, suffix=".jsonl", delete=False) as temporary:
+        staging_path = Path(temporary.name)
+    try:
+        with jsonlines.open(staging_path, mode="w") as writer:
+            for source_filename, doc in tqdm(_iter_raw_documents(raw_dir), desc="Processing docs"):
+                total_docs += 1
+                chunk_records = _document_to_chunks(doc, source_filename, strategy)
+                if not chunk_records:
+                    skipped += 1
+                    continue
+                writer.write_all(r.to_dict() for r in chunk_records)
+                total_chunks += len(chunk_records)
+        if not total_chunks:
+            raise ValueError("No usable raw documents; existing corpus was preserved.")
+        staging_path.replace(output_path)
+    finally:
+        staging_path.unlink(missing_ok=True)
     logger.info(
         "Processed %d docs -> %d chunks (%d skipped empty) -> %s",
         total_docs, total_chunks, skipped, output_path,

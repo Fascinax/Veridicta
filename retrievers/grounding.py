@@ -11,6 +11,9 @@ from retrievers.traceability import normalize_citations
 
 _SOURCE_PATTERN = re.compile(r"\[Source\s+(\d+)\]", re.IGNORECASE)
 _TOKEN_PATTERN = re.compile(r"[a-zàâäéèêëîïôöùûüÿçœ]{4,}", re.IGNORECASE)
+_NUMBER_PATTERN = re.compile(r"\d+(?:[.,]\d+)*")
+_NEGATION_PATTERN = re.compile(r"\b(?:pas|jamais|aucun\w*|sans|interdit\w*|exclu\w*)\b", re.IGNORECASE)
+DEFAULT_MINIMUM_SUPPORT = 0.65
 _ABSTENTION_MARKERS = (
     "les sources fournies ne permettent",
     "les sources ne permettent",
@@ -120,7 +123,11 @@ def _claim_spans(answer: str) -> list[tuple[int, int]]:
         if answer[cursor] == "\n":
             _append_span(spans, answer, start, cursor)
             start = cursor + 1
-        elif answer[cursor] in ".!?":
+        elif answer[cursor] in ".!?" and not (
+            answer[cursor] == "."
+            and cursor > 0 and cursor + 1 < len(answer)
+            and answer[cursor - 1].isdigit() and answer[cursor + 1].isdigit()
+        ):
             end = cursor + 1
             while True:
                 match = re.match(r"\s*\[Source\s+\d+\]", answer[end:], re.IGNORECASE)
@@ -162,7 +169,11 @@ def _content_tokens(text: str) -> set[str]:
 
 def _is_abstention(text: str) -> bool:
     normalized = " ".join(text.casefold().split())
-    return any(marker in normalized for marker in _ABSTENTION_MARKERS)
+    if _SOURCE_PATTERN.search(text) or _NUMBER_PATTERN.search(text):
+        return False
+    if re.search(r"\b(?:mais|cependant|pourtant|toutefois|donc|ainsi|car)\b|[;:]", normalized):
+        return False
+    return any(normalized.startswith(marker) for marker in _ABSTENTION_MARKERS)
 
 
 def _support_score(claim_text: str, evidence: str) -> float:
@@ -173,20 +184,39 @@ def _support_score(claim_text: str, evidence: str) -> float:
     return round(len(claim_tokens & evidence_tokens) / len(claim_tokens), 4)
 
 
+def _evidence_verdict(text: str, evidence: str, minimum_support: float) -> tuple[float, str]:
+    claim = _SOURCE_PATTERN.sub("", text)
+    numbers = set(_NUMBER_PATTERN.findall(claim))
+    sentences = [evidence[start:end] for start, end in _claim_spans(evidence)]
+    candidates = [sentence for sentence in sentences if numbers <= set(_NUMBER_PATTERN.findall(sentence))]
+    if not candidates:
+        return 0.0, "unsupported_numeric_value"
+    candidates = [
+        sentence for sentence in candidates
+        if bool(_NEGATION_PATTERN.search(claim)) == bool(_NEGATION_PATTERN.search(sentence))
+    ]
+    if not candidates:
+        return 0.0, "conflicting_polarity"
+    score = max((_support_score(claim, sentence) for sentence in candidates), default=0.0)
+    return score, "evidence_overlap" if score >= minimum_support else "low_evidence_overlap"
+
+
 def verify_grounding(
     answer: str,
     retrieved_chunks: list[dict],
-    minimum_support: float = 0.2,
+    minimum_support: float = DEFAULT_MINIMUM_SUPPORT,
 ) -> GroundingReport:
     """Verify source references and lexical evidence for every answer segment."""
+    if not 0 <= minimum_support <= 1:
+        raise ValueError("minimum_support must be between 0 and 1")
     normalized = normalize_citations(answer)
     claims: list[GroundingClaim] = []
     source_count = len(retrieved_chunks)
     for index, (start, end) in enumerate(_claim_spans(normalized), 1):
         text = normalized[start:end].strip()
         source_numbers = tuple(sorted({int(number) for number in _SOURCE_PATTERN.findall(text)}))
-        valid_source_numbers = tuple(number for number in source_numbers if number <= source_count)
-        invalid_source_numbers = tuple(number for number in source_numbers if number > source_count)
+        valid_source_numbers = tuple(number for number in source_numbers if 1 <= number <= source_count)
+        invalid_source_numbers = tuple(number for number in source_numbers if not 1 <= number <= source_count)
         if _is_abstention(text):
             status = "abstained"
             reason = "explicit_source_limitation"
@@ -195,7 +225,7 @@ def verify_grounding(
             status = "unsupported"
             reason = "missing_source_citation"
             score = 0.0
-        elif not valid_source_numbers:
+        elif invalid_source_numbers:
             status = "unsupported"
             reason = f"invalid_source_citation:{','.join(map(str, invalid_source_numbers))}"
             score = 0.0
@@ -204,9 +234,8 @@ def verify_grounding(
                 retrieved_chunks[number - 1].get("text", "")
                 for number in valid_source_numbers
             )
-            score = _support_score(text, evidence)
-            status = "supported" if score >= minimum_support else "unsupported"
-            reason = "evidence_overlap" if status == "supported" else "low_evidence_overlap"
+            score, reason = _evidence_verdict(text, evidence, minimum_support)
+            status = "supported" if reason == "evidence_overlap" else "unsupported"
         claims.append(
             GroundingClaim(
                 index=index,
@@ -225,7 +254,7 @@ def verify_grounding(
 
 def _remove_invalid_citations(text: str, source_count: int) -> str:
     def replace(match: re.Match[str]) -> str:
-        return match.group(0) if int(match.group(1)) <= source_count else ""
+        return match.group(0) if 1 <= int(match.group(1)) <= source_count else ""
 
     return _SOURCE_PATTERN.sub(replace, text)
 
@@ -233,7 +262,7 @@ def _remove_invalid_citations(text: str, source_count: int) -> str:
 def enforce_grounding(
     answer: str,
     retrieved_chunks: list[dict],
-    minimum_support: float = 0.2,
+    minimum_support: float = DEFAULT_MINIMUM_SUPPORT,
 ) -> tuple[str, GroundingReport]:
     """Keep supported claims, remove unsupported ones, and append an abstention."""
     normalized = normalize_citations(answer).strip()
