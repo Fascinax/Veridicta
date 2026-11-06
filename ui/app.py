@@ -11,6 +11,8 @@ import os
 import re
 import sys
 import time
+import uuid
+from functools import wraps
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -28,6 +30,7 @@ _SECRET_KEYS = [
     "OMNIROUTE_MODEL", "HF_API_TOKEN", "HUGGINGFACE_TOKEN", "LLM_BACKEND", "LLM_MODEL",
     "VERIDICTA_AUDIT_ENABLED", "VERIDICTA_AUDIT_DIR", "VERIDICTA_AUDIT_INCLUDE_CONTENT",
     "VERIDICTA_ORCHESTRATOR_ENABLED",
+    "VERIDICTA_WORKSPACE_MODE", "VERIDICTA_WORKSPACE_DIR", "VERIDICTA_QUERY_EXPANSION",
 ]
 try:
     for _k in _SECRET_KEYS:
@@ -75,6 +78,8 @@ from retrievers.traceability import (
     new_trace_id,
 )
 from workspaces.store import WorkspaceStore
+from workspaces.identity import workspace_owner
+from ui.request_limits import RequestLimits, RequestLimitExceeded
 
 FAISS_OPTION = "FAISS"
 HYBRID_OPTION = "Hybrid (BM25+FAISS)"
@@ -242,9 +247,51 @@ def _get_lancedb():
         return None
 
 
-@st.cache_resource
 def _get_workspace_store() -> WorkspaceStore:
-    return WorkspaceStore(os.getenv("VERIDICTA_WORKSPACE_DIR", "data/cases"))
+    mode = os.getenv("VERIDICTA_WORKSPACE_MODE", "session")
+    if "workspace_session_id" not in st.session_state:
+        st.session_state.workspace_session_id = uuid.uuid4().hex
+    try:
+        owner = workspace_owner(mode, st.session_state.workspace_session_id, st.user)
+    except PermissionError:
+        st.info("Connectez-vous pour accéder à vos dossiers.")
+        if st.button("Se connecter"):
+            st.login()
+        st.stop()
+    except ValueError:
+        st.error("Le mode d'accès aux dossiers est mal configuré.")
+        st.stop()
+    if mode == "session":
+        st.sidebar.caption("Dossiers limités à cette session. Exportez vos mémos avant de la fermer.")
+    elif mode == "local":
+        st.sidebar.caption("Mode personnel : stockage local commun aux sessions de ce serveur.")
+    elif st.sidebar.button("Se déconnecter"):
+        st.logout()
+    store = WorkspaceStore(os.getenv("VERIDICTA_WORKSPACE_DIR", "data/cases"), owner_id=owner)
+    previous_scope = st.session_state.get("workspace_owner_scope")
+    if previous_scope is not None and previous_scope != store.scope_key:
+        for key in ("messages", "workspace_selector", "loaded_workspace_id", "pending_workspace_id"):
+            st.session_state.pop(key, None)
+    st.session_state.workspace_owner_scope = store.scope_key
+    return store
+
+
+@st.cache_resource
+def _get_request_limits() -> RequestLimits:
+    return RequestLimits()
+
+
+def _bounded_request(handler):
+    @wraps(handler)
+    def bounded(prompt, *args, **kwargs):
+        try:
+            store = kwargs.get("workspace_store")
+            scope = store.scope_key if store is not None else st.session_state.get("workspace_owner_scope", "unscoped")
+            with _get_request_limits().admit(scope, prompt):
+                return handler(prompt, *args, **kwargs)
+        except RequestLimitExceeded as error:
+            st.warning(str(error))
+    return bounded
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
@@ -333,7 +380,8 @@ def _render_workspace_controls(store: WorkspaceStore) -> str | None:
                 store.archive(selected_id)
                 st.session_state.pop("workspace_selector", None)
                 st.rerun()
-            if st.button("Supprimer définitivement", use_container_width=True, key=f"delete_{selected_id}"):
+            confirmed = st.checkbox("Confirmer la suppression du dossier et de ses traces", key=f"confirm_delete_{selected_id}")
+            if st.button("Supprimer définitivement", use_container_width=True, key=f"delete_{selected_id}", disabled=not confirmed):
                 store.delete(selected_id)
                 st.session_state.pop("workspace_selector", None)
                 st.session_state.pop("loaded_workspace_id", None)
@@ -994,6 +1042,7 @@ def _resolve_runtime_dependencies(use_hybrid: bool, use_graph: bool, use_lancedb
     return use_hybrid, use_graph, use_lancedb, bm25, neo4j_mgr, lancedb_table
 
 
+@_bounded_request
 def _handle_prompt(
     prompt: str,
     index_data,
@@ -1023,26 +1072,32 @@ def _handle_prompt(
 
     with st.chat_message("assistant"):
         retrieval_query = _build_retrieval_query(prompt, conversation_history)
-        with st.spinner("Recherche dans le corpus…"):
-            t0 = time.perf_counter()
-            retrieved, retrieval_trace = _retrieve_chunks_with_trace(
-                retrieval_query,
-                index_data,
-                chunks_map,
-                embedder,
-                k,
-                use_graph,
-                neo4j_mgr,
-                use_hybrid,
-                bm25,
-                use_lancedb,
-                lancedb_table,
-                as_of=as_of,
-            )
+        try:
+            with st.spinner("Recherche dans le corpus…"):
+                t0 = time.perf_counter()
+                retrieved, retrieval_trace = _retrieve_chunks_with_trace(
+                    retrieval_query,
+                    index_data,
+                    chunks_map,
+                    embedder,
+                    k,
+                    use_graph,
+                    neo4j_mgr,
+                    use_hybrid,
+                    bm25,
+                    use_lancedb,
+                    lancedb_table,
+                    as_of=as_of,
+                )
+        except Exception:
+            st.error("La recherche est indisponible. Réessayez après vérification du corpus et des index.")
+            return
+        retrieval_elapsed = time.perf_counter() - t0
 
         response_placeholder = st.empty()
         trace_id = new_trace_id()
         response_text = ""
+        generation_error = False
         generation_trace = _fallback_generation_trace(prompt, backend, model)
         try:
             if _orchestrator_enabled():
@@ -1072,6 +1127,7 @@ def _handle_prompt(
                         unsafe_allow_html=True,
                     )
         except Exception as exc:
+            generation_error = True
             err_suffix = f"\n\n⚠️ {public_error_message(exc)}"
             response_text = (response_text + err_suffix) if response_text else f"⚠️ {public_error_message(exc)}"
         response_text, grounding_report = enforce_grounding(
@@ -1084,7 +1140,10 @@ def _handle_prompt(
         used_chunks = generation_trace.get("used_chunks", [])
         omitted_chunks = generation_trace.get("omitted_chunks", [])
         retriever_label = _get_retriever_mode(use_lancedb, use_graph, use_hybrid)
-        audit_log_path = append_audit_event(
+        audit_writer = append_audit_event
+        if workspace_store is not None:
+            audit_writer = lambda **event: workspace_store.append_audit(workspace_id, **event)
+        audit_log_path = audit_writer(
             trace_id=trace_id,
             query=prompt,
             retrieved_chunks=retrieved,
@@ -1095,7 +1154,11 @@ def _handle_prompt(
             model=generation_trace.get("model", model),
             prompt_version=generation_trace.get("prompt_version", 1),
             latency_s=elapsed,
+            stage_latencies_s={"retrieval": retrieval_elapsed, "generation": elapsed - retrieval_elapsed},
             retrieval_trace=retrieval_trace,
+            failure_classification={"generation_error": generation_error,
+                                    "unsupported_claim_count": grounding_report.unsupported_count,
+                                    "abstained_claim_count": grounding_report.abstained_count},
         )
         trace_payload = _build_trace_payload(
             trace_id,

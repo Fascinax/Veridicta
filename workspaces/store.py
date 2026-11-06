@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import shutil
 import textwrap
 import uuid
@@ -12,6 +14,30 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from functools import wraps
+
+from filelock import FileLock
+
+
+def _locked(method):
+    @wraps(method)
+    def synchronized(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return synchronized
+
+
+def _contained(root: Path, *parts: str) -> Path:
+    target = root.joinpath(*parts).resolve()
+    if target == root or not target.is_relative_to(root):
+        raise ValueError("path escapes workspace storage")
+    return target
+
+
+def _valid_workspace_id(workspace_id: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{32}", workspace_id):
+        raise ValueError("invalid workspace id")
+    return workspace_id
 
 
 @dataclass(frozen=True)
@@ -46,13 +72,22 @@ class CaseWorkspace:
 class WorkspaceStore:
     """Persist each workspace below its own directory with atomic writes."""
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, owner_id: str | None = None) -> None:
         self.root = Path(root).resolve()
-        self.workspace_root = self.root / "workspaces"
-        self.audit_root = self.root / "audit"
+        if owner_id is not None:
+            if not owner_id.strip():
+                raise ValueError("owner must not be empty")
+            scope = hashlib.sha256(owner_id.encode("utf-8")).hexdigest()
+            self.root = _contained(self.root, "owners", scope)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.scope_key = str(self.root)
+        self._lock = FileLock(str(self.root / ".workspace.lock"), timeout=20)
+        self.workspace_root = _contained(self.root, "workspaces")
+        self.audit_root = _contained(self.root, "audit")
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.audit_root.mkdir(parents=True, exist_ok=True)
 
+    @_locked
     def create(self, name: str, tags: list[str] | None = None) -> CaseWorkspace:
         clean_name = name.strip()
         if not clean_name:
@@ -68,14 +103,20 @@ class WorkspaceStore:
         self._write(workspace)
         return workspace
 
+    @_locked
     def list(self, include_archived: bool = False) -> list[CaseWorkspace]:
-        workspaces = [self._read(path) for path in self.workspace_root.glob("*/workspace.json")]
+        workspaces = [self.get(path.parent.name) for path in self.workspace_root.glob("*/workspace.json")]
         visible = workspaces if include_archived else [item for item in workspaces if not item.archived]
         return sorted(visible, key=lambda item: (item.archived, item.name.casefold(), item.workspace_id))
 
+    @_locked
     def get(self, workspace_id: str) -> CaseWorkspace:
-        return self._read(self._workspace_path(workspace_id))
+        workspace = self._read(self._workspace_path(workspace_id))
+        if workspace.workspace_id != workspace_id:
+            raise ValueError("workspace ID mismatch")
+        return workspace
 
+    @_locked
     def rename(self, workspace_id: str, name: str) -> CaseWorkspace:
         workspace = self.get(workspace_id)
         clean_name = name.strip()
@@ -86,6 +127,7 @@ class WorkspaceStore:
         self._write(workspace)
         return workspace
 
+    @_locked
     def archive(self, workspace_id: str, archived: bool = True) -> CaseWorkspace:
         workspace = self.get(workspace_id)
         workspace.archived = archived
@@ -93,6 +135,7 @@ class WorkspaceStore:
         self._write(workspace)
         return workspace
 
+    @_locked
     def delete(self, workspace_id: str) -> None:
         workspace_path = self._workspace_path(workspace_id)
         audit_path = self._audit_path(workspace_id)
@@ -102,6 +145,7 @@ class WorkspaceStore:
         if audit_path.exists():
             shutil.rmtree(audit_path)
 
+    @_locked
     def append_message(
         self,
         workspace_id: str,
@@ -129,6 +173,7 @@ class WorkspaceStore:
         self._write(workspace)
         return workspace
 
+    @_locked
     def pin_source(
         self,
         workspace_id: str,
@@ -152,6 +197,7 @@ class WorkspaceStore:
         self._write(workspace)
         return workspace
 
+    @_locked
     def add_private_note(self, workspace_id: str, text: str) -> CaseWorkspace:
         if not text.strip():
             raise ValueError("private note must not be empty")
@@ -161,6 +207,7 @@ class WorkspaceStore:
         self._write(workspace)
         return workspace
 
+    @_locked
     def export_markdown(self, workspace_id: str, generated_at: str | None = None) -> str:
         workspace = self.get(workspace_id)
         timestamp = generated_at or _now()
@@ -199,14 +246,21 @@ class WorkspaceStore:
         return _build_pdf(self.export_markdown(workspace_id, generated_at))
 
     def _workspace_path(self, workspace_id: str) -> Path:
-        if not workspace_id or Path(workspace_id).name != workspace_id:
-            raise ValueError("invalid workspace id")
-        return self.workspace_root / workspace_id / "workspace.json"
+        return _contained(self.root, "workspaces", _valid_workspace_id(workspace_id), "workspace.json")
 
     def _audit_path(self, workspace_id: str) -> Path:
-        if not workspace_id or Path(workspace_id).name != workspace_id:
-            raise ValueError("invalid workspace id")
-        return self.audit_root / workspace_id
+        return _contained(self.root, "audit", _valid_workspace_id(workspace_id))
+
+    @_locked
+    def append_audit(self, workspace_id: str | None, **event) -> Path | None:
+        from retrievers.traceability import append_audit_event
+
+        if workspace_id is not None:
+            self.get(workspace_id)
+            directory = self._audit_path(workspace_id)
+        else:
+            directory = _contained(self.root, "audit", "unassigned")
+        return append_audit_event(**event, audit_dir=directory)
 
     def _write(self, workspace: CaseWorkspace) -> None:
         directory = self._workspace_path(workspace.workspace_id).parent
