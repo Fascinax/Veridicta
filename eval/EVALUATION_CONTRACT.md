@@ -259,3 +259,11 @@ evaluated corpus cannot leave the trusted environment.
 4. Run `python -m eval.validate_contract --strict-human-labels`.
 5. Calibrate BERTScore and judge thresholds against the completed labels before
    accepting a retrieval or model change.
+
+### Cross-platform artifact integrity
+
+The regression questions and canonical baseline use LF line endings, enforced by
+`.gitattributes`. Their SHA-256 values describe the bytes stored in Git, so Windows
+and Linux checkouts validate the same artifacts. Changing their content still
+requires a deliberate contract update; line-ending conversion must not change the
+benchmark identity.
