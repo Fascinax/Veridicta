@@ -44,7 +44,8 @@ sys.path.insert(0, str(_ROOT))
 # ── Download index artifacts from HuggingFace Hub if missing (Streamlit Cloud) ─
 try:
     from retrievers.artifacts import ensure_artifacts  # noqa: E402
-    ensure_artifacts(root=_ROOT)
+    if not os.getenv("VERIDICTA_SNAPSHOT_MANIFEST"):
+        ensure_artifacts(root=_ROOT)
 except Exception as _artifact_err:
     st.warning(f"Artifact check failed: {_artifact_err}")
 

@@ -52,6 +52,7 @@ from retrievers.traceability import (
     normalize_citations,
 )
 from retrievers.grounding import enforce_grounding
+from retrievers.snapshots import active_data_root
 
 load_dotenv()
 
@@ -72,7 +73,7 @@ NO_SOURCES_RESPONSE = (
 
 # LLM backend configuration
 
-INDEX_DIR = Path("data/index")
+INDEX_DIR = active_data_root() / "index"
 FAISS_FILENAME = "veridicta.faiss"
 CHUNKS_MAP_FILENAME = "chunks_map.jsonl"
 INDEX_METADATA_FILENAME = "embedding_config.json"
@@ -190,7 +191,7 @@ def _query_embed_cache_set(cache_key: tuple[int, str], vector: np.ndarray) -> No
 
 def _load_embedder() -> SentenceTransformer:
     logger.info("Loading embedder: %s", EMBED_MODEL)
-    return SentenceTransformer(EMBED_MODEL)
+    return SentenceTransformer(EMBED_MODEL, revision=EMBEDDING_CONFIG.revision)
 
 
 def _format_query_for_embedding(query: str) -> str:
@@ -234,6 +235,7 @@ def _metadata_path(index_dir: Path) -> Path:
 def _build_embedding_metadata(dim: int, chunk_count: int) -> dict[str, int | str]:
     return {
         "embed_model": EMBED_MODEL,
+        "embed_revision": EMBEDDING_CONFIG.revision,
         "embed_query_prefix": EMBED_QUERY_PREFIX,
         "embedding_dimension": dim,
         "chunk_count": chunk_count,
@@ -270,7 +272,13 @@ def _ensure_index_compatibility(index: faiss.Index, index_dir: Path) -> None:
 
     metadata_model = str(metadata.get("embed_model", ""))
     metadata_dimension = int(metadata.get("embedding_dimension", index.d))
-    if metadata_model != EMBED_MODEL or metadata_dimension != index.d:
+    if (
+        metadata_model != EMBED_MODEL
+        or metadata_dimension != index.d
+        or metadata_dimension != EMBED_DIMENSION
+        or metadata.get("embed_query_prefix", EMBED_QUERY_PREFIX) != EMBED_QUERY_PREFIX
+        or metadata.get("embed_revision") not in (None, EMBEDDING_CONFIG.revision)
+    ):
         raise RuntimeError(
             "Embedding config mismatch detected. "
             f"Index was built with model={metadata_model!r}, dim={metadata_dimension}; "
@@ -340,6 +348,9 @@ def load_index(index_dir: Path = INDEX_DIR) -> tuple[faiss.Index, list[dict]]:
     chunks: list[dict] = []
     with jsonlines.open(map_path) as reader:
         chunks = list(reader)
+
+    if index.ntotal != len(chunks):
+        raise RuntimeError("FAISS vector count does not match the ordered chunk map")
 
     logger.info("Index loaded: %d vectors, %d chunks", index.ntotal, len(chunks))
     return index, chunks

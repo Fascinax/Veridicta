@@ -64,3 +64,21 @@ en conditions réelles. L'ancien client échouait avant le réseau avec un TypeE
 Le véritable holdout de 50–100 cas à annoter reste un travail avec un juriste.
 Les scénarios visibles pendant le développement ne sont pas présentés comme
 un test scellé indépendant.
+
+## Lot 4 — Corpus et intégrité
+
+- Révisions HF et Solon épinglées à des commits vérifiés sur leurs catalogues.
+- Manifeste v2 avec date de collecte distincte de la date de construction,
+  empreintes recalculées et refus des fichiers manquants, altérés ou non déclarés.
+- Un même snapshot peut fournir FAISS et LanceDB via `VERIDICTA_SNAPSHOT_MANIFEST`.
+- Le chargement FAISS contrôle la concordance du nombre de vecteurs et de chunks.
+- Les identifiants et URL des versions législatives restent distincts ; les dates
+  d'effet explicitement fournies survivent à l'ingestion sans être inventées.
+- Collecteur séparé vers un répertoire neuf, sans écrasement ni activation.
+
+Collecte LegiMonaco exécutée le 6 novembre 2026 : 3 367 documents, dont 164 textes
+législatifs, 781 décisions du tribunal du travail, 1 557 règlements, 786 décisions
+des autres juridictions, 24 traités et 55 projets. Les fichiers sont locaux dans
+`data/snapshots/audit-20261106` et exclus de Git. Le Journal de Monaco, les dates
+d'effet, la construction des index et l'évaluation indépendante restent des
+conditions de promotion, enregistrées dans `collection-status.json`.

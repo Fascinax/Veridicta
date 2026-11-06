@@ -168,13 +168,15 @@ def _legislation_record(src: dict) -> CorpusRecord:
     raw_path = src.get("path", "")
     path = _clean_path(raw_path)
     return CorpusRecord(
-        id=_doc_id(path),
+        id=_doc_id(raw_path),
         titre=src.get("title", ""),
         text=src.get("enBody", ""),
         date=src.get("date", ""),
-        source=BASE_URL + path if path else "",
+        source=BASE_URL + raw_path if raw_path else "",
         type="legislation",
         metadata={
+            "version_key": path,
+            "version_id": raw_path,
             "nature": src.get("tncNature", ""),
             "numero": src.get("number", ""),
             "abrogee": src.get("legislationAbrogated", ""),
