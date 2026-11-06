@@ -131,3 +131,15 @@ présenté comme prêt à ouvrir sur la seule base des tests locaux.
 
 Le travail livré consolide les chemins exécutables et leurs contrôles. Il ne
 remplace ni ces validations externes ni une validation juridique du produit.
+
+## Lot 7 — Qualité réelle des versions collectées
+
+La vérification du corpus a détecté des collisions de versions réglementaires/
+traités et des statuts d'abrogation `yes/no` ignorés. Les identités exactes,
+fenêtres explicites de source, filtres courants et contrôles de pagination sont
+corrigés. La déduplication refuse désormais les collisions conflictuelles.
+
+Nouvelle collecte isolée : 3 366 enregistrements/IDs distincts, zéro collision,
+1 744 textes normatifs avec fenêtres de source, 14 abrogations explicites et six
+fiches sans texte. Le rapport contient les empreintes d'entrée. Aucun index actif
+n'a été remplacé. Détails et limites : `docs/corpus-quality.md`.

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+import hashlib
+import json
 import re
 import tempfile
 from dataclasses import dataclass, field
@@ -35,6 +37,7 @@ from data_ingest.chunking import (
     STRUCTURAL_CHUNKING_VERSION,
     chunk_document_fragments,
 )
+from retrievers.document_status import is_explicitly_repealed
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -203,7 +206,7 @@ def _normalise_metadata(doc: dict) -> dict:
             raw_metadata[name] = doc[name]
     if doc.get("type") == "projet_loi":
         raw_metadata["legal_status"] = "draft"
-    elif raw_metadata.get("abrogee") is True:
+    elif is_explicitly_repealed(raw_metadata.get("abrogee")):
         raw_metadata["legal_status"] = "repealed"
     normalised_metadata = {
         "document_number": raw_metadata.get("numero", ""),
@@ -337,7 +340,7 @@ def _document_to_chunks(
 
 def _iter_raw_documents(raw_dir: Path) -> Iterator[tuple[str, dict]]:
     """Yield (source_filename, doc) for every raw document, deduplicating by id."""
-    seen_ids: set[str] = set()
+    seen_ids: dict[str, str] = {}
     total_dupes = 0
     for filename in RAW_FILES:
         path = raw_dir / filename
@@ -348,12 +351,16 @@ def _iter_raw_documents(raw_dir: Path) -> Iterator[tuple[str, dict]]:
         with jsonlines.open(path) as reader:
             for doc in reader:
                 doc_id = doc.get("id", "")
-                if doc_id and doc_id in seen_ids:
+                if not isinstance(doc_id, str) or not doc_id.strip():
+                    raise ValueError(f"Missing document ID in {filename}")
+                digest = hashlib.sha256(json.dumps(doc, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+                if doc_id in seen_ids:
+                    if seen_ids[doc_id] != digest:
+                        raise ValueError(f"Conflicting records share a document ID in {filename}")
                     file_dupes += 1
                     total_dupes += 1
                     continue
-                if doc_id:
-                    seen_ids.add(doc_id)
+                seen_ids[doc_id] = digest
                 yield filename, doc
         if file_dupes:
             logger.info("Deduplication: skipped %d duplicate IDs from %s", file_dupes, filename)
