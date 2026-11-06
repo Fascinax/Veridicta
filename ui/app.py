@@ -422,7 +422,7 @@ def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, st
             backend_options,
             index=default_idx,
             format_func=lambda x: {
-                "cerebras": "Cerebras (gratuit)",
+                "cerebras": "Cerebras",
                 "omniroute": "OmniRoute (local)",
                 "copilot": "GitHub Copilot",
             }[x],
@@ -430,11 +430,10 @@ def _render_sidebar(store: WorkspaceStore) -> tuple[int, bool, str, str, str, st
 
         # Model selector per backend
         if backend == "copilot":
-            copilot_models = ["gpt-4.1", "gpt-4.1-mini", "claude-sonnet-4", "o3-mini"]
-            default_copilot = copilot_models.index(COPILOT_DEFAULT_MODEL) if COPILOT_DEFAULT_MODEL in copilot_models else 0
-            model = st.selectbox("Modele Copilot", copilot_models, index=default_copilot)
+            model = st.text_input("Modèle Copilot", value=COPILOT_DEFAULT_MODEL)
+            st.caption("Utilise un identifiant disponible pour ton compte Copilot.")
         elif backend == "cerebras":
-            cerebras_models = ["gpt-oss-120b", "llama3.1-8b"]
+            cerebras_models = list(dict.fromkeys([CEREBRAS_DEFAULT_MODEL, "gpt-oss-120b", "qwen-3.8-27b"]))
             default_cerebras = cerebras_models.index(CEREBRAS_DEFAULT_MODEL) if CEREBRAS_DEFAULT_MODEL in cerebras_models else 0
             model = st.selectbox("Modele Cerebras", cerebras_models, index=default_cerebras)
         else:

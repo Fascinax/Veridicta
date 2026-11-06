@@ -1,6 +1,6 @@
 # Veridicta
 
-[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://veridicta.streamlit.app/)
 
@@ -26,6 +26,10 @@ Veridicta combines hybrid retrieval, graph expansion, and strict prompt groundin
 - Provider contracts: portable source, vector, graph and LLM boundaries with validated configuration.
 
 ## Results Snapshot
+
+> Historical March 2026 baseline. The audit remediation changes grounding, runtime
+> dependencies and model defaults. These figures are not a fresh validation of
+> the current branch. See [remediation status](docs/audit-remediation.md).
 
 The single canonical baseline is the Stage 1 full run on the fixed 100-question
 contract: `lancedb_graph`, `k=5`, prompt version 3, Copilot `gpt-4.1`.
@@ -92,13 +96,8 @@ Veridicta/
 git clone https://github.com/Fascinax/Veridicta.git
 cd Veridicta
 
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
+python -m pip install uv==0.11.3
+uv sync --locked --group evaluation --group ingest
 ```
 
 ### Environment Variables
@@ -109,7 +108,7 @@ Copilot backend (default path):
 # .env
 LLM_BACKEND=copilot
 GITHUB_PAT=github_pat_xxx
-COPILOT_MODEL=gpt-4.1
+COPILOT_MODEL=claude-sonnet-5.5
 HF_API_TOKEN=hf_xxx
 VERIDICTA_QUERY_EMBED_CACHE_SIZE=512
 ```
@@ -147,7 +146,7 @@ for provider setup and deployment options.
 Run the app:
 
 ```bash
-streamlit run ui/app.py
+uv run --locked streamlit run ui/app.py
 ```
 
 ### Annotate the human gold set

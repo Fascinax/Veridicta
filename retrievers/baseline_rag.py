@@ -384,7 +384,7 @@ def _answer_cerebras(system: str, user: str, model: str) -> str:
     if not api_key:
         raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
 
-    client = Cerebras(api_key=api_key)
+    client = Cerebras(api_key=api_key, timeout=60.0, max_retries=1)
     payload = {
         "model": model,
         "messages": [
@@ -415,7 +415,7 @@ def _answer_cerebras_stream(system: str, user: str, model: str) -> Iterator[str]
     if not api_key:
         raise EnvironmentError("CEREBRAS_API_KEY not set. Add it to your .env file.")
 
-    client = Cerebras(api_key=api_key)
+    client = Cerebras(api_key=api_key, timeout=60.0, max_retries=1)
     stream = client.chat.completions.create(
         model=model,
         messages=[

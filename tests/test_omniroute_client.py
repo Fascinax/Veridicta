@@ -67,6 +67,8 @@ def test_chat_uses_openai_compatible_request(monkeypatch: pytest.MonkeyPatch) ->
     openai.assert_called_once_with(
         api_key="sk-test",
         base_url="http://gateway.test/v1",
+        timeout=60.0,
+        max_retries=1,
     )
     mock_openai_client.chat.completions.create.assert_called_once_with(
         model="auto",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from lancedb.index import FTS
+
 import json
 import tempfile
 from pathlib import Path
@@ -35,7 +37,7 @@ def tiny_lance_table(tmp_path):
         })
 
     table = db.create_table("chunks", records, mode="overwrite")
-    table.create_fts_index("text", replace=True)
+    table.create_index("text", config=FTS(), replace=True)
     return table
 
 

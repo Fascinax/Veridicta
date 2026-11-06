@@ -73,7 +73,7 @@ QUERY_EXPANSION = False
 # LLM generation (only used with --full)
 PROMPT_VERSION = 3
 BACKEND = "copilot"
-MODEL = "gpt-4.1"
+MODEL = "claude-sonnet-5.5"
 WORKERS = 4
 
 # Experiment note (one line describing your hypothesis)
