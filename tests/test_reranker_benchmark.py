@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -193,6 +194,7 @@ def test_flashrank_adapter_batches_passages_and_merges_global_order(
 
 def test_configure_flashrank_execution_provider_prefers_cuda(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     class _FakeSession:
         def __init__(self, path: str, providers: list[str]) -> None:
@@ -213,11 +215,12 @@ def test_configure_flashrank_execution_provider_prefers_cuda(
     monkeypatch.setitem(sys.modules, "onnxruntime", _FakeOrt)
     monkeypatch.setitem(sys.modules, "flashrank.Config", fake_flashrank_config)
 
-    model = type("_FakeModel", (), {"model_dir": "E:/models"})()
+    model_directory = tmp_path / "models"
+    model = type("_FakeModel", (), {"model_dir": str(model_directory)})()
     _configure_flashrank_execution_provider(model, "model")
 
     assert (model.session.path, model.session.providers) == (
-        "E:\\models\\model.onnx",
+        str(model_directory / "model.onnx"),
         [FLASHRANK_CUDA_PROVIDER, FLASHRANK_CPU_PROVIDER],
     )
 
