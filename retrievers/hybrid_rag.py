@@ -18,6 +18,7 @@ import contextlib
 import io
 import jsonlines
 import logging
+import os
 import re
 import sys
 from functools import lru_cache
@@ -132,6 +133,9 @@ def load_bm25_index(index_dir: Path = INDEX_DIR) -> bm25s.BM25:
         bm25 = bm25s.BM25.load(save_dir, load_corpus=False)
         logger.info("bm25s index loaded: %s", save_dir)
         return bm25
+
+    if os.getenv("VERIDICTA_SNAPSHOT_MANIFEST") or (index_dir.parent / "snapshot.manifest.json").exists():
+        raise FileNotFoundError("Sparse index missing from snapshot; build it before sealing the manifest")
 
     logger.warning(
         "bm25s index missing at %s — rebuilding from chunks_map.jsonl.",

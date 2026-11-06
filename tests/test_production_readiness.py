@@ -26,7 +26,7 @@ def _write_manifest(path, generated_at: datetime) -> None:
     )
 
 
-def test_readiness_accepts_current_corpus_with_provenance(tmp_path) -> None:
+def test_integrity_alone_does_not_make_a_raw_collection_release_ready(tmp_path) -> None:
     manifest = tmp_path / "manifest.json"
     _write_manifest(manifest, NOW - timedelta(days=2))
 
@@ -34,9 +34,9 @@ def test_readiness_accepts_current_corpus_with_provenance(tmp_path) -> None:
         ReadinessContext(manifest_path=manifest, source_count=2, now=NOW)
     )
 
-    assert report.is_ready
-    assert report.status == "pass"
-    assert all(check.status == "pass" for check in report.checks)
+    assert not report.is_ready
+    assert next(check for check in report.checks if check.name == "corpus_manifest").status == "pass"
+    assert {check.name for check in report.checks if check.status == "fail"} == {"index_bundle", "release_review", "provider_smoke"}
 
 
 def test_readiness_rejects_stale_corpus_and_missing_sources(tmp_path) -> None:

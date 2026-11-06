@@ -10,3 +10,8 @@ def test_metrics_count_errors_and_corrupt_rows_without_returning_content(tmp_pat
     result = summarize_audits(tmp_path)
     assert result["request_count"] == 2 and result["invalid_row_count"] == 1 and result["generation_error_count"] == 1
     assert result["latency_s"]["median"] == 2 and "private" not in json.dumps(result)
+
+
+def test_jsonl_unicode_separators_do_not_split_an_audit_record(tmp_path):
+    (tmp_path / "trace.jsonl").write_text(json.dumps({"latency_s": 1, "query": "first\u2028second"}, ensure_ascii=False) + "\n", encoding="utf-8")
+    assert summarize_audits(tmp_path)["request_count"] == 1

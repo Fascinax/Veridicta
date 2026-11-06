@@ -143,3 +143,20 @@ Nouvelle collecte isolée : 3 366 enregistrements/IDs distincts, zéro collision
 1 744 textes normatifs avec fenêtres de source, 14 abrogations explicites et six
 fiches sans texte. Le rapport contient les empreintes d'entrée. Aucun index actif
 n'a été remplacé. Détails et limites : `docs/corpus-quality.md`.
+
+## Lot 8 — Candidat isolé et preuves de release
+
+- Préparation réelle d'un candidat séparé : copies vérifiées, qualité bloquante,
+  35 887 chunks et date de collecte conservée ; aucune activation.
+- Readiness refusée si bundle cohérent/révision épinglée, revue du manifeste ou
+  smoke récent du modèle exact manquent. Plus de statut prêt sur un manifeste brut seul.
+- Template de revue en attente, jamais rempli par des réponses ou approbations fictives.
+- Smoke horodaté et exportable ; une abstention n'est plus comptée comme succès.
+- Chargement BM25 d'un snapshot scellé sans reconstruction implicite ; configuration
+  du manifeste injectable via les secrets Streamlit.
+- Lecture des lignes physiques JSONL pour les métriques, même en présence de
+  séparateurs Unicode à l'intérieur d'une chaîne JSON.
+
+L'indexation dense, la couverture complémentaire et la revue juridique indépendante
+restent nécessaires avant promotion. Les fixtures positives des tests ne sont pas
+une preuve réelle de disponibilité ou de validation par un juriste.
