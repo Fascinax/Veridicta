@@ -14,6 +14,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import gc
 import importlib.util
 import json
@@ -81,9 +82,11 @@ class RerankerSpec:
     key: str
     family: str
     model_name: str
+    revision: str | None = None
 
 
 RERANKER_SPECS = {
+    "none": RerankerSpec("none", "identity", "retrieval-order"),
     "flashrank": RerankerSpec(
         key="flashrank",
         family="flashrank",
@@ -93,12 +96,15 @@ RERANKER_SPECS = {
         key="bge",
         family="sentence_transformers",
         model_name="BAAI/bge-reranker-v2-m3",
+        revision="953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
     ),
     "bge_hf": RerankerSpec(
         key="bge_hf",
         family="hf_inference",
         model_name="BAAI/bge-reranker-v2-m3",
     ),
+    "qwen3": RerankerSpec("qwen3", "sentence_transformers", "Qwen/Qwen3-Reranker-0.6B",
+                          "e61197ed45024b0ed8a2d74b80b4d909f1255473"),
 }
 
 
@@ -107,6 +113,11 @@ class RerankerAdapter(Protocol):
 
     def rank(self, query: str, candidates: list[dict]) -> list[dict]:
         """Return all candidates sorted by descending relevance score."""
+
+
+class RetrievalOrderAdapter:
+    def rank(self, query: str, candidates: list[dict]) -> list[dict]:
+        return [dict(candidate) for candidate in candidates]
 
 
 def _enrich_ranked_chunk(
@@ -130,8 +141,9 @@ def _enrich_ranked_chunk(
 class FlashRankAdapter:
     """FlashRank adapter for the current ONNX multilingual baseline."""
 
-    def __init__(self, spec: RerankerSpec) -> None:
+    def __init__(self, spec: RerankerSpec, cache_dir: Path | None = None) -> None:
         self.spec = spec
+        self.cache_dir = cache_dir
         self._model = None
 
     def _get_model(self):
@@ -141,6 +153,7 @@ class FlashRankAdapter:
             self._model = Ranker(
                 model_name=self.spec.model_name,
                 max_length=DEFAULT_RERANKER_MAX_LENGTH,
+                **({"cache_dir": str(self.cache_dir)} if self.cache_dir is not None else {}),
             )
             _configure_flashrank_execution_provider(self._model, self.spec.model_name)
         return self._model
@@ -209,11 +222,19 @@ def _configure_flashrank_execution_provider(model: object, model_name: str) -> N
         )
 
 
-class BgeCrossEncoderAdapter:
-    """Sentence-Transformers adapter for BAAI's multilingual reranker."""
+@dataclass(frozen=True)
+class CrossEncoderRuntime:
+    device: str | None = None
+    batch_size: int = 8
+    local_files_only: bool = False
 
-    def __init__(self, spec: RerankerSpec) -> None:
+
+class LocalCrossEncoderAdapter:
+    """Pinned Sentence-Transformers reranker with explicit inference settings."""
+
+    def __init__(self, spec: RerankerSpec, runtime: CrossEncoderRuntime | None = None) -> None:
         self.spec = spec
+        self.runtime = runtime or CrossEncoderRuntime()
         self._model = None
 
     def _get_model(self):
@@ -223,6 +244,10 @@ class BgeCrossEncoderAdapter:
             self._model = CrossEncoder(
                 self.spec.model_name,
                 max_length=DEFAULT_RERANKER_MAX_LENGTH,
+                revision=self.spec.revision,
+                device=self.runtime.device,
+                local_files_only=self.runtime.local_files_only,
+                trust_remote_code=False,
             )
         return self._model
 
@@ -235,6 +260,7 @@ class BgeCrossEncoderAdapter:
             pairs,
             show_progress_bar=False,
             convert_to_numpy=True,
+            batch_size=self.runtime.batch_size,
         )
         ranked_indices = sorted(
             range(len(candidates)),
@@ -470,10 +496,12 @@ AnswerFunction = Callable[[EvalQuestion, list[dict]], str]
 
 def create_reranker_adapter(spec: RerankerSpec) -> RerankerAdapter:
     """Create the lazy adapter associated with a benchmark spec."""
+    if spec.family == "identity":
+        return RetrievalOrderAdapter()
     if spec.family == "flashrank":
         return FlashRankAdapter(spec)
     if spec.family == "sentence_transformers":
-        return BgeCrossEncoderAdapter(spec)
+        return LocalCrossEncoderAdapter(spec)
     if spec.family == "hf_inference":
         return HuggingFaceInferenceAdapter(spec, HuggingFaceInferenceConfig.from_env())
     raise ValueError(f"Unsupported reranker family: {spec.family}")
@@ -623,7 +651,7 @@ def _metrics_for_ranked_chunks(
         first_relevant_rank = next(
             (
                 rank
-                for rank, chunk in enumerate(ranked_chunks, 1)
+                for rank, chunk in enumerate(selected_chunks, 1)
                 if _chunk_is_relevant(chunk, question.reference_keywords)
             ),
             None,
@@ -708,7 +736,7 @@ def _summary_for_configuration(
     if memory_before is not None and memory_after is not None:
         memory_delta = round(memory_after - memory_before, 4)
     return BenchmarkSummary(
-        schema_version="1.0",
+        schema_version="2.0",
         benchmark="reranker",
         reranker_key=spec.key,
         reranker_model=spec.model_name,
@@ -762,11 +790,12 @@ def run_benchmark(
             for case in cases:
                 started_at = time.perf_counter()
                 ranked = adapter.rank(
-                    case.question.question, case.candidates[:candidate_pool]
+                    case.question.question, deepcopy(case.candidates[:candidate_pool])
                 )
                 rank_latency_ms = (
                     time.perf_counter() - started_at
                 ) * MILLISECONDS_PER_SECOND
+                validate_ranking(case.candidates[:candidate_pool], ranked)
                 ranked_cases.append((case, ranked, rank_latency_ms))
             ranked_by_pool[candidate_pool] = ranked_cases
         memory_after = _memory_rss_mb()
@@ -820,6 +849,18 @@ def run_benchmark(
                     )
                 )
     return BenchmarkResult(summaries=summaries, observations=observations)
+
+
+def validate_ranking(candidates: list[dict], ranked: list[dict]) -> None:
+    expected = {candidate["chunk_id"]: candidate["text"] for candidate in candidates}
+    ids = [candidate["chunk_id"] for candidate in ranked]
+    if len(expected) != len(candidates) or len(ids) != len(expected) or set(ids) != set(expected):
+        raise ValueError("Reranker must return every candidate exactly once")
+    for candidate in ranked:
+        if candidate["text"] != expected[candidate["chunk_id"]]:
+            raise ValueError("Reranker changed candidate text")
+        if "rerank_score" in candidate and not math.isfinite(float(candidate["rerank_score"])):
+            raise ValueError("Nonfinite reranker score")
 
 
 def write_jsonl(rows: Sequence[object], output_path: Path) -> None:
@@ -882,7 +923,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_TOP_KS,
     )
     parser.add_argument(
-        "--models", type=_parse_model_specs, default=tuple(RERANKER_SPECS.values())
+        "--models", type=_parse_model_specs, default=tuple(RERANKER_SPECS[key] for key in ("flashrank", "bge", "bge_hf"))
     )
     parser.add_argument("--query-expansion", action="store_true")
     parser.add_argument(
