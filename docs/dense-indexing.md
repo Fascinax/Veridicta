@@ -64,3 +64,16 @@ python -m data_ingest.prepare_candidate --seal data/snapshots/<candidat>
 Le scellement vérifie les fichiers et la correspondance avec les chunks préparés.
 Il conserve `release_ready=false`. La préparation, l'indexation et des requêtes
 de smoke ne constituent pas une validation juridique indépendante.
+
+## Contrôle de tous les vecteurs
+
+```powershell
+python -m tools.check_candidate_indexes --candidate data/snapshots/<candidat> --out data/audit/index-integrity.json
+```
+
+Après scellement, le contrôle relit toutes les lignes LanceDB par petits lots,
+les rapproche de FAISS par identifiant plutôt que par position physique et
+compare exactement les vecteurs float32. Il vérifie dimensions, nombre, unicité,
+normalisation, FTS et BM25 puis revérifie le manifeste pour s'assurer que les
+lectures n'ont pas modifié le snapshot. Le résultat reste un contrôle d'intégrité,
+pas une mesure de qualité juridique.
