@@ -14,6 +14,16 @@ def test_duplicate_question_cannot_be_called_independent():
         validate_intake([{"id": "new", "question": "Même question!", "review_status": "pending"}], [{"question": "même question ?"}])
 
 
+def test_accents_do_not_hide_a_duplicate_question():
+    with pytest.raises(ValueError, match="unique"):
+        validate_intake([{"id": "new", "question": "Quel PREAVIS ?", "review_status": "pending"}], [{"question": "Quel préavis!"}])
+
+
+def test_empty_review_intake_cannot_pass_a_required_review():
+    with pytest.raises(ValueError, match="human review"):
+        validate_intake([], [], require_reviewed=True)
+
+
 def test_claim_metrics_report_coverage_alongside_false_acceptance():
     cases = [{"id": "invalid-number", "answer": "Le délai est de 300 jours. [Source 1]", "sources": [{"text": "Le délai est de 30 jours."}], "expected_supported": False}]
     report = evaluate_cases(cases)

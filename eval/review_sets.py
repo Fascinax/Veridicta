@@ -11,7 +11,8 @@ import unicodedata
 
 
 def question_key(text: str) -> str:
-    normalized = unicodedata.normalize("NFKC", text).casefold()
+    normalized = "".join(character for character in unicodedata.normalize("NFKD", text).casefold()
+                         if not unicodedata.combining(character))
     return " ".join(re.findall(r"\w+", normalized))
 
 
@@ -20,6 +21,8 @@ def validate_intake(cases: list[dict], regression: list[dict], *, require_review
     ids, questions = set(), set()
     reviewed = 0
     for row in cases:
+        if not isinstance(row.get("id"), str) or not row["id"].strip() or not isinstance(row.get("question"), str):
+            raise ValueError("Case IDs and questions must be nonempty strings")
         key = question_key(row["question"])
         if not key or row["id"] in ids or key in questions or key in existing:
             raise ValueError("Case IDs and questions must be unique and absent from the regression set")
@@ -33,7 +36,7 @@ def validate_intake(cases: list[dict], regression: list[dict], *, require_review
             reviewed += 1
         elif row.get("review_status") != "pending":
             raise ValueError("Unknown review status")
-    if require_reviewed and reviewed != len(cases):
+    if require_reviewed and (not cases or reviewed != len(cases)):
         raise ValueError("Legal evaluation blocked: human review is incomplete")
     return {"cases": len(cases), "reviewed": reviewed, "pending": len(cases) - reviewed, "eligible_for_legal_evaluation": bool(cases) and reviewed == len(cases), "scope": "review_intake_not_a_sealed_holdout"}
 
