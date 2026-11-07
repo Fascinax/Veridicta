@@ -312,6 +312,9 @@ python -m eval.benchmark_rerankers \
   --details-out eval/results/reranker_benchmark/details.jsonl
 ```
 
+For sealed corpus inputs, frozen candidate replay, pinned weights and the
+schema 2.0 metric definitions, see [the reproducible reranker protocol](docs/reranker-evaluation.md).
+
 The benchmark retrieves one common pool before comparing rerankers, then
 reports Recall@k, MRR, keyword-based context precision, reranking latency
 (mean/p95) and process RSS. Citation faithfulness is `n/a` in retrieval-only
