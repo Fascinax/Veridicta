@@ -1,0 +1,478 @@
+{
+  "schema_version": "1.0",
+  "checked_at": "2026-11-07T13:10:58.213292+00:00",
+  "branch": "audit/10-corpus-coverage",
+  "code_commit": "59469dad6e71d945aabfa54dcb6564444fedd2f5",
+  "snapshot": {
+    "local_root": "data/snapshots/audit-20261107-coverage-v2",
+    "manifest_sha256": "4d02878c32241ac24058e2f0683fbf835e36fcdc601aff8cabd0bc560752276b",
+    "collected_at": "2026-11-07T13:05:40.140742+00:00",
+    "declared_files": 129,
+    "legimonaco_counts": {
+      "legislation": 164,
+      "jurisprudence": 781,
+      "regulations": 1556,
+      "jurisprudence_courts": 786,
+      "traites_internationaux": 24,
+      "projets_loi": 55
+    },
+    "journal": {
+      "status": "collected",
+      "documents": 97,
+      "queries": [
+        {
+          "keyword": "licenciement",
+          "theme": "Circulaires",
+          "reported_total": 1,
+          "collected_urls": 1,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "60db781731fca2c0ad31fe8fb99b84cd61e38b56364eb6f66c8ae514ee427ba3"
+          ]
+        },
+        {
+          "keyword": "contrat de travail",
+          "theme": "Circulaires",
+          "reported_total": 134,
+          "collected_urls": 60,
+          "capped": true,
+          "stop_reason": "robots_policy",
+          "search_html_sha256": [
+            "73701abedb82673b261cd80f9f9363d2cb574e474d0df7880f2d1ed12ebe75ad"
+          ]
+        },
+        {
+          "keyword": "convention collective",
+          "theme": "Circulaires",
+          "reported_total": 3,
+          "collected_urls": 3,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "569597e0e68831cd10afe530db13704f4be3ee32fb0de7743a9e7ca87ee2eb38"
+          ]
+        },
+        {
+          "keyword": "salaire",
+          "theme": "Circulaires",
+          "reported_total": 31,
+          "collected_urls": 31,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "f0b9ff6e441a61f362e770f954246146ab5546742d2faeefe1bad6f476e6987c"
+          ]
+        },
+        {
+          "keyword": "conge paye",
+          "theme": "Circulaires",
+          "reported_total": 101,
+          "collected_urls": 60,
+          "capped": true,
+          "stop_reason": "robots_policy",
+          "search_html_sha256": [
+            "f1b6d8e3833d4b5fe3fa485edf445f5bd2898a36b59994384d72f640e1942998"
+          ]
+        },
+        {
+          "keyword": "inspection du travail",
+          "theme": "Circulaires",
+          "reported_total": 134,
+          "collected_urls": 60,
+          "capped": true,
+          "stop_reason": "robots_policy",
+          "search_html_sha256": [
+            "0c2ec333dbf26ecd24af11b8fe842ad8812781b6dbc77b45ace4f34066d33282"
+          ]
+        },
+        {
+          "keyword": "syndicat",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "3d8d98ada089617c589576f48a07a1dfee8ea544428a84fc4d895574e7b231e9"
+          ]
+        },
+        {
+          "keyword": "apprentissage",
+          "theme": "Circulaires",
+          "reported_total": 10,
+          "collected_urls": 10,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "601c21416777ce98dcc9bab363c37131bed8a6c52307d0bf50bd699908e932f8"
+          ]
+        },
+        {
+          "keyword": "formation professionnelle",
+          "theme": "Circulaires",
+          "reported_total": 31,
+          "collected_urls": 31,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "10b4fdc1b0c7a620ade35baaa92733d727d7f0d31cffb9cd9e76a9cf793efe6f"
+          ]
+        },
+        {
+          "keyword": "representation du personnel",
+          "theme": "Circulaires",
+          "reported_total": 14,
+          "collected_urls": 14,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "299aea487ba907d499897421e808a341e0b6fe4977a7d92fb1b5d7cafa3a63c1"
+          ]
+        },
+        {
+          "keyword": "heures supplementaires",
+          "theme": "Circulaires",
+          "reported_total": 20,
+          "collected_urls": 20,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "fb1e99a46c2c1831195a707c8a595e2d6a88856b98dffec40218b881e60a8eaa"
+          ]
+        },
+        {
+          "keyword": "chomage",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "bb2c914290e94526cc3a244aef3eb6a0a9cf2458ccfc40301b5deeddff249835"
+          ]
+        },
+        {
+          "keyword": "medecine du travail",
+          "theme": "Circulaires",
+          "reported_total": 134,
+          "collected_urls": 60,
+          "capped": true,
+          "stop_reason": "robots_policy",
+          "search_html_sha256": [
+            "9e0af8f8aef2258f99e1a8225a72eeb99a3b2daf0f3b9c28d2166e0bb712aed0"
+          ]
+        },
+        {
+          "keyword": "harcelement",
+          "theme": "Circulaires",
+          "reported_total": 2,
+          "collected_urls": 2,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "4f3bd0e635e1a2268738a0ae3929527fd2625ae18e9f2b1912577a62ff33771e"
+          ]
+        },
+        {
+          "keyword": "interim",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "20f08663cf3732966752bb1f8bc5c8d3d749dce961d8e20b62c968c89a6b291d"
+          ]
+        },
+        {
+          "keyword": "preavis",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "552c21566acc8fcbe76a1d3fba71c65bd79ba65c7dfe3747e1ef8c53b691aef8"
+          ]
+        },
+        {
+          "keyword": "rupture du contrat",
+          "theme": "Circulaires",
+          "reported_total": 11,
+          "collected_urls": 11,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "6afc74effb17b82d31258d6a25ff54bcd1f88b2898d73ad9aeb823ee3787f5c1"
+          ]
+        },
+        {
+          "keyword": "droit du travail",
+          "theme": "Circulaires",
+          "reported_total": 134,
+          "collected_urls": 60,
+          "capped": true,
+          "stop_reason": "robots_policy",
+          "search_html_sha256": [
+            "670c5ac342f58303b0a4fb3d576eadbcade3dd2d78e98141df35c4b4db152dce"
+          ]
+        },
+        {
+          "keyword": "delegue du personnel",
+          "theme": "Circulaires",
+          "reported_total": 14,
+          "collected_urls": 14,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "8d3a3a32ec22b668798a872067759959205cf0cfd35d7473e68f46e6b9db26b0"
+          ]
+        },
+        {
+          "keyword": "accident du travail",
+          "theme": "Circulaires",
+          "reported_total": 134,
+          "collected_urls": 60,
+          "capped": true,
+          "stop_reason": "robots_policy",
+          "search_html_sha256": [
+            "cadb381b377d42b8f8a1cc68ee5f649864ef696b69f87269f262924949859388"
+          ]
+        },
+        {
+          "keyword": "conge maternite",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "ec4ca45b9e98754793312948cffb82d74fe6dcb55e39f2e48a21c231fb8bc9d1"
+          ]
+        },
+        {
+          "keyword": "SMIG",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "bf6812de90afd8c83a6997202ff9f432c1ee1cf8d18523de17e1c0db66a16261"
+          ]
+        },
+        {
+          "keyword": "salaire minimum",
+          "theme": "Circulaires",
+          "reported_total": 31,
+          "collected_urls": 31,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "2dc4d110237e353839e3a7f8f867958f3d4d7b43cf80d2609df8f7a41266e13f"
+          ]
+        },
+        {
+          "keyword": "greve",
+          "theme": "Circulaires",
+          "reported_total": 0,
+          "collected_urls": 0,
+          "capped": false,
+          "stop_reason": "exhausted",
+          "search_html_sha256": [
+            "2d2cc6904437ed70ddcaf29f8f3c89922a3dc75aee6695ba2673bf9c9011f309"
+          ]
+        }
+      ],
+      "all_query_results_collected": false,
+      "complete_journal_coverage": false,
+      "applicability_review": "pending",
+      "scope": "French source themes and keyword search; not all Journal publications",
+      "robots_sha256": "d66a2a93bcdf3b6f2339ae1add170af515692faefe51036b0ac7cefc8de21e65"
+    }
+  },
+  "journal_content": {
+    "documents": 97,
+    "unique_ids": 97,
+    "unique_urls": 97,
+    "publication_date_range": [
+      "2019-01-18",
+      "2026-10-30"
+    ],
+    "tables": 44,
+    "records_with_tables": 25,
+    "source_html_hashes_verified": true
+  },
+  "corpus_quality": {
+    "schema_version": "1.0",
+    "counts": {
+      "records": 3463,
+      "versioned_documents": 1744,
+      "version_window_explicit_effective_dates": 1744,
+      "empty_text": 6,
+      "explicitly_repealed": 14
+    },
+    "unique_documents": 3463,
+    "conflicting_id_groups": 0,
+    "types": {
+      "legislation": 164,
+      "jurisprudence": 1567,
+      "regulation": 1556,
+      "traite_international": 24,
+      "projet_loi": 55,
+      "journal_monaco": 97
+    },
+    "files": {
+      "legislation.jsonl": {
+        "records": 164,
+        "versioned_documents": 164,
+        "version_window_explicit_effective_dates": 164,
+        "empty_text": 6,
+        "explicitly_repealed": 4
+      },
+      "jurisprudence.jsonl": {
+        "records": 781
+      },
+      "regulations.jsonl": {
+        "records": 1556,
+        "versioned_documents": 1556,
+        "version_window_explicit_effective_dates": 1556,
+        "explicitly_repealed": 10
+      },
+      "jurisprudence_courts.jsonl": {
+        "records": 786
+      },
+      "traites_internationaux.jsonl": {
+        "records": 24,
+        "versioned_documents": 24,
+        "version_window_explicit_effective_dates": 24
+      },
+      "projets_loi.jsonl": {
+        "records": 55
+      },
+      "journal_monaco.jsonl": {
+        "records": 97
+      }
+    },
+    "blocking_build_issues": {},
+    "eligible_for_build": true,
+    "legal_release_ready": false,
+    "semantics": "Source version windows are not proof of article-specific legal applicability or complete coverage."
+  },
+  "empty_source_evidence": {
+    "report_sha256": "428b7222d01c169a252b6fbf65fc2d72c24260b175e752407a04d8da206449bd",
+    "checked_at": "2026-11-07T13:08:44.483432+00:00",
+    "source_manifest_sha256": "8374a7e414819c205bc3a3cd7a66a4e3f241bda2d464661f909b39d99cc87bc7",
+    "records": [
+      {
+        "source_html_sha256": "30918fe6e1d38698403e06d9211732fa74826b9676f90245128b46fd351f4002",
+        "candidate_body_chars_after_metadata_exclusion": 0,
+        "html_repeal_banner": false,
+        "editorial_repeal_mention": false,
+        "classification": "no_body_after_metadata_exclusion",
+        "legal_review": "pending",
+        "id": "cd990990b927",
+        "source": "https://legimonaco.mc/tnc/loi/1988/06-27-1.113@2020.12.19",
+        "requested_url": "https://legimonaco.mc/tnc/loi/1988/06-27-1.113@2020.12.19/",
+        "api_abrogee": "no",
+        "html_filename": "6c64750acd7294f95a4e73c7b3570ad6c5f6fddd1aaeb869f86dbe8966d9591d.html"
+      },
+      {
+        "source_html_sha256": "09db5d2ad1ceec7e79ed61dbffe5df2ed5c86e25a7903ddc67981703a76f7e8e",
+        "candidate_body_chars_after_metadata_exclusion": 0,
+        "html_repeal_banner": true,
+        "editorial_repeal_mention": false,
+        "classification": "no_body_after_metadata_exclusion",
+        "legal_review": "pending",
+        "id": "e6ba83d18b3c",
+        "source": "https://legimonaco.mc/tnc/loi/1963/03-16-734@2007.12.22",
+        "requested_url": "https://legimonaco.mc/tnc/loi/1963/03-16-734@2007.12.22/",
+        "api_abrogee": "yes",
+        "html_filename": "b922a439f686ca8f86741a5f7c238ead4b9ee57a7234feccc529eab3795c90a2.html"
+      },
+      {
+        "source_html_sha256": "aedad5212a2a77e6631e0138cc203847605103432c8dd777b3057daf186c0677",
+        "candidate_body_chars_after_metadata_exclusion": 0,
+        "html_repeal_banner": true,
+        "editorial_repeal_mention": false,
+        "classification": "no_body_after_metadata_exclusion",
+        "legal_review": "pending",
+        "id": "eaff498b2f72",
+        "source": "https://legimonaco.mc/tnc/loi/1950/12-23-526@1982.07.31",
+        "requested_url": "https://legimonaco.mc/tnc/loi/1950/12-23-526@1982.07.31/",
+        "api_abrogee": "yes",
+        "html_filename": "bf502e5fbf2f5aa0eb9d9ef76a9b675a1c9b95d80944d48be9f6ba92b3a4f61a.html"
+      },
+      {
+        "source_html_sha256": "cf364180e1c774785dd0f3ee3786a47dbc31219ea559d8a2d7116d77ba7a4765",
+        "candidate_body_chars_after_metadata_exclusion": 0,
+        "html_repeal_banner": false,
+        "editorial_repeal_mention": false,
+        "classification": "no_body_after_metadata_exclusion",
+        "legal_review": "pending",
+        "id": "943b100533bb",
+        "source": "https://legimonaco.mc/tnc/loi/1946/05-16-445@1958.01.28",
+        "requested_url": "https://legimonaco.mc/tnc/loi/1946/05-16-445@1958.01.28/",
+        "api_abrogee": "no",
+        "html_filename": "42c1061e76ebd455e0ab9edbbdff2af7275984a4a63e40030e886e0e7124129f.html"
+      },
+      {
+        "source_html_sha256": "e113238080ec33de1b4e91a9a6b41383e1cb2b647a8a7021e59a99553de37cbf",
+        "candidate_body_chars_after_metadata_exclusion": 0,
+        "html_repeal_banner": true,
+        "editorial_repeal_mention": false,
+        "classification": "no_body_after_metadata_exclusion",
+        "legal_review": "pending",
+        "id": "1f38db0db5f1",
+        "source": "https://legimonaco.mc/tnc/ordonnance-loi/1940/09-16-300@2020.12.19",
+        "requested_url": "https://legimonaco.mc/tnc/ordonnance-loi/1940/09-16-300@2020.12.19/",
+        "api_abrogee": "yes",
+        "html_filename": "e654f52e3c88a62bbdb561f6bad6e572b5f6992de4208dd66b94231a704f2b30.html"
+      },
+      {
+        "source_html_sha256": "76fa60ff4c80c8b86d7b970acec92f13a0cae3125ab943e3150a698a57fb5540",
+        "candidate_body_chars_after_metadata_exclusion": 0,
+        "html_repeal_banner": true,
+        "editorial_repeal_mention": false,
+        "classification": "no_body_after_metadata_exclusion",
+        "legal_review": "pending",
+        "id": "95f6e45a418a",
+        "source": "https://legimonaco.mc/tnc/loi/1922/08-05-61@2022.05.28",
+        "requested_url": "https://legimonaco.mc/tnc/loi/1922/08-05-61@2022.05.28/",
+        "api_abrogee": "yes",
+        "html_filename": "becd62928df754117a684384ab81d4a0ccecc938eda06b2c69d699d46c12954a.html"
+      }
+    ]
+  },
+  "preservation": {
+    "legimonaco_raw_identical_to_previous_snapshot": true,
+    "active_index_sha256": {
+      "data/index/veridicta.faiss": "750ee8836812984807b80bc99914b5c997deb6c8c22946867c6e8b0bfd87918a",
+      "data/index/chunks_map.jsonl": "08d30adad8adcfb152c1981351a0afe0fa37d36193b56ac2e639ee8cac693366",
+      "data/index/embedding_config.json": "ad6fb5112b888dea260163d30c303b95f1ba50799a8d10b79d3bf1ae282fc85a"
+    },
+    "active_index_unchanged": true,
+    "indexed_candidate_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "main_commit": "35f18fdc475836191a34386b5ca4d24a14e467b0"
+  },
+  "validation": {
+    "focused_tests_passed": 54,
+    "full_windows_suite_before_final_source_review_additions": {
+      "passed": 449,
+      "skipped": 3,
+      "deselected": 16
+    },
+    "manifest_verified": true,
+    "index_rebuilt": false,
+    "activated": false
+  },
+  "release_ready": false,
+  "limits": [
+    "Search result totals count hits per query, not unique uncollected documents.",
+    "18 queries exhausted; six stopped at robots-excluded pagination. No whole-Journal completeness claim.",
+    "Publication dates are not effective dates; applicability remains pending.",
+    "Empty source-page structure does not determine legal status.",
+    "Independent legal evaluation, corpus review and deployment verification remain open."
+  ]
+}
