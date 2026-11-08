@@ -202,11 +202,11 @@ restent limitées par robots. Le nouveau snapshot brut n'est pas indexé ni acti
 Le candidat du lot 9 et les index actifs conservent leurs empreintes.
 Les commandes, mesures et limites sont détaillées dans `docs/journal-coverage.md`.
 
-## Reste à faire après les lots 10 à 12
+## Reste à faire après les lots 10 à 13
 
 Les charges ci-dessous sont des estimations de travail effectif, hors attente
 d'accès, d'export de source ou de disponibilité d'un juriste. Elles ne sont pas
-des engagements de date. Les lots techniques 1 à 10 sont poussés sur des branches ;
+des engagements de date. Les lots techniques 1 à 13 sont poussés sur des branches ;
 leur intégration à `main` reste à décider après revue.
 
 | Chantier | Prochaine étape concrète | Charge indicative |
@@ -215,7 +215,7 @@ leur intégration à `main` reste à décider après revue.
 | Évaluation indépendante | Rédiger et annoter les cas dans le dossier du lot 12 (50 emplacements vierges préparés), puis exécuter le RAG et faire revoir ses réponses | 3–6 jours, dont du temps de juriste |
 | Modèles et rerankers | Confirmer juridiquement les comparaisons de rerankers du lot 11, qualifier leur runtime cible puis comparer embeddings et génération | 1–3 jours après le jeu annoté |
 | Graphe, si retenu | Reconstruire dans une base isolée, vérifier provenance/versions/liens et mesurer son gain avant activation | 1–3 jours ; optionnel si le chemin hybride suffit |
-| Exploitation | Choisir l'hébergement et l'IdP, tester identité/accès, secrets, sauvegarde/restauration, quotas et alertes ; refaire le smoke du fournisseur exact et la readiness | 2–4 jours selon la cible |
+| Exploitation | Choisir hébergement et IdP ; reproduire sur la cible les contrôles de récupération du lot 13, puis tester accès, secrets, quotas, alertes et fournisseur exact | 2–4 jours selon la cible |
 | Dépendances | Lever les deux exceptions documentées Ragas/DiskCache dès qu'une solution corrigée et compatible est disponible, puis relancer l'audit | 0,5–1 jour de validation, disponibilité externe |
 
 Le code et les tests locaux peuvent encore être améliorés sans ces accès.
@@ -272,3 +272,22 @@ reste `reference_ready=false` et `legal_release_ready=false`. Après rédaction 
 revue humaines, il faudra exécuter et faire juger les réponses des modèles.
 Consignes et preuves : `docs/legal-reference-review.md` et
 `eval/results/audit/legal-review-packet-20261107.json`.
+
+## Lot 13 — Récupération des dossiers et répétition opérationnelle
+
+- Sauvegarde v2 en octets avec empreintes et dates de modification ; lecture des
+  sauvegardes v1 conservée. Les audits restaurés gardent leur âge pour la rétention.
+- Inventaire refusant dossiers incomplets et fichiers inattendus ; reconnaissance
+  des verrous d'audit persistants sur Linux, exclus des données métier.
+- Préparation de la restauration hors des répertoires applicatifs, promotion sous
+  verrou et retour arrière ; périmètre bloqué si un marqueur d'interruption reste.
+- Commandes refusant une source inexistante, une sortie dans un stockage de
+  dossiers et une destination remplie ; résumé de sauvegarde limité aux comptages.
+- Exercice API/CLI isolé : deux dossiers et quatre fichiers synthétiques, octets,
+  métadonnées et rétention conservés. Aucune purge appliquée ni donnée réelle lue.
+
+Les pannes sont simulées dans les tests ; l'exercice ne valide ni coupure matérielle,
+IdP, chiffrement ni droits de l'hébergement. Les objectifs RPO/RTO et la répétition
+sur la cible restent à définir. Les index et annotations historiques restent
+inchangés. Détails : `docs/workspace-recovery.md` et
+`eval/results/audit/workspace-recovery-20261108.json`.

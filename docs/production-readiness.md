@@ -92,3 +92,8 @@ rétention, sauvegardes et quotas partagés doit être testé sur la cible.
 Joindre au dossier de release : commit, CI, manifeste et son empreinte, références
 de revue, résultat de readiness et smoke de la configuration retenue. Les tests
 synthétiques et métriques lexicales ne certifient pas la fiabilité juridique.
+
+Le lot 13 ajoute une répétition de récupération locale sur données synthétiques,
+avec intégrité des octets et conservation des dates d'audit. Son succès ne valide
+pas les accès, le stockage ni la récupération sur l'hébergement choisi. Ces
+preuves restent à produire sur la cible ; voir `docs/workspace-recovery.md`.

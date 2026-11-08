@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0",
+  "checked_at": "2026-11-08T19:10:54.442294+00:00",
+  "implementation_commit": "9fbe2aaeabefb7bb44a79802d931b2f96462cf6c",
+  "branch": "audit/13-workspace-recovery",
+  "input_class": "synthetic",
+  "drill": {
+    "schema_version": "1.0",
+    "input_class": "synthetic",
+    "scope": "local_storage_recovery_drill",
+    "checked_at": "2026-11-08T19:13:11.301597+00:00",
+    "status": "pass",
+    "checks": {
+      "audit_lock_protocol_exercised": true,
+      "archive_matches_source": true,
+      "restored_archive_identical": true,
+      "conversations_notes_sources_restored": true,
+      "archived_case_restored": true,
+      "audit_bytes_preserved": true,
+      "audit_mtime_preserved": true,
+      "audit_retention_plan_preserved": true,
+      "retention_dry_run_unchanged": true,
+      "other_owner_denied": true,
+      "existing_scope_not_overwritten": true,
+      "corruption_rejected_before_writes": true,
+      "source_unchanged": true
+    },
+    "backup_schema_version": 2,
+    "archive_sha256": "6e393f6fcd6f72cb8d8bb24a566c711f05ca66820726f3b71a071651e81ed72a",
+    "archive_bytes": 2581,
+    "files": 4,
+    "cases": 2,
+    "restore_seconds": 0.025734699971508235,
+    "total_seconds": 0.21225439995760098,
+    "deployment_validated": false,
+    "legal_release_ready": false,
+    "limits": [
+      "Synthetic local fixture only; no existing user cases read or restored.",
+      "Real IdP, hosting ACLs, encryption and crash durability are not validated.",
+      "Administrative backups carry private data; hashes do not authenticate the archive's author."
+    ]
+  },
+  "cli_checks": {
+    "backup_summary": {
+      "status": "backed_up",
+      "schema_version": 2,
+      "files": 4,
+      "archive_bytes": 2581
+    },
+    "restore_summary": {
+      "status": "restored"
+    },
+    "archive_matches_api_drill": true,
+    "restored_bytes_and_mtimes_match": true,
+    "existing_destination_refused": true
+  },
+  "evidence_sha256": {
+    "report.json": "685477be24c6450674a03226552197facb13b60c3dbc565140d9a323cc0701b6",
+    "cli-report.json": "0f329f30783be1a89f113a5e9f05797bc3477718f7979dda684c271acf6a620a",
+    "backup.json": "6e393f6fcd6f72cb8d8bb24a566c711f05ca66820726f3b71a071651e81ed72a",
+    "backup-cli.json": "6e393f6fcd6f72cb8d8bb24a566c711f05ca66820726f3b71a071651e81ed72a"
+  },
+  "validation": {
+    "focused_tests_passed": 64,
+    "focused_tests_skipped": 1,
+    "windows_full_suite": {
+      "passed": 555,
+      "skipped": 3,
+      "deselected": 16
+    },
+    "final_drill_module_tests_passed": 40,
+    "ci_tests": {
+      "passed": 558,
+      "skipped": 2,
+      "deselected": 16
+    },
+    "ci_url": "https://github.com/Fascinax/Veridicta/actions/runs/42513853287",
+    "resolved_linux_lock_inventory_failure": {
+      "run_url": "https://github.com/Fascinax/Veridicta/actions/runs/42513541569",
+      "fix_commit": "17a1296604e82e179df9f545be1e4896774d0aeb"
+    }
+  },
+  "preservation": {
+    "no_existing_user_workspaces_accessed": true,
+    "active_index_unchanged": true,
+    "active_index_sha256": {
+      "data/index/veridicta.faiss": "750ee8836812984807b80bc99914b5c997deb6c8c22946867c6e8b0bfd87918a",
+      "data/index/chunks_map.jsonl": "08d30adad8adcfb152c1981351a0afe0fa37d36193b56ac2e639ee8cac693366",
+      "data/index/embedding_config.json": "ad6fb5112b888dea260163d30c303b95f1ba50799a8d10b79d3bf1ae282fc85a"
+    },
+    "indexed_candidate_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "main_commit": "35f18fdc475836191a34386b5ca4d24a14e467b0"
+  },
+  "deployment_validated": false,
+  "legal_release_ready": false,
+  "remaining": [
+    "Choose hosting and IdP, configure real accounts and access policies.",
+    "Repeat recovery and verify encryption, permissions and interruption handling on the deployment target.",
+    "Agree on RPO/RTO, retention and monitoring; local fixture duration is not a service objective.",
+    "Independent legal review and corpus promotion remain separate requirements."
+  ],
+  "local_evidence_root": "data/audit/workspace-recovery-drill-20261108-v2",
+  "linux_lock_fix_commit": "17a1296604e82e179df9f545be1e4896774d0aeb"
+}

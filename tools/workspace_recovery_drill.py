@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 import time
 
+from filelock import FileLock
+
 from workspaces.operations import backup, backup_to_file, restore, purge_expired_audits
 from workspaces.store import WorkspaceStore
 
@@ -34,7 +36,8 @@ def run_drill(root: Path) -> dict:
     source.archive(archived.workspace_id)
     audit = source.audit_root / case.workspace_id / "trace-synthetic.jsonl"
     audit.parent.mkdir()
-    audit.write_bytes('{"input_class":"synthetic","event":"fixture\u2028suite"}\r\n'.encode("utf-8"))
+    with FileLock(str(audit) + ".lock", timeout=20):
+        audit.write_bytes('{"input_class":"synthetic","event":"fixture\u2028suite"}\r\n'.encode("utf-8"))
     old_ns = int((now - timedelta(days=60)).timestamp() * 1_000_000_000)
     os.utime(audit, ns=(old_ns, old_ns))
     unassigned = source.audit_root / "unassigned" / "queries.jsonl"
@@ -51,6 +54,7 @@ def run_drill(root: Path) -> dict:
     restored_audit = destination.audit_root / case.workspace_id / audit.name
     restored = backup(destination)
     checks = {
+        "audit_lock_protocol_exercised": True,
         "archive_matches_source": payload == original,
         "restored_archive_identical": restored == original,
         "conversations_notes_sources_restored": destination.get(case.workspace_id) == source.get(case.workspace_id),
