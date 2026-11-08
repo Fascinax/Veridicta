@@ -330,3 +330,25 @@ juridique, l'évaluation indépendante liée au corpus choisi et un smoke fourni
 récent restent requis. Les paquets humains existants ne sont pas réécrits.
 Preuves : `docs/incremental-indexing.md` et
 `eval/results/audit/incremental-corpus-20261108.json`.
+
+## Lot 16 — Quotas partagés entre processus d'un serveur
+
+- Quota glissant du propriétaire enregistré dans SQLite avec admission atomique,
+  conservé lors d'un changement d'instance ou d'un redémarrage de worker.
+- Places de traitement tenues par des verrous système locaux : plafond commun
+  entre processus et libération après arrêt brutal, sans bail expirant.
+- Refus si stockage de quotas indisponible, politique incompatible, base étrangère
+  ou verrou coopératif ; aucune poursuite silencieuse avec un compteur local.
+- Stockage limité aux empreintes de propriétaires, timestamps et politique ;
+  aucune question ni identité OIDC brute dans cette base.
+- Correction de la saturation des propriétaires : les comptes déjà présents
+  peuvent consommer leur crédit restant, y compris dans le contrôleur en mémoire.
+- 28 nouveaux tests ; 32 tests ciblés et 709 tests dans la suite Windows passent.
+  Les tests lancent de vrais processus pour la concurrence, les courses de quota
+  et l'arrêt brutal d'un worker synthétique.
+
+Le périmètre vise des workers partageant un volume local sur un seul hôte.
+Les essais, droits du stockage, alertes et quotas d'une cible multi-hôte restent
+à valider sur l'infrastructure choisie. Guide et preuve locale :
+`docs/shared-request-limits.md` et
+`eval/results/audit/shared-request-limits-20261108.json`.

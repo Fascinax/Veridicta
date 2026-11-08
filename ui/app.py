@@ -30,7 +30,7 @@ _SECRET_KEYS = [
     "VERIDICTA_AUDIT_ENABLED", "VERIDICTA_AUDIT_DIR", "VERIDICTA_AUDIT_INCLUDE_CONTENT",
     "VERIDICTA_ORCHESTRATOR_ENABLED",
     "VERIDICTA_WORKSPACE_MODE", "VERIDICTA_WORKSPACE_DIR", "VERIDICTA_QUERY_EXPANSION",
-    "VERIDICTA_SNAPSHOT_MANIFEST", "VERIDICTA_ACCESS_POLICY_FILE",
+    "VERIDICTA_SNAPSHOT_MANIFEST", "VERIDICTA_ACCESS_POLICY_FILE", "VERIDICTA_REQUEST_LIMITS_DB",
 ]
 try:
     for _k in _SECRET_KEYS:
@@ -71,7 +71,8 @@ from retrievers.traceability import (
 )
 from workspaces.store import WorkspaceStore
 from ui.access import get_workspace_store as _get_workspace_store
-from ui.request_limits import RequestLimits, RequestLimitExceeded
+from ui.request_limits import RequestLimitExceeded
+from ui.shared_request_limits import SharedRequestLimits, request_limits_from_environment
 
 FAISS_OPTION = "FAISS"
 HYBRID_OPTION = "Hybrid (BM25+FAISS)"
@@ -240,8 +241,8 @@ def _get_lancedb():
 
 
 @st.cache_resource
-def _get_request_limits() -> RequestLimits:
-    return RequestLimits()
+def _get_request_limits() -> SharedRequestLimits:
+    return request_limits_from_environment()
 
 
 def _bounded_request(handler):
