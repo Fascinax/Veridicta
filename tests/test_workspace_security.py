@@ -99,7 +99,7 @@ def test_restore_rejects_tampered_content_before_writing(tmp_path):
     source = WorkspaceStore(tmp_path / "source")
     source.create("Source")
     payload = json.loads(backup(source))
-    payload["files"][0]["content"] = "tampered"
+    payload["files"][0]["data"] = "tampered"
     destination = WorkspaceStore(tmp_path / "destination")
     with pytest.raises(ValueError, match="content"):
         restore(destination, json.dumps(payload).encode())
