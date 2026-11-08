@@ -88,8 +88,8 @@ L'ancien candidat indexé et les trois fichiers du bundle FAISS actif ont
 conservé leurs empreintes. Le nouveau corpus brut n'est pas indexé ni activé.
 
 Le rapport versionné est `eval/results/audit/corpus-coverage-20261107.json`.
-Il ne contient pas les corps des documents. Avant de réunir ces sources dans
-un nouveau candidat indexé, il faut revoir leur pertinence, leurs versions,
+Il ne contient pas les corps des documents. Avant d'autoriser ces sources dans
+une release, il faut revoir leur pertinence, leurs versions,
 leur portée et leur éventuelle substitution par un texte plus récent. Une
 couverture plus large nécessite une source/export autorisé ou une autre
 collecte compatible avec les règles du site.
@@ -111,3 +111,15 @@ l'API. Deux ont `abrogee=no` et aucun indicateur HTML d'abrogation : leur absenc
 de corps reste à qualifier. Ce constat structurel ne détermine pas leur statut
 juridique. Les notes ou un PDF d'une ancienne rédaction ne sont pas substitués
 au texte de la version demandée. Aucun statut source n'a été modifié.
+
+## Candidat technique du 8 novembre
+
+Le corpus complémentaire a été préparé et indexé dans un nouveau candidat isolé,
+avec FAISS, BM25, LanceDB et FTS. Il contient 35 998 passages, dont 111 provenant
+des 97 circulaires. Ces dernières conservent `applicability_review=pending` ;
+le filtre les exclut désormais du RAG, y compris en recherche historique et
+après expansion de voisins. Aucune date d'effet ou approbation n'est ajoutée.
+
+Cette indexation de travail ne promeut pas le corpus et ne modifie pas les limites
+de couverture. Les vérifications et le manifeste sont décrits dans
+`docs/incremental-indexing.md` ; le rapport conserve `legal_release_ready=false`.

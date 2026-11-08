@@ -307,3 +307,26 @@ La configuration et les essais sur un IdP/hébergement réels restent à faire.
 Un traitement en cours n'est pas annulé instantanément ; les autres onglets sont
 recontrôlés à leur prochaine interaction. Aucun index actif, dossier réel ou
 annotation de revue n'est modifié. Voir `docs/access-control.md`.
+
+## Lot 15 — Corpus complémentaire et indexation incrémentale vérifiée
+
+- Réutilisation explicite des vecteurs de textes exactement identiques dans
+  un candidat indexé vérifié : même identité du modèle et du runtime, intégrité
+  des fichiers et des vecteurs, provenance liée aux checkpoints de reprise.
+- Métadonnées et ordre provenant du nouveau corpus ; nouveaux passages seuls
+  encodés. Aucun écrasement d'index existant ou remplacement d'index actif.
+- Correction du filtre qui ignorait `applicability_review=pending` : les sources
+  du Journal exigent une approbation explicite. Les marqueurs contradictoires
+  sont refusés, avant reranking comme après expansion et en recherche historique.
+- Candidat construit : 3 463 documents, 35 998 passages ; 35 887 vecteurs repris
+  et 111 encodés. Les 97 circulaires conservent leur revue en attente et leurs
+  dates d'effet inconnues ; leurs passages ne deviennent pas des sources du RAG.
+- Égalité de tous les vecteurs entre FAISS et LanceDB, vérification des vecteurs
+  repris, BM25 et FTS contrôlés, six requêtes de smoke CPU sans génération.
+- 54 nouveaux tests ; suite locale à 681 tests réussis et CI du code à 682.
+
+Le candidat est `indexed`, sans promotion ni approbation de release. La revue
+juridique, l'évaluation indépendante liée au corpus choisi et un smoke fournisseur
+récent restent requis. Les paquets humains existants ne sont pas réécrits.
+Preuves : `docs/incremental-indexing.md` et
+`eval/results/audit/incremental-corpus-20261108.json`.

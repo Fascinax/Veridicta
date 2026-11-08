@@ -79,3 +79,30 @@ release restent obligatoires ; le statut `indexed` conserve `release_ready=false
 Le corpus du Journal reste de couverture partielle, avec les limites de recherche
 et les exclusions robots conservées dans son manifeste. L'indexation n'élargit
 pas ce périmètre. Voir `docs/journal-coverage.md` et le rapport technique du lot 15.
+
+## Candidat construit le 8 novembre 2026
+
+`data/snapshots/audit-20261108-coverage-candidate` rassemble les 3 463 documents
+du snapshot complémentaire. Ses 35 998 passages comprennent 35 887 textes dont
+les vecteurs ont été réutilisés et 111 passages nouvellement encodés. Ces 111
+passages proviennent des 97 circulaires, encore toutes en attente de revue :
+ils sont exclus des sources finales du RAG. Les dates d'effet restent inconnues.
+
+FAISS, BM25, LanceDB et FTS ont été construits. Les 35 998 vecteurs de 1 024
+dimensions sont identiques entre FAISS et LanceDB, finis et normalisés. Les
+35 887 vecteurs réutilisés correspondent exactement aux vecteurs sources de
+leurs textes. Six requêtes de smoke CPU, trois par moteur, renvoient chacune
+cinq sources et aucun passage du Journal en attente. Ce sont des contrôles
+techniques sur trois questions déjà visibles, sans génération ni jugement juridique.
+
+Le manifeste scellé porte l'empreinte
+`dda9194d8c35904ba85ab95a511816e2f0ade627d9976e2ff903a70cbe2751a1`.
+La date de collecte demeure celle du 7 novembre : l'indexation ne la rajeunit pas.
+Le contrôle de release reste refusé, les preuves de revue et de fournisseur
+n'ayant pas été fournies à cette exécution.
+
+Le candidat antérieur, l'index actif et les dossiers de revue humains restent
+distincts. Le dossier de références du lot 12 est lié à son corpus figé : ses
+annotations ne sont pas transférées vers ce nouveau manifeste. La revue et
+l'évaluation d'une future release devront porter sur le candidat effectivement
+choisi. Rapport : `eval/results/audit/incremental-corpus-20261108.json`.
