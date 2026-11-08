@@ -68,6 +68,21 @@ def test_unexpected_files_are_not_silently_omitted(tmp_path):
         backup(store)
 
 
+def test_audit_coordination_locks_and_orphan_locks_are_not_business_backup_data(tmp_path):
+    source, _, audit = _source(tmp_path)
+    original = backup(source)
+    audit.with_name(audit.name + ".lock").write_bytes(b"")
+    (audit.parent / "trace-removed.jsonl.lock").write_bytes(b"")
+    assert backup(source) == original
+
+
+def test_unrecognized_lock_files_are_still_refused(tmp_path):
+    source, _, audit = _source(tmp_path)
+    (audit.parent / "unexpected.lock").write_bytes(b"")
+    with pytest.raises(ValueError, match="path"):
+        backup(source)
+
+
 def test_backup_cannot_write_inside_its_source_scope(tmp_path):
     store = WorkspaceStore(tmp_path / "scope")
     with pytest.raises(ValueError, match="outside"):

@@ -58,9 +58,14 @@ def _inventory(store: WorkspaceStore) -> list[Path]:
             if area == store.workspace_root and [path.name for path in children] != ["workspace.json"]:
                 raise ValueError("incomplete or unexpected workspace files")
             for path in children:
-                _safe_parts(path.relative_to(store.root).as_posix())
+                relative = path.relative_to(store.root).as_posix()
+                _contained(store.root, *path.relative_to(store.root).parts)
                 if path.is_symlink() or path.is_junction() or not path.is_file():
                     raise ValueError("unexpected workspace storage entry")
+                if area == store.audit_root and path.name.endswith(".jsonl.lock"):
+                    _safe_parts(relative.removesuffix(".lock"))
+                    continue
+                _safe_parts(relative)
                 paths.append(path)
                 if len(paths) > MAX_BACKUP_FILES:
                     raise ValueError("backup exceeds file count limit")
