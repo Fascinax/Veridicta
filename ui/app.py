@@ -11,7 +11,6 @@ import os
 import re
 import sys
 import time
-import uuid
 from functools import wraps
 from datetime import date
 from pathlib import Path
@@ -31,7 +30,7 @@ _SECRET_KEYS = [
     "VERIDICTA_AUDIT_ENABLED", "VERIDICTA_AUDIT_DIR", "VERIDICTA_AUDIT_INCLUDE_CONTENT",
     "VERIDICTA_ORCHESTRATOR_ENABLED",
     "VERIDICTA_WORKSPACE_MODE", "VERIDICTA_WORKSPACE_DIR", "VERIDICTA_QUERY_EXPANSION",
-    "VERIDICTA_SNAPSHOT_MANIFEST",
+    "VERIDICTA_SNAPSHOT_MANIFEST", "VERIDICTA_ACCESS_POLICY_FILE",
 ]
 try:
     for _k in _SECRET_KEYS:
@@ -44,14 +43,6 @@ except Exception:
 # Make project root importable when launched as `streamlit run ui/app.py`
 _ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_ROOT))
-
-# ── Download index artifacts from HuggingFace Hub if missing (Streamlit Cloud) ─
-try:
-    from retrievers.artifacts import ensure_artifacts  # noqa: E402
-    if not os.getenv("VERIDICTA_SNAPSHOT_MANIFEST"):
-        ensure_artifacts(root=_ROOT)
-except Exception as _artifact_err:
-    st.warning(f"Artifact check failed: {_artifact_err}")
 
 from retrievers.baseline_rag import (
     DEFAULT_TOP_K,
@@ -79,7 +70,7 @@ from retrievers.traceability import (
     new_trace_id,
 )
 from workspaces.store import WorkspaceStore
-from workspaces.identity import workspace_owner
+from ui.access import get_workspace_store as _get_workspace_store
 from ui.request_limits import RequestLimits, RequestLimitExceeded
 
 FAISS_OPTION = "FAISS"
@@ -246,35 +237,6 @@ def _get_lancedb():
         return load_lancedb_index()
     except Exception:
         return None
-
-
-def _get_workspace_store() -> WorkspaceStore:
-    mode = os.getenv("VERIDICTA_WORKSPACE_MODE", "session")
-    if "workspace_session_id" not in st.session_state:
-        st.session_state.workspace_session_id = uuid.uuid4().hex
-    try:
-        owner = workspace_owner(mode, st.session_state.workspace_session_id, st.user)
-    except PermissionError:
-        st.info("Connectez-vous pour accéder à vos dossiers.")
-        if st.button("Se connecter"):
-            st.login()
-        st.stop()
-    except ValueError:
-        st.error("Le mode d'accès aux dossiers est mal configuré.")
-        st.stop()
-    if mode == "session":
-        st.sidebar.caption("Dossiers limités à cette session. Exportez vos mémos avant de la fermer.")
-    elif mode == "local":
-        st.sidebar.caption("Mode personnel : stockage local commun aux sessions de ce serveur.")
-    elif st.sidebar.button("Se déconnecter"):
-        st.logout()
-    store = WorkspaceStore(os.getenv("VERIDICTA_WORKSPACE_DIR", "data/cases"), owner_id=owner)
-    previous_scope = st.session_state.get("workspace_owner_scope")
-    if previous_scope is not None and previous_scope != store.scope_key:
-        for key in ("messages", "workspace_selector", "loaded_workspace_id", "pending_workspace_id"):
-            st.session_state.pop(key, None)
-    st.session_state.workspace_owner_scope = store.scope_key
-    return store
 
 
 @st.cache_resource
@@ -1308,6 +1270,12 @@ def main() -> None:
     )
 
     workspace_store = _get_workspace_store()
+    if not os.getenv("VERIDICTA_SNAPSHOT_MANIFEST"):
+        try:
+            from retrievers.artifacts import ensure_artifacts
+            ensure_artifacts(root=_ROOT)
+        except Exception as artifact_error:
+            st.warning(f"Artifact check failed: {artifact_error}")
     k, show_sources, backend, model, retriever, workspace_id, as_of = _render_sidebar(workspace_store)
 
     tab_chat, tab_autoeval = st.tabs(["💬 Chat", "📊 AutoEval"])

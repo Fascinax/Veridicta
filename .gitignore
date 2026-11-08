@@ -213,3 +213,6 @@ perf_full_results.json
 
 # Audit trail (generated at runtime)
 data/audit/
+
+# Private OIDC authorization configuration
+/config/access-policy.json
