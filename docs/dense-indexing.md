@@ -77,3 +77,11 @@ compare exactement les vecteurs float32. Il vérifie dimensions, nombre, unicit�
 normalisation, FTS et BM25 puis revérifie le manifeste pour s'assurer que les
 lectures n'ont pas modifié le snapshot. Le résultat reste un contrôle d'intégrité,
 pas une mesure de qualité juridique.
+
+## Mises à jour du corpus
+
+Une construction peut désormais réutiliser les vecteurs de textes exactement
+identiques dans un autre candidat vérifié, avec identité du modèle et runtime
+compatibles. La provenance est liée aux checkpoints et les métadonnées viennent
+du nouveau corpus. Voir `docs/incremental-indexing.md` pour `--reuse-manifest`,
+les limites et le contrôle des sources encore en attente de revue.

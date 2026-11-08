@@ -26,6 +26,7 @@ class IndexBuildConfig:
     device: str = "cpu"
     batch_size: int = 16
     checkpoint_rows: int = 256
+    reuse_manifest: str | None = None
 
     def __post_init__(self):
         if self.device not in {"cpu", "cuda"} or min(self.batch_size, self.checkpoint_rows) < 1:
@@ -142,6 +143,13 @@ def _build_locked(root: Path, config: IndexBuildConfig) -> dict:
     if encoder.get_sentence_embedding_dimension() != EMBEDDING_CONFIG.dimension:
         raise ValueError("Model dimension does not match configured dimension")
     identity["max_seq_length"] = encoder.max_seq_length
+    reuse_summary = {"reused_rows": 0, "encoded_rows": len(texts)}
+    if config.reuse_manifest:
+        from retrievers.vector_reuse import ReusableVectors, ReusingEncoder
+        source = ReusableVectors.load(Path(config.reuse_manifest), identity)
+        identity["vector_reuse"] = source.provenance
+        reuse_summary = source.summary(texts)
+        encoder = ReusingEncoder(encoder, source)
     vectors = fill_vectors(texts, encoder, (work, identity, config))
     del encoder
     chunk_count = len(texts)
@@ -160,7 +168,10 @@ def _build_locked(root: Path, config: IndexBuildConfig) -> dict:
     with chunks_path.open(encoding="utf-8") as handle:
         chunks = [json.loads(line) for line in handle]
     build_bm25_index(chunks, staging)
-    report = {"schema_version": "1.0", "status": "built", "identity": identity, "configuration": asdict(config),
+    configuration = asdict(config)
+    configuration.pop("reuse_manifest")
+    report = {"schema_version": "1.0", "status": "built", "identity": identity, "configuration": configuration,
+              "vector_reuse": reuse_summary,
               "chunk_count": len(chunks), "elapsed_s": round(time.perf_counter() - started, 3),
               "completed_at_utc": datetime.now(timezone.utc).isoformat(), "release_ready": False}
     _write_json(staging / "build-report.json", report)
@@ -174,8 +185,10 @@ def main() -> None:
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--checkpoint-rows", type=int, default=256)
+    parser.add_argument("--reuse-manifest", help="Reuse exact-text vectors from this verified indexed candidate")
     args = parser.parse_args()
-    print(json.dumps(build_candidate_index(args.candidate, IndexBuildConfig(args.device, args.batch_size, args.checkpoint_rows))), flush=True)
+    config = IndexBuildConfig(args.device, args.batch_size, args.checkpoint_rows, reuse_manifest=args.reuse_manifest)
+    print(json.dumps(build_candidate_index(args.candidate, config)), flush=True)
 
 
 if __name__ == "__main__":
