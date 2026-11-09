@@ -64,14 +64,51 @@ uv run --locked python -m workspaces.operations purge --root data/cases/owners/<
 uv run --locked python -m workspaces.operations purge --root data/cases/owners/<empreinte> --days 30 --apply
 ```
 
-La sauvegarde comprend conversations, notes et audits, avec empreintes de
-contenu. Elle contient des données privées en clair : support chiffré et droits
-restreints requis. Taille maximale : 50 Mio. Aucun fichier existant de sauvegarde
-n'est écrasé. La restauration valide chemins, IDs et empreintes avant écriture,
-refuse une destination non vide et doit être effectuée dans un répertoire neuf.
-En cas de panne d'écriture, recommencer dans une autre destination neuve.
-Un aller-retour de restauration est couvert par les tests ; une répétition
-opérationnelle sur l'infrastructure cible reste nécessaire.
+La sauvegarde v2 conserve les octets des conversations, notes et audits, leurs
+empreintes et dates de modification. Les audits anciens ne redeviennent pas
+récents après restauration ; leur plan de rétention est conservé. Les octets
+des audits sont préservés même si un journal est tronqué ou invalide : la
+sauvegarde ne certifie pas le contenu de ces lignes. Les dossiers JSON doivent
+avoir une structure lisible et un ID concordant avec leur chemin.
+
+Le contenu est encodé en Base64 dans le JSON, **sans chiffrement**. Les empreintes
+ne constituent pas une signature d'authenticité. Utiliser un support protégé et
+des droits adaptés. La limite de 50 Mio porte sur l'archive encodée, avec un
+maximum de 10 000 fichiers ; l'encodage réduit donc le volume utile. La lecture
+des anciennes sauvegardes v1 reste possible, mais leurs dates de fichier ne
+peuvent pas être reconstituées. Les anciennes versions ne lisent pas le format v2.
+
+Sous `workspaces/` et `audit/`, un dossier incomplet ou un fichier inattendu fait
+échouer la sauvegarde au lieu d'être omis silencieusement. Les fichiers de
+coordination reconnus `*.jsonl.lock`, qui peuvent persister sur Linux après
+purge du journal, sont exclus des données sauvegardées. Les autres fichiers
+inattendus, liens et chemins non conformes sont refusés. Les autres propriétaires
+et les fichiers extérieurs à ces deux sous-répertoires ne sont pas parcourus.
+
+La sauvegarde exige un périmètre existant : une faute dans `--root` ne crée plus
+une sauvegarde vide présentée comme réussie. La commande affiche le nombre de
+fichiers et la taille. La sortie doit être extérieure au stockage de dossiers ;
+un fichier existant n'est jamais écrasé. Ces commandes sont administratives :
+le choix du bon périmètre de propriétaire reste à la charge de l'opérateur.
+
+La restauration valide l'archive avant d'écrire, refuse un périmètre non vide,
+puis prépare les fichiers dans un répertoire temporaire isolé de ce périmètre.
+Les deux répertoires de données sont installés sous le verrou du stockage. Une
+panne pendant la préparation laisse les répertoires de données vides. Une panne
+de promotion déclenche un retour arrière. Le remplacement des deux répertoires
+n'est pas une transaction atomique unique du système de fichiers.
+
+Un marqueur `.restore-pending.json` signale une interruption pendant la promotion.
+S'il reste après une panne, les opérations applicatives, sauvegardes et purges
+refusent ce périmètre. Les éléments temporaires sont conservés si le retour
+arrière échoue. Ne pas retirer simplement le marqueur pour ouvrir un stockage
+potentiellement partiel : conserver le périmètre pour diagnostic et restaurer la
+sauvegarde vérifiée dans une nouvelle destination. Vérifier les droits,
+l'identité et la configuration de stockage avant bascule.
+
+La tolérance aux coupures, la durabilité du système de fichiers et la récupération
+sur l'hébergement choisi restent à tester. Voir `docs/workspace-recovery.md` pour
+la répétition locale synthétique et ses limites.
 
 La purge est une simulation par défaut ; `--apply` supprime les dossiers dont
 `updated_at` précède la borne et les fichiers d'audit anciens selon leur date de

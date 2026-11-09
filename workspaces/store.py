@@ -18,11 +18,19 @@ from functools import wraps
 
 from filelock import FileLock
 
+RESTORE_MARKER = ".restore-pending.json"
+
+
+def _require_available(root: Path) -> None:
+    if (root / RESTORE_MARKER).exists():
+        raise RuntimeError("Workspace scope has an interrupted restore; recover into a new scope")
+
 
 def _locked(method):
     @wraps(method)
     def synchronized(self, *args, **kwargs):
         with self._lock:
+            _require_available(self.root)
             return method(self, *args, **kwargs)
     return synchronized
 
