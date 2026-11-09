@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 HF_REPO_ID = "Fascinax/veridicta-index"
 HF_REPO_TYPE = "dataset"
+HF_REVISION = os.getenv("VERIDICTA_HF_REVISION", "3b6aae57142cabafe6c9d31a48d1a0f56c1a4d9e")
 
 # Map: local relative path -> filename in HF Hub repo
 _ARTIFACTS = {
@@ -79,7 +80,7 @@ def _download_dir_artifact(
 
     remote_files = [
         f
-        for f in list_repo_files(HF_REPO_ID, repo_type=HF_REPO_TYPE, token=token)
+        for f in list_repo_files(HF_REPO_ID, repo_type=HF_REPO_TYPE, token=token, revision=HF_REVISION)
         if f.startswith(remote_prefix + "/")
     ]
     if not remote_files:
@@ -94,6 +95,7 @@ def _download_dir_artifact(
             filename=remote_file,
             repo_type=HF_REPO_TYPE,
             token=token,
+            revision=HF_REVISION,
             local_dir=str(root / "data"),
         )
     logger.info("Dir artifact '%s' ready (%d files).", local_dir, len(remote_files))
@@ -145,6 +147,7 @@ def ensure_artifacts(root: str | Path = ".") -> None:
                 filename=remote,
                 repo_type=HF_REPO_TYPE,
                 token=token,
+                revision=HF_REVISION,
                 local_dir=str(root / "data"),
             )
             logger.info("Saved to %s", dest)

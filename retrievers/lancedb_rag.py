@@ -31,10 +31,11 @@ from pathlib import Path
 import numpy as np
 
 from retrievers.config import RRF_CONFIG
+from retrievers.snapshots import active_data_root
 
 logger = logging.getLogger(__name__)
 
-LANCEDB_DIR = Path("data/index/lancedb")
+LANCEDB_DIR = active_data_root() / "index" / "lancedb"
 LANCEDB_TABLE_NAME = "chunks"
 
 RRF_K = RRF_CONFIG.rrf_k
