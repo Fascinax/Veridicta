@@ -96,7 +96,7 @@ def test_run_benchmark_keeps_summary_rows_aligned_per_model() -> None:
     assert all(summary.scored_question_count == 1 for summary in result.summaries)
     top_one = [summary for summary in result.summaries if summary.top_k == 1]
     assert all(summary.recall_at_k == 0.0 for summary in top_one)
-    assert all(summary.mrr == 0.5 for summary in top_one)
+    assert all(summary.mrr == 0.0 for summary in top_one)
 
 
 def test_run_benchmark_populates_citation_faithfulness_in_full_mode() -> None:

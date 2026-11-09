@@ -213,7 +213,7 @@ leur intégration à `main` reste à décider après revue.
 | --- | --- | --- |
 | Corpus | Qualifier les 97 circulaires, les deux fiches ambiguës, les dates d'effet et le périmètre manquant ; obtenir un accès/export autorisé pour élargir le Journal, puis préparer/indexer le corpus retenu | 2–4 jours, dépendance source et revue juridique |
 | Évaluation indépendante | Faire construire et annoter 50–100 cas nouveaux avec réponses et passages par un juriste, puis exécuter le RAG complet et analyser les erreurs | 3–6 jours, dont du temps de juriste |
-| Modèles et rerankers | Comparer les challengers un par un, avec corpus/questions/paramètres communs, coût, latence, mémoire et qualité juridique revue | 1–3 jours après le jeu annoté |
+| Modèles et rerankers | Confirmer juridiquement les comparaisons de rerankers du lot 11, qualifier leur runtime cible puis comparer embeddings et génération | 1–3 jours après le jeu annoté |
 | Graphe, si retenu | Reconstruire dans une base isolée, vérifier provenance/versions/liens et mesurer son gain avant activation | 1–3 jours ; optionnel si le chemin hybride suffit |
 | Exploitation | Choisir l'hébergement et l'IdP, tester identité/accès, secrets, sauvegarde/restauration, quotas et alertes ; refaire le smoke du fournisseur exact et la readiness | 2–4 jours selon la cible |
 | Dépendances | Lever les deux exceptions documentées Ragas/DiskCache dès qu'une solution corrigée et compatible est disponible, puis relancer l'audit | 0,5–1 jour de validation, disponibilité externe |
@@ -223,3 +223,25 @@ En revanche, une approbation juridique, une identité de déploiement et un acc�
 source manquant ne peuvent pas être remplacés par des données synthétiques.
 Le benchmark des modèles dépend d'un jeu de référence fiable ; une meilleure
 similarité lexicale seule ne justifie pas une promotion.
+
+## Lot 11 — Rerankers rejouables et mesures réelles
+
+- Collecte vérifiée de candidats dans un pool séparé, puis rejeu hors ligne
+  d'un modèle par processus ; questions, ordre, textes et provenance attestés.
+- Référence sans reranking, FlashRank et deux CrossEncoder multilingues BGE /
+  Qwen3 0.6B, avec poids épinglés et empreintes des artefacts réellement chargés.
+- MRR du schéma 2.0 limitée aux k passages sélectionnés ; les anciens résultats
+  restent conservés. Une réponse lexicalement présente après k ne vaut plus un
+  succès dans cette fenêtre. Classements incomplets, dupliqués, altérés ou avec
+  score non fini refusés ; protection des candidats contre les mutations d'adapter.
+- Quatre runs réussis sur les 100 questions visibles : couverture lexicale @5
+  de 0,763 sans reranking, 0,761 avec FlashRank, 0,805 avec BGE et 0,793 avec Qwen3.
+- Latences, devices, dtypes, prompts, pics CUDA et régressions par question
+  enregistrés ; RSS indisponible dans ce runtime, comparaison RAM non revendiquée.
+- 472 tests réussis en CI ; aucun index, modèle actif ou corpus promu.
+
+Les proxys ne sont pas des annotations de pertinence ni une validation juridique.
+Les runtimes CPU/GPU et dtypes diffèrent et le poste est partagé. La décision de
+promotion attend la revue indépendante et les mesures sur la cible. Le rapport
+et les commandes sont dans `docs/reranker-evaluation.md` et
+`eval/results/audit/reranker-comparison-20261107.json`.
