@@ -43,6 +43,7 @@ VECTOR_WEIGHT = RRF_CONFIG.vector_weight
 FTS_WEIGHT = RRF_CONFIG.fts_weight
 
 DEFAULT_TOP_K = 5
+LANCE_IMPORT_BATCH_SIZE = 512
 
 
 # ---------------------------------------------------------------------------
@@ -121,39 +122,50 @@ def build_lancedb_from_faiss(
     dim = faiss_index.d
     logger.info("FAISS: %d vectors, dim=%d", n_vectors, dim)
 
-    logger.info("Loading chunks map from %s", map_path)
+    logger.info("Checking chunks map from %s", map_path)
     with jsonlines.open(map_path) as reader:
-        chunks = list(reader)
-    if len(chunks) != n_vectors:
-        raise ValueError(
-            f"Mismatch: {n_vectors} FAISS vectors but {len(chunks)} chunks in map."
-        )
+        chunk_count = sum(1 for _ in reader)
+    if chunk_count != n_vectors or not n_vectors:
+        raise ValueError(f"Mismatch: {n_vectors} FAISS vectors but {chunk_count} chunks in map.")
 
-    logger.info("Extracting vectors from FAISS index ...")
-    vectors = faiss_index.reconstruct_n(0, n_vectors)
+    import pyarrow as pa
+    from itertools import islice
 
-    logger.info("Building %d LanceDB records ...", n_vectors)
-    records = []
-    for i, chunk in enumerate(chunks):
-        record = {
-            "vector": vectors[i].tolist(),
-            "text": chunk.get("text", ""),
-            "doc_id": chunk.get("doc_id", ""),
-            "chunk_id": chunk.get("chunk_id", f"chunk_{i}"),
-            "source": chunk.get("source", ""),
-            "title": chunk.get("title", ""),
-            "metadata_json": json.dumps(
-                {k: v for k, v in chunk.items() if k not in ("text", "doc_id", "chunk_id", "source", "title")},
-                ensure_ascii=False,
-            ),
-        }
-        records.append(record)
+    schema = pa.schema([
+        pa.field("vector", pa.list_(pa.float32(), dim)),
+        *[pa.field(name, pa.string()) for name in
+          ("text", "doc_id", "chunk_id", "source", "title", "metadata_json")],
+    ])
+
+    def batches():
+        with jsonlines.open(map_path) as reader:
+            rows = iter(reader)
+            for start in range(0, n_vectors, LANCE_IMPORT_BATCH_SIZE):
+                chunks = list(islice(rows, min(LANCE_IMPORT_BATCH_SIZE, n_vectors - start)))
+                if len(chunks) != min(LANCE_IMPORT_BATCH_SIZE, n_vectors - start):
+                    raise ValueError("Chunk map changed during LanceDB import")
+                vectors = faiss_index.reconstruct_n(start, len(chunks))
+                records = []
+                for offset, chunk in enumerate(chunks):
+                    records.append({
+                        "vector": vectors[offset].tolist(),
+                        "text": chunk.get("text", ""), "doc_id": chunk.get("doc_id", ""),
+                        "chunk_id": chunk.get("chunk_id", f"chunk_{start + offset}"),
+                        "source": chunk.get("source", ""),
+                        "title": chunk.get("title", chunk.get("titre", "")),
+                        "metadata_json": json.dumps({k: v for k, v in chunk.items()
+                                                     if k not in ("text", "doc_id", "chunk_id", "source", "title")},
+                                                    ensure_ascii=False),
+                    })
+                yield pa.RecordBatch.from_pylist(records, schema=schema)
+            if next(rows, None) is not None:
+                raise ValueError("Chunk map grew during LanceDB import")
 
     db_dir.mkdir(parents=True, exist_ok=True)
     db = lancedb.connect(str(db_dir))
-
-    logger.info("Creating LanceDB table '%s' with %d records ...", LANCEDB_TABLE_NAME, len(records))
-    table = db.create_table(LANCEDB_TABLE_NAME, records, mode="overwrite")
+    logger.info("Streaming %d records into LanceDB in batches of %d", n_vectors, LANCE_IMPORT_BATCH_SIZE)
+    data = pa.RecordBatchReader.from_batches(schema, batches())
+    table = db.create_table(LANCEDB_TABLE_NAME, data, mode="overwrite")
 
     logger.info("Creating FTS index on 'text' column ...")
     table.create_index("text", config=FTS(), replace=True)

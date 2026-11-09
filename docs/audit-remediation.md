@@ -122,7 +122,7 @@ présenté comme prêt à ouvrir sur la seule base des tests locaux.
 ## Conditions restant ouvertes
 
 1. Annoter/revoir un vrai holdout indépendant avec un juriste, puis mesurer le RAG complet.
-2. Compléter couverture/versions/effets du corpus, construire ses index et le promouvoir après évaluation.
+2. Compléter la revue de couverture/versions/effets du corpus et le promouvoir après évaluation ; les index du candidat ont été construits au lot 9.
 3. Résoudre l'autorisation Copilot (403) ou choisir un fournisseur accessible ;
    le smoke local synthétique ne mesure pas la fiabilité juridique.
 4. Comparer les challengers embeddings/rerankers un par un ; aucun gain annoncé sans mesure.
@@ -160,3 +160,25 @@ n'a été remplacé. Détails et limites : `docs/corpus-quality.md`.
 L'indexation dense, la couverture complémentaire et la revue juridique indépendante
 restent nécessaires avant promotion. Les fixtures positives des tests ne sont pas
 une preuve réelle de disponibilité ou de validation par un juriste.
+
+## Lot 9 — Indexation dense exécutée
+
+Les 35 887 chunks ont été encodés avec Solon à la révision épinglée,
+float32, 1 024 dimensions et longueur maximale 512. Environnement CUDA isolé
+PyTorch 2.13.0+cu130 sur RTX 4070 Ti ; pile CPU de l'application inchangée.
+Construction FAISS/BM25 en 799,514 secondes, puis import LanceDB/FTS par lots.
+
+- Reprise par blocs avec empreintes et identité corpus/modèle/runtime.
+- Import LanceDB sans matérialisation de tous les floats en objets Python.
+- Contrôle exhaustif : 35 887 vecteurs identiques entre FAISS et LanceDB,
+  IDs uniques et normalisation vérifiée ; FTS et BM25 répondent.
+- Comparaison CPU/GPU sur quatre passages : écart maximal 3,558e-7.
+- Trois requêtes techniques, sur FAISS et LanceDB : cinq sources chacune,
+  sans appel de génération ni mesure de justesse juridique.
+- 141 blocs de checkpoint revérifiés ; manifeste scellé au statut `indexed`.
+- Empreintes des trois fichiers du bundle FAISS actif identiques avant/après.
+
+Le rapport `eval/results/audit/dense-index-20261107.json` lie les résultats au
+manifeste, à la révision du modèle et aux commits de construction/contrôle.
+Le candidat reste non activé et `release_ready=false` : couverture complémentaire,
+revue juridique indépendante et vérifications du déploiement restent nécessaires.
