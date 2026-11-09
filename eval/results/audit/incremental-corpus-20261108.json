@@ -1,0 +1,209 @@
+{
+  "schema_version": "1.0",
+  "scope": "incremental_index_build_and_technical_smokes_not_legal_evaluation",
+  "branch": "audit/15-incremental-corpus",
+  "code_commit": "c6683b30cc3fb99629a2f9e29396108e3e4d9d7c",
+  "source_raw_manifest_sha256": "4d02878c32241ac24058e2f0683fbf835e36fcdc601aff8cabd0bc560752276b",
+  "candidate_manifest_sha256": "dda9194d8c35904ba85ab95a511816e2f0ade627d9976e2ff903a70cbe2751a1",
+  "candidate_status": {
+    "status": "indexed",
+    "release_ready": false,
+    "source_manifest_sha256": "4d02878c32241ac24058e2f0683fbf835e36fcdc601aff8cabd0bc560752276b",
+    "chunk_count": 35998,
+    "chunking_strategy": "fixed",
+    "manifest_sha256": "dda9194d8c35904ba85ab95a511816e2f0ade627d9976e2ff903a70cbe2751a1",
+    "remaining": [
+      "coverage and legal review",
+      "independent evaluation",
+      "provider smoke"
+    ]
+  },
+  "collection_time": "2026-11-07T13:05:40.140742+00:00",
+  "corpus_counts": {
+    "chunks": 35998,
+    "reusable_text_rows": 35887,
+    "new_text_rows": 111,
+    "journal_chunks": 111,
+    "journal_pending_chunks": 111,
+    "journal_accepted_current": 0,
+    "journal_accepted_historical": 0,
+    "journal_documents": 97
+  },
+  "build": {
+    "schema_version": "1.0",
+    "status": "built",
+    "identity": {
+      "algorithm_version": "candidate-index-v1",
+      "chunks_sha256": "4591bd14a2f1a0c2397a92fdc871a2a82cbba9db51495b8b7a5ba5dcb15ccff2",
+      "embed_model": "OrdalieTech/Solon-embeddings-large-0.1",
+      "embed_revision": "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef",
+      "embedding_dimension": 1024,
+      "embed_query_prefix": "query: ",
+      "dtype": "float32",
+      "normalized": true,
+      "device": "cuda",
+      "hardware": "NVIDIA GeForce RTX 4070 Ti",
+      "runtime": {
+        "torch": "2.13.0+cu130",
+        "sentence-transformers": "6.2.0",
+        "transformers": "5.22.2",
+        "numpy": "2.5.4",
+        "faiss-cpu": "1.15.1",
+        "bm25s": "0.3.16",
+        "PyStemmer": "3.1.0"
+      },
+      "max_seq_length": 512,
+      "vector_reuse": {
+        "manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+        "index_sha256": "a948bf1be9c4a785ecde205a03ec680564beeabc69f14ffd5b3112551711cea5",
+        "source_rows": 35887,
+        "match_policy": "exact_text_same_embedding_identity_and_runtime"
+      }
+    },
+    "configuration": {
+      "device": "cuda",
+      "batch_size": 16,
+      "checkpoint_rows": 256
+    },
+    "vector_reuse": {
+      "reused_rows": 35887,
+      "encoded_rows": 111
+    },
+    "chunk_count": 35998,
+    "elapsed_s": 161.85,
+    "completed_at_utc": "2026-11-08T20:43:07.851247+00:00",
+    "release_ready": false
+  },
+  "index_integrity": {
+    "schema_version": "1.0",
+    "scope": "index_integrity_not_legal_quality",
+    "status": "pass",
+    "checked_at_utc": "2026-11-08T20:47:08.168006+00:00",
+    "manifest_sha256": "dda9194d8c35904ba85ab95a511816e2f0ade627d9976e2ff903a70cbe2751a1",
+    "vectors_checked": 35998,
+    "dimension": 1024,
+    "faiss_lancedb_vectors_identical": true,
+    "max_norm_error": 1.1920928955078125e-07,
+    "fts_result_count": 5,
+    "bm25_result_count": 5,
+    "release_ready": false
+  },
+  "verification": {
+    "scope": "technical_index_and_retrieval_checks_not_legal_evaluation",
+    "checked_at_utc": "2026-11-08T20:48:22.859629+00:00",
+    "candidate": "audit-20261108-coverage-candidate",
+    "manifest_sha256": "dda9194d8c35904ba85ab95a511816e2f0ade627d9976e2ff903a70cbe2751a1",
+    "chunk_count": 35998,
+    "chunk_types": {
+      "legislation": 1891,
+      "jurisprudence": 26152,
+      "regulation": 6714,
+      "traite_international": 247,
+      "projet_loi": 883,
+      "journal_monaco": 111
+    },
+    "reused_vectors_compared": 35887,
+    "reused_vectors_identical": true,
+    "newly_encoded_rows": 111,
+    "journal_documents": 97,
+    "journal_pending_chunks": 111,
+    "journal_pending_selected": 0,
+    "cpu_query_smokes": [
+      {
+        "question_id": "monaco-001",
+        "retriever": "faiss",
+        "source_count": 5,
+        "journal_pending_selected": 0,
+        "applicability_excluded": 0
+      },
+      {
+        "question_id": "monaco-002",
+        "retriever": "faiss",
+        "source_count": 5,
+        "journal_pending_selected": 0,
+        "applicability_excluded": 8
+      },
+      {
+        "question_id": "monaco-003",
+        "retriever": "faiss",
+        "source_count": 5,
+        "journal_pending_selected": 0,
+        "applicability_excluded": 2
+      },
+      {
+        "question_id": "monaco-001",
+        "retriever": "lancedb",
+        "source_count": 5,
+        "journal_pending_selected": 0,
+        "applicability_excluded": 11
+      },
+      {
+        "question_id": "monaco-002",
+        "retriever": "lancedb",
+        "source_count": 5,
+        "journal_pending_selected": 0,
+        "applicability_excluded": 12
+      },
+      {
+        "question_id": "monaco-003",
+        "retriever": "lancedb",
+        "source_count": 5,
+        "journal_pending_selected": 0,
+        "applicability_excluded": 0
+      }
+    ],
+    "readiness": {
+      "schema_version": "1.0",
+      "status": "fail",
+      "ready": false,
+      "checks": [
+        {
+          "name": "corpus_manifest",
+          "status": "pass",
+          "detail": "Corpus collection is current and all declared file digests match"
+        },
+        {
+          "name": "retrieved_sources",
+          "status": "pass",
+          "detail": "5 source(s) available"
+        },
+        {
+          "name": "provider_boundary",
+          "status": "pass",
+          "detail": "No provider failure recorded"
+        },
+        {
+          "name": "index_bundle",
+          "status": "pass",
+          "detail": "Evidence verified for the selected release"
+        },
+        {
+          "name": "release_review",
+          "status": "fail",
+          "detail": "Required evidence is missing, invalid or does not match the release"
+        },
+        {
+          "name": "provider_smoke",
+          "status": "fail",
+          "detail": "Required evidence is missing, invalid or does not match the release"
+        }
+      ]
+    },
+    "active_index_unchanged": true,
+    "previous_candidate_unchanged": true,
+    "legal_release_ready": false
+  },
+  "validation": {
+    "new_tests": 54,
+    "windows_passed": 681,
+    "windows_skipped": 3,
+    "linux_passed": 682,
+    "linux_skipped": 2,
+    "deselected_by_markers": 16,
+    "ci_url": "https://github.com/Fascinax/Veridicta/actions/runs/42521606550"
+  },
+  "independent_legal_evaluation_performed_in_this_run": false,
+  "provider_generation_performed_in_this_run": false,
+  "active_corpus_promoted": false,
+  "legal_release_ready": false
+}

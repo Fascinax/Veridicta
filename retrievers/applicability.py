@@ -15,6 +15,10 @@ class ApplicabilityPolicy:
 
     def accepts(self, chunk: dict, as_of: date | None = None) -> bool:
         metadata = chunk.get("metadata") or {}
+        reviews = [record["applicability_review"] for record in (chunk, metadata) if "applicability_review" in record]
+        if chunk.get("type") == "journal_monaco" or reviews:
+            if not reviews or any(review != "approved" for review in reviews):
+                return False
         status = str(chunk.get("legal_status") or metadata.get("legal_status") or "").strip().lower()
         if chunk.get("type") in self.excluded_types or status == "draft":
             return False
