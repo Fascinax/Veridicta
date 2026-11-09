@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import difflib
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 
@@ -37,8 +37,14 @@ class VersionComparison:
 
 def extract_temporal_window(chunk: dict[str, Any]) -> TemporalWindow:
     metadata = chunk.get("metadata") or {}
-    effective_from = _parse_date(_first_value(chunk, metadata, "effective_from", "valid_from"))
-    effective_to = _parse_date(_first_value(chunk, metadata, "effective_to", "valid_to"))
+    raw_from = _first_value(chunk, metadata, "effective_from", "valid_from")
+    raw_to = _first_value(chunk, metadata, "effective_to", "valid_to")
+    effective_from = _parse_date(raw_from)
+    effective_to = _parse_date(raw_to)
+    if any(raw is not None and parsed is None for raw, parsed in (
+        (raw_from, effective_from), (raw_to, effective_to),
+    )):
+        return TemporalWindow(None, None, "unknown", "invalid_effective_date")
     if effective_from is None and effective_to is None:
         return TemporalWindow(None, None, "unknown", "missing_effective_dates")
     if effective_from is not None and effective_to is not None and effective_to <= effective_from:
@@ -118,6 +124,8 @@ def _first_value(chunk: dict[str, Any], metadata: dict[str, Any], *keys: str) ->
 
 
 def _parse_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return None
     if isinstance(value, date):
         return value
     if not isinstance(value, str):
