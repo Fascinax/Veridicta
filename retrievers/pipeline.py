@@ -45,6 +45,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 
 RAW_TRACE_CANDIDATE_K = 20
+MAX_REFILL_CANDIDATES = 200
 
 
 @dataclass(frozen=True)
@@ -162,28 +163,40 @@ class RetrievalPipeline:
                 k * max(1, reranker_candidate_multiplier),
             )
 
-        raw_candidates = self._dispatch_retriever(
-            retriever=selected_retriever,
-            query=retrieval_query,
-            k=raw_candidate_k,
-            hybrid_faiss_weight=hybrid_faiss_weight,
-            hybrid_bm25_weight=hybrid_bm25_weight,
-        )
-        excluded_ids = [str(chunk.get("chunk_id", "")) for chunk in raw_candidates if not self.applicability.accepts(chunk, as_of)]
-        raw_candidates = [chunk for chunk in raw_candidates if self.applicability.accepts(chunk, as_of)]
-        temporal_unknown_count = 0
-        temporal_decisions: list[dict[str, object]] = []
-        temporal_unknown_ids: set[str] = set()
-        if as_of is not None:
-            temporal_selection = select_as_of(raw_candidates, as_of)
-            raw_candidates = temporal_selection.selected
-            temporal_unknown_count = temporal_selection.unknown_count
-            temporal_decisions = temporal_selection.decisions
-            temporal_unknown_ids = {
-                str(decision["chunk_id"])
-                for decision in temporal_decisions
-                if decision["decision"] == "unknown"
-            }
+        eligible_target = k * max(1, reranker_candidate_multiplier) if use_reranker else k
+        retrieval_attempts = []
+        while True:
+            fetched = self._dispatch_retriever(
+                retriever=selected_retriever,
+                query=retrieval_query,
+                k=raw_candidate_k,
+                hybrid_faiss_weight=hybrid_faiss_weight,
+                hybrid_bm25_weight=hybrid_bm25_weight,
+            )
+            raw_candidates, excluded_ids = [], []
+            for chunk in fetched:
+                if self.applicability.accepts(chunk, as_of):
+                    raw_candidates.append(chunk)
+                else:
+                    excluded_ids.append(str(chunk.get("chunk_id", "")))
+            temporal_unknown_count = 0
+            temporal_decisions: list[dict[str, object]] = []
+            temporal_unknown_ids: set[str] = set()
+            if as_of is not None:
+                temporal_selection = select_as_of(raw_candidates, as_of)
+                raw_candidates = temporal_selection.selected
+                temporal_unknown_count = temporal_selection.unknown_count
+                temporal_decisions = temporal_selection.decisions
+                temporal_unknown_ids = {
+                    str(decision["chunk_id"])
+                    for decision in temporal_decisions
+                    if decision["decision"] == "unknown"
+                }
+            retrieval_attempts.append({"requested": raw_candidate_k, "returned": len(fetched), "eligible": len(raw_candidates)})
+            if (len(raw_candidates) >= eligible_target or len(fetched) < raw_candidate_k
+                    or raw_candidate_k >= MAX_REFILL_CANDIDATES):
+                break
+            raw_candidate_k = min(MAX_REFILL_CANDIDATES, raw_candidate_k * 2)
 
         decisions = []
         if route_decision is not None:
@@ -206,6 +219,10 @@ class RetrievalPipeline:
                 "candidate_count": min(len(raw_candidates), RAW_TRACE_CANDIDATE_K),
             },
         ])
+        if len(retrieval_attempts) > 1:
+            decisions.append({"stage": "candidate_refill", "policy": "bounded_eligibility_refill",
+                              "eligible_target": eligible_target, "max_candidates": MAX_REFILL_CANDIDATES,
+                              "attempts": retrieval_attempts})
         temporal_trace_decision: dict[str, object] | None = None
         if as_of is not None:
             temporal_trace_decision = {

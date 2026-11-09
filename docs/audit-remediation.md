@@ -1,6 +1,6 @@
 # Consolidation après l'audit du 6 novembre 2026
 
-Les lots sont développés sur des branches empilées `audit/01-*` à `audit/06-*`.
+Les lots sont développés sur des branches empilées `audit/NN-*`.
 Chaque lot est testé, committé puis poussé ; aucune fusion sur `main` n'est automatique.
 Les résultats historiques de mars restent des références historiques, pas une
 mesure du comportement modifié.
@@ -352,3 +352,21 @@ Les essais, droits du stockage, alertes et quotas d'une cible multi-hôte resten
 à valider sur l'infrastructure choisie. Guide et preuve locale :
 `docs/shared-request-limits.md` et
 `eval/results/audit/shared-request-limits-20261108.json`.
+
+## Revue des PR — 9 novembre 2026
+
+Les 16 lots ont désormais chacun une PR distincte, de #21 à #36, avec le lot
+précédent comme base. Les correctifs CI portables ont été reportés sur le premier
+lot, et les ascendances raccordées sans modification du contenu des lots 2 et 3.
+La branche de réparation CI auxiliaire n'ajoute aucun changement unique.
+
+La revue corrige aussi un faux manque de sources : après exclusions, le pipeline
+peut désormais élargir son pool jusqu'à 200 candidats pour le rattrapage
+automatique. Les filtres de revue, statut et date demeurent appliqués avant
+reranking ; un seuil qui rejette tout ne déclenche pas d'acceptation de secours.
+Les tentatives sont tracées par comptages. Dix tests de régression couvrent
+rattrapage, épuisement, borne, dates, reranking et erreurs de moteur.
+
+Le registre des PR, les constats de revue et les limites sont dans
+`docs/pr-review-20261109.md`. La correction est isolée sur
+`audit/17-pr-review-followups`, sans promotion de corpus ni fusion dans `main`.
