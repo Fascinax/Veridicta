@@ -31,6 +31,14 @@ d'une certification ni le contenu des références de preuve. Les rapports
 approuvés présents uniquement dans les tests sont des fixtures synthétiques.
 Aucun rapport réel approuvé n'a été créé pendant l'implémentation.
 
+Le dossier de références du lot 12 est préparé séparément, avec 50 emplacements
+vierges et aucune revue humaine. Son éventuel `reference_ready=true` après saisie
+signifiera seulement que les références et attestations sont complètes selon
+les contrôles du dossier. Il ne génère pas une approbation de release et ne
+remplit pas automatiquement `reviewed_cases` dans cette revue : l'exécution du
+RAG et le jugement de ses réponses restent nécessaires. Voir
+`docs/legal-reference-review.md`.
+
 ## Exécuter le contrôle
 
 ```powershell

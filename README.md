@@ -173,6 +173,11 @@ labels and rationales for pending rows. Use the studio’s **Copier la
 suggestion** action to load one as a draft, then review and save it yourself;
 suggestions are never counted as human annotations until explicitly validated.
 
+For new human-authored references, use the separate
+[legal reference packet workflow](docs/legal-reference-review.md). It prepares
+50–100 blank slots, CSV worksheets and frozen source passages. It does not
+reuse these historical answers, generate legal references or approve a release.
+
 Note: FAISS, bm25s, and chunk artifacts are auto-downloaded at startup from Fascinax/veridicta-index when missing locally.
 
 ## Deploy to Streamlit Cloud

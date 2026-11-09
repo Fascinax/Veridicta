@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "checked_at": "2026-11-07T18:53:39.437234+00:00",
+  "implementation_commit": "d731c4e29faa47d7a33dcc8849239ab38339de5c",
+  "branch": "audit/12-legal-review-packet",
+  "scope": "blank_reference_packet_preparation_not_legal_evaluation",
+  "packet": {
+    "local_root": "data/audit/legal-review-20261107",
+    "manifest_sha256": "4e7da2777a97e9c92cc7a0a1b71ddbae47219f8a855f964b64ab35fc55f88435",
+    "snapshot_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "slots": 50,
+    "authored_questions": 0,
+    "reviewed": 0,
+    "pending": 50,
+    "source_chunks": 35887,
+    "source_chunk_bytes": 223997974,
+    "exposure_keys": 108,
+    "exposed_files": {
+      "test_questions.json": "8f8fa783f839044e6fe9acadac78749e8db9b5696c87c86171b5bcbf9abf7162",
+      "legal_review_intake.json": "4a65256f3c6c9cc0c7e653108d2df0174ff831c3db95b2f5758e94e6ad1bdc0b",
+      "annotation_packet.jsonl": "323ea4d1d618f4b93704bd93fce9b433dac8949a066bbcbdb55920bf0a5557ec",
+      "annotation_packet_ambiguous30.jsonl": "54487035804e587814eff94622233e7f59aed9d1547420d53e8e6c577f1cc521"
+    },
+    "files_sha256": {
+      "packet.manifest.json": "4e7da2777a97e9c92cc7a0a1b71ddbae47219f8a855f964b64ab35fc55f88435",
+      "plan.json": "c4e94e7d98e3b91486567274c878e80a42c4c9b87caeb231cc77cf6a4faf2294",
+      "source-chunks.jsonl": "61ec53717c7b62a3ee65cea17bfb027b4d9aec5ac1b76158945542f7408005a9",
+      "exposure-keys.json": "53d7e83efa7d084374c564d3a3825c2de761f9aeeba52ee61e3d89f63dc6174d",
+      "cases.jsonl": "1f8829b0b2b1ece305467447ccaafe0f1a9cb2cf6627ba256f15f28609ae8df1",
+      "independence.json": "47923c0697c47629a85cf787345abad74f7e79c6293f473ad93b6a1b397b1205"
+    }
+  },
+  "worksheets": {
+    "local_root": "data/audit/legal-review-sheets-20261107",
+    "files_sha256": {
+      "cases.csv": "b6304ebce1abb58610183a98e8a767c11b7eeb0bac68ee308b5034263f918abb",
+      "passages.csv": "05021d576a11093b64f4dd8235db36fc2457cddd050a463fc8cf44e52c747485",
+      "export.manifest.json": "a3dc4f3c24f05b75ec8bccbf465a67c6b63fd9f2066c485acba68b65b9df4acd"
+    },
+    "round_trip_bytes_unchanged": true
+  },
+  "actual_checks": {
+    "schema_version": "1.0",
+    "status": "pending",
+    "checked_at": "2026-11-07T18:46:04.280682+00:00",
+    "slots": 50,
+    "authored_questions": 0,
+    "reviewed": 0,
+    "pending": 50,
+    "issues": [],
+    "independence_attested": false,
+    "independence_verified": false,
+    "reference_ready": false,
+    "legal_release_ready": false,
+    "snapshot_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "packet_manifest_sha256": "4e7da2777a97e9c92cc7a0a1b71ddbae47219f8a855f964b64ab35fc55f88435",
+    "cases_sha256": "1f8829b0b2b1ece305467447ccaafe0f1a9cb2cf6627ba256f15f28609ae8df1",
+    "independence_sha256": "47923c0697c47629a85cf787345abad74f7e79c6293f473ad93b6a1b397b1205",
+    "semantics": "Reference preparation only; attestations do not verify identity, legal correctness or semantic independence.",
+    "real_checks": {
+      "strict_validation_exit": 1,
+      "seal_refused": true,
+      "sealed_output_absent": true,
+      "csv_round_trip_bytes_unchanged": true
+    }
+  },
+  "source_search_smoke": {
+    "matches": 10,
+    "source_matches_sha256": "3e1c37fb010dcc3fb839ea0d6e3c0adbafdef8cda28e373bd4792aa6b616b058",
+    "annotations_unchanged": true,
+    "selection_order": "source_file_order_not_legal_relevance"
+  },
+  "preservation": {
+    "active_index_unchanged": true,
+    "active_index_sha256": {
+      "data/index/veridicta.faiss": "750ee8836812984807b80bc99914b5c997deb6c8c22946867c6e8b0bfd87918a",
+      "data/index/chunks_map.jsonl": "08d30adad8adcfb152c1981351a0afe0fa37d36193b56ac2e639ee8cac693366",
+      "data/index/embedding_config.json": "ad6fb5112b888dea260163d30c303b95f1ba50799a8d10b79d3bf1ae282fc85a"
+    },
+    "indexed_candidate_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "main_commit": "35f18fdc475836191a34386b5ca4d24a14e467b0"
+  },
+  "validation": {
+    "focused_tests_passed": 55,
+    "windows_full_suite_before_source_search_tests": {
+      "passed": 512,
+      "skipped": 3,
+      "deselected": 16
+    },
+    "code_ci_url": "https://github.com/Fascinax/Veridicta/actions/runs/42403349839",
+    "ci_tests": {"passed": 518, "skipped": 2, "deselected": 16}
+  },
+  "reference_ready": false,
+  "legal_release_ready": false,
+  "limits": [
+    "Fifty blank slots are not fifty authored or reviewed cases.",
+    "Known normalized duplicates can be found; semantic independence and reviewer identity are not verified.",
+    "Exact quotes and URLs do not prove legal applicability, sufficiency or answer correctness.",
+    "Reference sealing does not evaluate a RAG model and does not approve release.",
+    "No human question, reference answer or approval has been generated; positive tests are synthetic fixtures."
+  ]
+}

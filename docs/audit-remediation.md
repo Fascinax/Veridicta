@@ -202,7 +202,7 @@ restent limitées par robots. Le nouveau snapshot brut n'est pas indexé ni acti
 Le candidat du lot 9 et les index actifs conservent leurs empreintes.
 Les commandes, mesures et limites sont détaillées dans `docs/journal-coverage.md`.
 
-## Reste à faire après le lot 10
+## Reste à faire après les lots 10 à 12
 
 Les charges ci-dessous sont des estimations de travail effectif, hors attente
 d'accès, d'export de source ou de disponibilité d'un juriste. Elles ne sont pas
@@ -212,7 +212,7 @@ leur intégration à `main` reste à décider après revue.
 | Chantier | Prochaine étape concrète | Charge indicative |
 | --- | --- | --- |
 | Corpus | Qualifier les 97 circulaires, les deux fiches ambiguës, les dates d'effet et le périmètre manquant ; obtenir un accès/export autorisé pour élargir le Journal, puis préparer/indexer le corpus retenu | 2–4 jours, dépendance source et revue juridique |
-| Évaluation indépendante | Faire construire et annoter 50–100 cas nouveaux avec réponses et passages par un juriste, puis exécuter le RAG complet et analyser les erreurs | 3–6 jours, dont du temps de juriste |
+| Évaluation indépendante | Rédiger et annoter les cas dans le dossier du lot 12 (50 emplacements vierges préparés), puis exécuter le RAG et faire revoir ses réponses | 3–6 jours, dont du temps de juriste |
 | Modèles et rerankers | Confirmer juridiquement les comparaisons de rerankers du lot 11, qualifier leur runtime cible puis comparer embeddings et génération | 1–3 jours après le jeu annoté |
 | Graphe, si retenu | Reconstruire dans une base isolée, vérifier provenance/versions/liens et mesurer son gain avant activation | 1–3 jours ; optionnel si le chemin hybride suffit |
 | Exploitation | Choisir l'hébergement et l'IdP, tester identité/accès, secrets, sauvegarde/restauration, quotas et alertes ; refaire le smoke du fournisseur exact et la readiness | 2–4 jours selon la cible |
@@ -245,3 +245,30 @@ Les runtimes CPU/GPU et dtypes diffèrent et le poste est partagé. La décision
 promotion attend la revue indépendante et les mesures sur la cible. Le rapport
 et les commandes sont dans `docs/reranker-evaluation.md` et
 `eval/results/audit/reranker-comparison-20261107.json`.
+
+## Lot 12 — Dossier de références humaines
+
+- Préparation locale de 50–100 emplacements vierges, corpus exact et empreintes
+  des questions exposées ; aucune question, réponse ou approbation produite par IA.
+- Saisie par CSV séparée des 40 annotations historiques, import atomique et
+  verrouillé, refus des exports périmés ; recherche locale de passages candidats
+  sans ajout automatique aux références.
+- Vérification des questions dupliquées, des dates, relecteurs, comportements
+  attendus et justifications ; chaque citation doit correspondre à l'ID, URL et
+  texte exact du chunk figé. L'indépendance sémantique et la qualification du
+  relecteur restent des déclarations humaines.
+- Scellement des références seulement après complétude et attestation ; les
+  références scellées refusent les modifications et les fichiers non déclarés.
+- Correction du lecteur d'annotations historique pour les séparateurs Unicode
+  présents à l'intérieur d'une chaîne JSONL ; cache de poids locaux exclu de Git.
+
+Dossier réel : 50 emplacements, zéro question rédigée, zéro revue. Le mode complet
+et le scellement sont effectivement refusés ; le tour CSV conserve les octets du
+dossier vierge. 55 tests ciblés et 518 tests en CI passent. Aucun index actif,
+annotation historique ou approbation de release n'est modifié.
+
+La préparation des références ne constitue pas une évaluation du RAG. Le dossier
+reste `reference_ready=false` et `legal_release_ready=false`. Après rédaction et
+revue humaines, il faudra exécuter et faire juger les réponses des modèles.
+Consignes et preuves : `docs/legal-reference-review.md` et
+`eval/results/audit/legal-review-packet-20261107.json`.
