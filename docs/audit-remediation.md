@@ -101,3 +101,33 @@ Aucun gain de qualité juridique ni de latence n'est revendiqué à partir de ce
 corrections de sûreté. Les modèles challengers, la consolidation des trois
 implémentations de graphe et la comparaison sur le holdout annoté restent à
 mesurer avant une promotion. Les statuts/dates absents ne sont pas inventés.
+
+## Lot 6 — Dossiers privés et exploitation
+
+- Stockage UI non partagé par défaut : session serveur ou identité OIDC `iss/sub`.
+- Mode local historique uniquement explicite ; pas de migration/destruction des cas existants.
+- Verrous fichiers pour les écritures concurrentes ; contrôle strict des chemins.
+- Traces UI rangées sous le propriétaire et le dossier ; suppression associée réelle.
+- Aperçus textuels désactivés par défaut, opt-in explicite pour les diagnostics.
+- Suppression confirmée, sauvegarde/restauration vérifiée et rétention en simulation par défaut.
+- Bornes de taille, fréquence et concurrence des requêtes UI ; latences par étape
+  et résumé opérationnel sans réafficher les contenus.
+- Dépendances OIDC ajoutées au lock et qualifiées par le même audit OSV.
+
+L'accès réel à l'IdP, les politiques d'accès du déploiement, quotas distribués,
+alertes hébergées et tests de restauration sur la cible restent des opérations
+à réaliser sur l'infrastructure choisie. Aucun service privé partagé n'est
+présenté comme prêt à ouvrir sur la seule base des tests locaux.
+
+## Conditions restant ouvertes
+
+1. Annoter/revoir un vrai holdout indépendant avec un juriste, puis mesurer le RAG complet.
+2. Compléter couverture/versions/effets du corpus, construire ses index et le promouvoir après évaluation.
+3. Résoudre l'autorisation Copilot (403) ou choisir un fournisseur accessible ;
+   le smoke local synthétique ne mesure pas la fiabilité juridique.
+4. Comparer les challengers embeddings/rerankers un par un ; aucun gain annoncé sans mesure.
+5. Configurer et tester l'IdP, les accès, sauvegardes et limites sur la cible d'hébergement.
+6. Retirer les exceptions SCA Ragas/DiskCache lorsque des versions corrigées et compatibles existent.
+
+Le travail livré consolide les chemins exécutables et leurs contrôles. Il ne
+remplace ni ces validations externes ni une validation juridique du produit.
