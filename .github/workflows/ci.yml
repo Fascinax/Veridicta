@@ -46,6 +46,11 @@ jobs:
       - name: Validate evaluation consistency
         run: uv run --locked --no-sync python -m eval.validate_consistency
 
+      - name: Validate new evaluation intake and synthetic guards
+        run: |
+          uv run --locked --no-sync python -m eval.review_sets
+          uv run --locked --no-sync python -m eval.evidence_benchmark --output guard-regressions.json
+
       - name: Run fast regression suite
         run: uv run --locked --no-sync python -m pytest -m "not slow and not benchmark" --maxfail=1 -p no:cacheprovider
 

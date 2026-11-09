@@ -47,3 +47,20 @@ avec instructor, transitif de Ragas. La version 2 compatible est verrouillée.
 La découverte réelle du catalogue Copilot atteint le service mais reçoit un 403
 d'autorisation avec le compte configuré. Ce fournisseur n'est pas déclaré validé
 en conditions réelles. L'ancien client échouait avant le réseau avec un TypeError.
+
+## Lot 3 — Évaluation des preuves
+
+- La régression historique de 100 questions et ses annotations restent inchangées.
+- 16 cas synthétiques figent les contre-exemples des garde-fous, avec empreinte
+  et comparaison reproductible à la révision auditée `35f18fd`.
+- Résultat observé : 16/16 cas attendus sur la branche ; la comparaison porte
+  uniquement sur ces garde-fous déterministes, pas sur la qualité juridique.
+- Huit scénarios de relecture sont préparés, tous marqués `pending`. Le mode
+  `--require-reviewed` bloque leur promotion tant que réponses, passages et
+  relecteur ne sont pas renseignés.
+- Les nouveaux exports ajoutent `citation_reference_validity` et explicitent
+  que validité d'une référence et recouvrement lexical ne prouvent pas le droit.
+
+Le véritable holdout de 50–100 cas à annoter reste un travail avec un juriste.
+Les scénarios visibles pendant le développement ne sont pas présentés comme
+un test scellé indépendant.

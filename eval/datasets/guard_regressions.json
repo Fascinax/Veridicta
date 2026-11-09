@@ -1,0 +1,18 @@
+[
+  {"id":"exact", "answer":"Le salarié dispose de 30 jours de préavis. [Source 1]", "sources":[{"text":"Le salarié dispose de 30 jours de préavis."}], "expected_supported":true},
+  {"id":"same-negation", "answer":"Le salarié ne dispose pas du préavis. [Source 1]", "sources":[{"text":"Le salarié ne dispose pas du préavis."}], "expected_supported":true},
+  {"id":"decimal-law", "answer":"La loi 1.234 prévoit 30 jours de préavis. [Source 1]", "sources":[{"text":"La loi 1.234 prévoit 30 jours de préavis."}], "expected_supported":true},
+  {"id":"short-supported", "answer":"Le congé annuel est payé. [Source 1]", "sources":[{"text":"Le congé annuel est payé par l'employeur."}], "expected_supported":true},
+  {"id":"changed-number", "answer":"Le salarié dispose de 300 jours de préavis. [Source 1]", "sources":[{"text":"Le salarié dispose de 30 jours de préavis."}], "expected_supported":false},
+  {"id":"reversed-negation", "answer":"Le salarié ne dispose pas du préavis. [Source 1]", "sources":[{"text":"Le salarié dispose du préavis."}], "expected_supported":false},
+  {"id":"removed-negation", "answer":"Le salarié dispose du préavis. [Source 1]", "sources":[{"text":"Le salarié ne dispose pas du préavis."}], "expected_supported":false},
+  {"id":"source-zero", "answer":"Le congé annuel est payé. [Source 0]", "sources":[{"text":"Le congé annuel est payé."}], "expected_supported":false},
+  {"id":"source-overflow", "answer":"Le congé annuel est payé. [Source 9]", "sources":[{"text":"Le congé annuel est payé."}], "expected_supported":false},
+  {"id":"mixed-invalid", "answer":"Le congé annuel est payé. [Source 1][Source 9]", "sources":[{"text":"Le congé annuel est payé."}], "expected_supported":false},
+  {"id":"missing-citation", "answer":"Le congé annuel est payé.", "sources":[{"text":"Le congé annuel est payé."}], "expected_supported":false},
+  {"id":"unrelated", "answer":"Le licenciement impose une prime exceptionnelle. [Source 1]", "sources":[{"text":"Le congé annuel est payé."}], "expected_supported":false},
+  {"id":"false-abstention", "answer":"Les sources ne permettent pas de confirmer le délai, mais le licenciement coûte 999 euros.", "sources":[], "expected_supported":false},
+  {"id":"true-abstention", "answer":"Les sources fournies ne précisent pas le montant exact.", "sources":[], "expected_supported":false},
+  {"id":"changed-date", "answer":"La disposition entre en vigueur en 2027. [Source 1]", "sources":[{"text":"La disposition entre en vigueur en 2026."}], "expected_supported":false},
+  {"id":"partial-overlap", "answer":"Le salarié dispose de garanties exceptionnelles automatiques et illimitées de préavis. [Source 1]", "sources":[{"text":"Le salarié dispose du préavis."}], "expected_supported":false}
+]

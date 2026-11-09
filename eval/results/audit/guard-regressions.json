@@ -1,0 +1,214 @@
+{
+  "fixture_sha256": "0cf8c32fa5a8ad8cf99ccf7db63bc92a04adc8f8bb58913702c406f65eb19cc7",
+  "current": {
+    "scope": "synthetic_guard_regression_only",
+    "cases": 16,
+    "passed": 16,
+    "acceptance_rate": 0.25,
+    "false_acceptance_rate": 0.0,
+    "results": [
+      {
+        "id": "exact",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "same-negation",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "decimal-law",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "short-supported",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "changed-number",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "reversed-negation",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "removed-negation",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "source-zero",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "source-overflow",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "mixed-invalid",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "missing-citation",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "unrelated",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "false-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "true-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "changed-date",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "partial-overlap",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      }
+    ]
+  },
+  "comparison_revision": "35f18fd",
+  "historical": {
+    "scope": "synthetic_guard_regression_only",
+    "cases": 16,
+    "passed": 8,
+    "acceptance_rate": 0.625,
+    "false_acceptance_rate": 0.7,
+    "results": [
+      {
+        "id": "exact",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "same-negation",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "decimal-law",
+        "expected_supported": true,
+        "accepted": false,
+        "pass": false
+      },
+      {
+        "id": "short-supported",
+        "expected_supported": true,
+        "accepted": true,
+        "pass": true
+      },
+      {
+        "id": "changed-number",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      },
+      {
+        "id": "reversed-negation",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      },
+      {
+        "id": "removed-negation",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      },
+      {
+        "id": "source-zero",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      },
+      {
+        "id": "source-overflow",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "mixed-invalid",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      },
+      {
+        "id": "missing-citation",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "unrelated",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "false-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "true-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "pass": true
+      },
+      {
+        "id": "changed-date",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      },
+      {
+        "id": "partial-overlap",
+        "expected_supported": false,
+        "accepted": true,
+        "pass": false
+      }
+    ]
+  }
+}
