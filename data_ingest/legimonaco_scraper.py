@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+from datetime import date
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -98,6 +99,9 @@ LEGISLATIVE_WORK_FIELDS: list[str] = [
     "thematic", "tncNature", "number", "lnks",
 ]
 
+for _versioned_fields in (LEGISLATION_FIELDS, REGULATION_FIELDS, TAI_FIELDS, LEGISLATIVE_WORK_FIELDS):
+    _versioned_fields.extend(["startDate", "endDate"])
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -141,12 +145,17 @@ def _paginate_es(base_payload: dict) -> Iterator[dict]:
     """Yield every _source document from a paginated ES query."""
     count_resp = _es_query({**base_payload, "size": 0, "track_total_hits": True})
     total: int = count_resp["hits"]["total"]["value"]
+    if count_resp["hits"]["total"].get("relation", "eq") != "eq":
+        raise ValueError("Source did not provide an exact hit count")
     logger.info("Total documents to fetch: %d", total)
 
     with tqdm(total=total) as pbar:
         for offset in range(0, total, BATCH_SIZE):
             page = _es_query({**base_payload, "from": offset, "size": BATCH_SIZE})
-            for hit in page["hits"]["hits"]:
+            hits = page["hits"]["hits"]
+            if len(hits) != min(BATCH_SIZE, total - offset):
+                raise ValueError("Incomplete source page; snapshot collection must be retried")
+            for hit in hits:
                 yield hit["_source"]
                 pbar.update(1)
 
@@ -164,9 +173,27 @@ def _clean_path(raw_path: str) -> str:
     return raw_path.split("@")[0]
 
 
+def _source_version_metadata(src: dict) -> dict:
+    raw_path = src.get("path", "")
+    metadata = {"version_key": _clean_path(raw_path), "version_id": raw_path}
+    for source_field, normalized_field in (("startDate", "valid_from"), ("endDate", "valid_to")):
+        if source_field not in src or src[source_field] is None or src[source_field] == []:
+            continue
+        value = src[source_field]
+        if isinstance(value, list) and len(value) == 1:
+            value = value[0]
+        try:
+            if not isinstance(value, str):
+                raise ValueError("ambiguous source date")
+            metadata[normalized_field] = date.fromisoformat(value.replace(".", "-")).isoformat()
+        except ValueError:
+            metadata[normalized_field] = "invalid-source-date"
+        metadata.setdefault("version_date_provenance", {})[normalized_field] = source_field
+    return metadata
+
+
 def _legislation_record(src: dict) -> CorpusRecord:
     raw_path = src.get("path", "")
-    path = _clean_path(raw_path)
     return CorpusRecord(
         id=_doc_id(raw_path),
         titre=src.get("title", ""),
@@ -175,8 +202,7 @@ def _legislation_record(src: dict) -> CorpusRecord:
         source=BASE_URL + raw_path if raw_path else "",
         type="legislation",
         metadata={
-            "version_key": path,
-            "version_id": raw_path,
+            **_source_version_metadata(src),
             "nature": src.get("tncNature", ""),
             "numero": src.get("number", ""),
             "abrogee": src.get("legislationAbrogated", ""),
@@ -190,15 +216,15 @@ def _legislation_record(src: dict) -> CorpusRecord:
 def _regulation_record(src: dict) -> CorpusRecord:
     """Build a CorpusRecord for a regulation doc (arrete, ordonnance, decision)."""
     raw_path = src.get("path", "")
-    path = _clean_path(raw_path)
     return CorpusRecord(
-        id=_doc_id(path),
+        id=_doc_id(raw_path),
         titre=src.get("title", ""),
         text=src.get("enBody", ""),
         date=src.get("date", ""),
-        source=BASE_URL + path if path else "",
+        source=BASE_URL + raw_path if raw_path else "",
         type="regulation",
         metadata={
+            **_source_version_metadata(src),
             "nature": src.get("tncNature", ""),
             "numero": src.get("number", ""),
             "abrogee": src.get("regulationAbrogated", ""),
@@ -243,7 +269,7 @@ def collect_legislation(output_path: Path) -> int:
             {"terms": {"type": ["legislation"]}},
             {"terms": {"thematic": LABOUR_THEMATICS}},
         ]}},
-        "sort": [{"date": "desc"}],
+        "sort": [{"date": "desc"}, {"path": "asc"}],
     }
     records = [_legislation_record(src) for src in _paginate_es(payload)]
     _write_jsonl(records, output_path)
@@ -258,7 +284,7 @@ def collect_jurisprudence(output_path: Path) -> int:
             {"terms": {"type": ["case"]}},
             {"term": {"jurisdiction": "tribunal-travail"}},
         ]}},
-        "sort": [{"date": "desc"}],
+        "sort": [{"date": "desc"}, {"path": "asc"}],
     }
     records = [_jurisprudence_record(src) for src in _paginate_es(payload)]
     _write_jsonl(records, output_path)
@@ -276,7 +302,7 @@ def collect_regulations(output_path: Path) -> int:
             {"terms": {"type": ["regulation"]}},
             {"terms": {"thematic": LABOUR_THEMATICS}},
         ]}},
-        "sort": [{"date": "desc"}],
+        "sort": [{"date": "desc"}, {"path": "asc"}],
     }
     records = [_regulation_record(src) for src in _paginate_es(payload)]
     # Drop records with empty body (some regulation stubs have no enBody)
@@ -297,7 +323,7 @@ def collect_cross_court_jurisprudence(output_path: Path) -> int:
             {"terms": {"jurisdiction": CROSS_COURT_JURISDICTIONS}},
             {"terms": {"thematic": LABOUR_THEMATICS}},
         ]}},
-        "sort": [{"date": "desc"}],
+        "sort": [{"date": "desc"}, {"path": "asc"}],
     }
     records = [_jurisprudence_record(src) for src in _paginate_es(payload)]
     records = [r for r in records if r.text.strip()]
@@ -308,15 +334,15 @@ def collect_cross_court_jurisprudence(output_path: Path) -> int:
 def _tai_record(src: dict) -> CorpusRecord:
     """Build a CorpusRecord for a traité international (type=tai)."""
     raw_path = src.get("path", "")
-    path = _clean_path(raw_path)
     return CorpusRecord(
-        id=_doc_id(path),
+        id=_doc_id(raw_path),
         titre=src.get("title", ""),
         text=src.get("enBody", ""),
         date=src.get("date", ""),
-        source=BASE_URL + path if path else "",
+        source=BASE_URL + raw_path if raw_path else "",
         type="traite_international",
         metadata={
+            **_source_version_metadata(src),
             "nature": src.get("tncNature", ""),
             "numero": src.get("number", ""),
             "thematic": src.get("thematic", []),
@@ -329,15 +355,15 @@ def _tai_record(src: dict) -> CorpusRecord:
 def _legislative_work_record(src: dict) -> CorpusRecord:
     """Build a CorpusRecord for a projet de loi (type=legislativeWork)."""
     raw_path = src.get("path", "")
-    path = _clean_path(raw_path)
     return CorpusRecord(
-        id=_doc_id(path),
+        id=_doc_id(raw_path),
         titre=src.get("title", ""),
         text=src.get("enBody", ""),
         date=src.get("date", ""),
-        source=BASE_URL + path if path else "",
+        source=BASE_URL + raw_path if raw_path else "",
         type="projet_loi",
         metadata={
+            **_source_version_metadata(src),
             "nature": src.get("tncNature", ""),
             "numero": src.get("number", ""),
             "thematic": src.get("thematic", []),
@@ -355,7 +381,7 @@ def collect_traites_internationaux(output_path: Path) -> int:
             {"terms": {"type": ["tai"]}},
             {"terms": {"thematic": LABOUR_THEMATICS}},
         ]}},
-        "sort": [{"date": "desc"}],
+        "sort": [{"date": "desc"}, {"path": "asc"}],
     }
     records = [_tai_record(src) for src in _paginate_es(payload)]
     records = [r for r in records if r.text.strip()]
@@ -371,7 +397,7 @@ def collect_projets_loi(output_path: Path) -> int:
             {"terms": {"type": ["legislativeWork"]}},
             {"terms": {"thematic": LABOUR_THEMATICS}},
         ]}},
-        "sort": [{"date": "desc"}],
+        "sort": [{"date": "desc"}, {"path": "asc"}],
     }
     records = [_legislative_work_record(src) for src in _paginate_es(payload)]
     records = [r for r in records if r.text.strip()]
