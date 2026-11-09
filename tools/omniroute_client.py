@@ -10,10 +10,10 @@ try:
 except ImportError:  # pragma: no cover - exercised only in minimal environments
     OpenAI = None  # type: ignore[assignment,misc]
 
-from retrievers.config import OMNIROUTE_DEFAULT_BASE_URL
+from retrievers.config import OMNIROUTE_DEFAULT_BASE_URL, DEFAULT_RESPONSE_TOKEN_RESERVE
 
 DEFAULT_LOCAL_API_KEY = "sk-omniroute-local"
-MAX_RESPONSE_TOKENS = 4_096
+MAX_RESPONSE_TOKENS = DEFAULT_RESPONSE_TOKEN_RESERVE
 MAX_EMPTY_OUTPUT_ATTEMPTS = 3
 
 

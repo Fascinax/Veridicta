@@ -82,3 +82,22 @@ des autres juridictions, 24 traités et 55 projets. Les fichiers sont locaux dan
 `data/snapshots/audit-20261106` et exclus de Git. Le Journal de Monaco, les dates
 d'effet, la construction des index et l'évaluation indépendante restent des
 conditions de promotion, enregistrées dans `collection-status.json`.
+
+## Lot 5 — Chemin de récupération commun
+
+- `retrieve` et `retrieve_with_trace` partagent désormais la même exécution.
+- Exclusion par défaut des projets et statuts explicitement abrogés/remplacés ;
+  les dates historiques explicites restent traitées par le filtre temporel.
+- Pool historique élargi et borné ; voisins limités à la même version explicite.
+- Un seuil de reranking peut rejeter tous les candidats au lieu de les réinjecter.
+- Budget de génération calculé avec système, question, historique et séparateurs,
+  réserve de sortie commune ; repli conservateur pour les tokenizers inconnus.
+- Caches liés à l'objet embedder et à la version de table, fusion à égalité stable.
+- Les cinq requêtes Neo4j historiques plafonnent entrées et résultats.
+- Expansion de requête UI désactivée par défaut comme l'évaluation ; activation
+  explicite via `VERIDICTA_QUERY_EXPANSION=true`, enregistrée dans la trace.
+
+Aucun gain de qualité juridique ni de latence n'est revendiqué à partir de ces
+corrections de sûreté. Les modèles challengers, la consolidation des trois
+implémentations de graphe et la comparaison sur le holdout annoté restent à
+mesurer avant une promotion. Les statuts/dates absents ne sont pas inventés.

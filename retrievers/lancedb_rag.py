@@ -320,7 +320,7 @@ def lancedb_hybrid_retrieve(
         for cid in all_ids
     }
 
-    top_k_ids = sorted(fused, key=fused.__getitem__, reverse=True)[:k]
+    top_k_ids = sorted(fused, key=lambda chunk_id: (-fused[chunk_id], chunk_id))[:k]
 
     merged_map = {**fts_chunk_map, **vec_chunk_map}
     results: list[dict] = []

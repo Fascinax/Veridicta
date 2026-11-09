@@ -700,7 +700,7 @@ def _retrieve_chunks_with_trace(
         prompt,
         retriever=retriever,
         k=k,
-        query_expansion=True,
+        query_expansion=os.getenv("VERIDICTA_QUERY_EXPANSION", "false").lower() in {"1", "true", "yes"},
         trace_candidate_k=20,
         as_of=as_of,
     )

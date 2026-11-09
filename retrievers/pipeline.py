@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from retrievers.adaptive_router import RouteDecision, choose_retrieval_route
@@ -11,6 +11,7 @@ from retrievers.parent_child import ParentChildConfig, expand_parent_child_candi
 from retrievers.query_expansion import expand_query_legal_fr
 from retrievers.traceability import summarize_chunks, text_summary
 from retrievers.temporal import select_as_of
+from retrievers.applicability import ApplicabilityPolicy
 
 try:
     from retrievers.hybrid_rag import hybrid_retrieve
@@ -38,9 +39,8 @@ except ImportError:  # pragma: no cover - optional dependency
     lancedb_graph_retrieve = None
 
 try:
-    from retrievers.reranker import rerank, rerank_with_trace
+    from retrievers.reranker import rerank_with_trace
 except ImportError:  # pragma: no cover - optional dependency
-    rerank = None
     rerank_with_trace = None
 
 
@@ -101,6 +101,7 @@ class RetrievalPipeline:
     bm25: object | None = None
     neo4j_manager: object | None = None
     lancedb_table: object | None = None
+    applicability: ApplicabilityPolicy = field(default_factory=ApplicabilityPolicy)
 
     def retrieve(
         self,
@@ -117,41 +118,16 @@ class RetrievalPipeline:
         parent_child_config: ParentChildConfig | None = None,
         as_of: date | None = None,
     ) -> list[dict]:
-        selected_retriever, _ = self._resolve_retriever(query, retriever)
-        retrieval_query = expand_query_legal_fr(query) if query_expansion else query
-        retrieval_k = k * max(1, reranker_candidate_multiplier) if use_reranker else k
-        retrieved = self._dispatch_retriever(
-            retriever=selected_retriever,
-            query=retrieval_query,
-            k=retrieval_k,
+        selected, _ = self.retrieve_with_trace(
+            query, retriever=retriever, k=k, query_expansion=query_expansion,
+            use_reranker=use_reranker,
+            reranker_candidate_multiplier=reranker_candidate_multiplier,
+            reranker_min_score=reranker_min_score,
             hybrid_faiss_weight=hybrid_faiss_weight,
             hybrid_bm25_weight=hybrid_bm25_weight,
+            parent_child_config=parent_child_config, as_of=as_of,
         )
-        if as_of is not None:
-            retrieved = select_as_of(retrieved, as_of).selected
-
-        if not use_reranker:
-            if parent_child_config is None:
-                return retrieved
-            expanded = expand_parent_child_candidates(
-                retrieved,
-                self.chunks or [],
-                parent_child_config,
-            )
-            return select_as_of(expanded, as_of).selected if as_of is not None else expanded
-        if rerank is None:
-            raise RuntimeError("FlashRank reranker unavailable. Install flashrank to enable reranking.")
-        final_candidates = rerank(
-            query,
-            retrieved,
-            k=k,
-            candidate_k=retrieval_k,
-            min_score=reranker_min_score,
-        )
-        if parent_child_config is None:
-            return final_candidates
-        expanded = expand_parent_child_candidates(final_candidates, self.chunks or [], parent_child_config)
-        return select_as_of(expanded, as_of).selected if as_of is not None else expanded
+        return selected
 
     def retrieve_with_trace(
         self,
@@ -178,6 +154,8 @@ class RetrievalPipeline:
         selected_retriever, route_decision = self._resolve_retriever(query, retriever)
         retrieval_query = expand_query_legal_fr(query) if query_expansion else query
         raw_candidate_k = max(k, trace_candidate_k)
+        if as_of is not None:
+            raw_candidate_k = max(raw_candidate_k, min(200, k * 20))
         if use_reranker:
             raw_candidate_k = max(
                 raw_candidate_k,
@@ -191,6 +169,8 @@ class RetrievalPipeline:
             hybrid_faiss_weight=hybrid_faiss_weight,
             hybrid_bm25_weight=hybrid_bm25_weight,
         )
+        excluded_ids = [str(chunk.get("chunk_id", "")) for chunk in raw_candidates if not self.applicability.accepts(chunk, as_of)]
+        raw_candidates = [chunk for chunk in raw_candidates if self.applicability.accepts(chunk, as_of)]
         temporal_unknown_count = 0
         temporal_decisions: list[dict[str, object]] = []
         temporal_unknown_ids: set[str] = set()
@@ -237,6 +217,8 @@ class RetrievalPipeline:
             }
             decisions.append(temporal_trace_decision)
 
+        if excluded_ids:
+            decisions.append({"stage": "applicability_filter", "excluded_ids": excluded_ids})
         reranked_candidates: list[dict] = []
         if use_reranker:
             if rerank_with_trace is None:
@@ -288,6 +270,7 @@ class RetrievalPipeline:
                 self.chunks,
                 parent_child_config,
             )
+            final_candidates = [chunk for chunk in final_candidates if self.applicability.accepts(chunk, as_of)]
             if as_of is not None:
                 expanded_temporal = select_as_of(final_candidates, as_of)
                 final_candidates = expanded_temporal.selected
