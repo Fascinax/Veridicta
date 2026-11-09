@@ -147,6 +147,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-audit/
+/dependency-audit.json
 
 # Streamlit secrets (never commit)
 .streamlit/secrets.toml

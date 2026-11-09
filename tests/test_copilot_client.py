@@ -119,11 +119,17 @@ class TestCopilotClientInit:
 
 class TestBuildSdkClient:
 
+    def test_real_sdk_accepts_client_construction_without_network(self, monkeypatch) -> None:
+        from copilot import CopilotClient as SdkClient
+
+        monkeypatch.setattr("tools.copilot_client._resolve_token", lambda: None)
+        assert isinstance(_build_sdk_client(), SdkClient)
+
     @patch("tools.copilot_client._resolve_token", return_value="tok_123")
     @patch("tools.copilot_client._SdkClient")
     def test_passes_token_when_available(self, mock_sdk: MagicMock, _mock_tok: MagicMock) -> None:
         _build_sdk_client()
-        call_args = mock_sdk.call_args[0][0]
+        call_args = mock_sdk.call_args.kwargs
         assert call_args["github_token"] == "tok_123"
         assert call_args["use_logged_in_user"] is False
 
@@ -131,7 +137,7 @@ class TestBuildSdkClient:
     @patch("tools.copilot_client._SdkClient")
     def test_no_token_omits_github_token_key(self, mock_sdk: MagicMock, _mock_tok: MagicMock) -> None:
         _build_sdk_client()
-        call_args = mock_sdk.call_args[0][0]
+        call_args = mock_sdk.call_args.kwargs
         assert "github_token" not in call_args
 
 
@@ -145,7 +151,7 @@ def _make_fake_session(response_text: str):
     def sync_on(handler):
         _handler_box.append(handler)
 
-    async def fake_send(payload):
+    async def fake_send(**payload):
         handler = _handler_box[0]
         msg_event = MagicMock()
         msg_event.type.value = "assistant.message"
@@ -217,7 +223,7 @@ class TestCopilotClientChat:
         def sync_on(handler):
             _handler_box.append(handler)
 
-        async def fake_send(payload):
+        async def fake_send(**payload):
             handler = _handler_box[0]
             for part in ["Part 1. ", "Part 2."]:
                 ev = MagicMock()
@@ -249,7 +255,7 @@ class TestCopilotClientStream:
         def sync_on(handler):
             _handler_box.append(handler)
 
-        async def fake_send(payload):
+        async def fake_send(**payload):
             handler = _handler_box[0]
             for delta in ["Tok1", "Tok2", "Tok3"]:
                 ev = MagicMock()

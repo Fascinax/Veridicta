@@ -50,10 +50,10 @@ class GenerationRoute:
 
 
 DEFAULT_MODEL_MATRIX = (
-    ModelSpec("copilot", "gpt-4.1", "quality"),
-    ModelSpec("copilot", "gpt-4.1-mini", "latency"),
+    ModelSpec("copilot", "claude-sonnet-5.5", "quality"),
+    ModelSpec("copilot", "gemini-3.8-flash", "latency"),
     ModelSpec("cerebras", "gpt-oss-120b", "quality"),
-    ModelSpec("cerebras", "llama3.1-8b", "latency"),
+    ModelSpec("cerebras", "qwen-3.8-27b", "latency"),
     ModelSpec("omniroute", "auto", "local"),
 )
 

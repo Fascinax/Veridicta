@@ -1,0 +1,43 @@
+[project]
+name = "veridicta"
+version = "0.2.0"
+description = "Evidence-oriented retrieval for Monegasque labour law"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "tqdm>=4.70.1,<5", "python-dotenv>=1.2.4,<2",
+  "sentence-transformers>=6.2.0,<7", "torch==2.13.0",
+  "faiss-cpu>=1.15.1,<2", "bm25s>=0.3.16,<0.4", "PyStemmer>=3.1.0,<4",
+  "lancedb>=0.41.0,<0.42", "huggingface-hub>=2.4.0,<3", "flashrank==0.2.10",
+  "neo4j>=6.4.1,<7", "cerebras-cloud-sdk==1.91.0",
+  "github-copilot-sdk>=1.0.28,<2", "streamlit>=1.67.0,<2",
+  "openai>=2.45.0,<3", "requests>=2.34.2,<3", "jsonlines>=4,<5", "numpy>=2.5.4,<3",
+  "filelock>=4.2.9,<5", "urllib3>=2.8.0,<3", "certifi>=2026.10.23", "pillow>=13,<14",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.2,<10", "pytest-benchmark>=5.3.1,<6", "ruff>=0.15", "pip-audit>=2.10", "coverage>=7"]
+evaluation = ["ragas==0.4.3", "langchain-openai>=1.7.4,<2", "bert-score==0.3.13", "memory-profiler==0.61.0"]
+ingest = ["beautifulsoup4>=4.15,<5", "playwright>=1.64.1,<2"]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["allure", ".venv-audit", "data", "models"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.coverage.run]
+source = ["retrievers", "data_ingest", "workspaces"]
+omit = ["tests/*"]

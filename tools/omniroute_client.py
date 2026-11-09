@@ -61,6 +61,8 @@ class OmniRouteClient:
         return OpenAI(
             api_key=omniroute_api_key(),
             base_url=omniroute_base_url(),
+            timeout=60.0,
+            max_retries=1,
         )
 
     def _request_payload(
