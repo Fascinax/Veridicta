@@ -40,6 +40,24 @@ def test_long_query_is_rejected_before_execution():
             pytest.fail("oversized question was admitted")
 
 
+def test_existing_memory_owner_can_continue_at_owner_capacity(monkeypatch):
+    monkeypatch.setattr("ui.request_limits.MAX_OWNER_BUCKETS", 1)
+    limits = RequestLimits()
+    with limits.admit("existing", "one"):
+        pass
+    with pytest.raises(RequestLimitExceeded):
+        with limits.admit("new", "two"):
+            pass
+    with limits.admit("existing", "three"):
+        pass
+
+
+@pytest.mark.parametrize("value", [True, 0, -1, 1.5, "2"])
+def test_request_policy_requires_positive_integers(value):
+    with pytest.raises(ValueError):
+        RequestPolicy(max_concurrent=value)
+
+
 def test_ui_limit_wrapper_does_not_render_identity_widgets_again():
     source = Path("ui/app.py").read_text(encoding="utf-8")
     node = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_bounded_request")

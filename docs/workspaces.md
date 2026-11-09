@@ -125,11 +125,11 @@ n'a été exécutée sur les données existantes pendant l'implémentation.
 ## Limites et suivi
 
 L'interface limite chaque question à 6 000 caractères, chaque propriétaire à dix
-requêtes par minute et chaque processus à deux traitements simultanés. Ce sont
-des bornes locales au processus, pas un quota distribué ni une protection
-anti-abus pour un service anonyme. Un déploiement multi-instance demande des
-quotas partagés et un contrôle d'entrée ; les sessions anonymes ne remplacent
-pas une identité persistante.
+requêtes par minute et les workers d'un serveur à deux traitements simultanés.
+Les workers partagent désormais une base SQLite et des verrous système sur un
+volume local. Un déploiement sur plusieurs hôtes exige un contrôle partagé
+adapté ; les sessions anonymes ne remplacent pas une identité persistante.
+Configuration et reprise après panne : `docs/shared-request-limits.md`.
 
 ```powershell
 uv run --locked python -m tools.audit_metrics --root data/cases/owners/<empreinte>/audit

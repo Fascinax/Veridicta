@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "scope": "synthetic_local_quota_checks_not_hosting_validation",
+  "branch": "audit/16-shared-request-limits",
+  "source_parent_commit": "e3dd3ade500f93ea48213b8160b2d9826a65f2d9",
+  "runtime": {
+    "python": "3.12.10",
+    "sqlite": "3.49.1",
+    "journal_mode": "delete",
+    "lock_backend": "WindowsFileLock"
+  },
+  "new_regression_tests": 28,
+  "targeted_tests_passed": 32,
+  "windows_suite": {
+    "passed": 709,
+    "skipped": 3,
+    "deselected_by_markers": 16
+  },
+  "real_spawn_process_tests": [
+    "one_shared_concurrency_slot",
+    "killed_worker_releases_slot",
+    "six_processes_share_three_rate_credits"
+  ],
+  "two_slots_available": true,
+  "third_request_rejected": true,
+  "slots_reusable_after_release": true,
+  "rejected_request_not_counted": true,
+  "raw_owner_and_query_absent_from_database": true,
+  "active_index_unchanged": true,
+  "deployment_validated": false,
+  "multi_host_validated": false
+}

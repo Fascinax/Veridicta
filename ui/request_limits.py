@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from threading import BoundedSemaphore, Lock
 import time
 
+WINDOW_SECONDS = 60
+MAX_OWNER_BUCKETS = 10000
+
 
 class RequestLimitExceeded(RuntimeError):
     pass
@@ -17,7 +20,8 @@ class RequestPolicy:
     max_query_chars: int = 6000
 
     def __post_init__(self):
-        if min(self.max_concurrent, self.requests_per_minute, self.max_query_chars) < 1:
+        values = (self.max_concurrent, self.requests_per_minute, self.max_query_chars)
+        if any(type(value) is not int or value < 1 for value in values):
             raise ValueError("request limits must be positive")
 
 
@@ -37,10 +41,12 @@ class RequestLimits:
         try:
             with self._lock:
                 now = time.monotonic()
-                self._requests = {key: [stamp for stamp in stamps if stamp > now - 60]
-                                  for key, stamps in self._requests.items() if stamps and stamps[-1] > now - 60}
+                self._requests = {key: [stamp for stamp in stamps if stamp > now - WINDOW_SECONDS]
+                                  for key, stamps in self._requests.items() if stamps and stamps[-1] > now - WINDOW_SECONDS}
                 recent = self._requests.get(owner, [])
-                if len(recent) >= self.policy.requests_per_minute or len(self._requests) >= 10000:
+                if len(recent) >= self.policy.requests_per_minute or (
+                    owner not in self._requests and len(self._requests) >= MAX_OWNER_BUCKETS
+                ):
                     raise RequestLimitExceeded("Trop de demandes récentes. Réessayez dans une minute.")
                 self._requests[owner] = [*recent, now]
             yield
