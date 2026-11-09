@@ -18,18 +18,18 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
 import jsonlines
 from playwright.sync_api import Browser, Page, sync_playwright
 from tqdm import tqdm
+
+from data_ingest.journal_content import LABOUR_KEYWORDS, canonical_article_url, parse_article
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,34 +48,6 @@ ARTICLE_RETRY_ATTEMPTS = 2
 RETRY_BACKOFF_SECONDS = 2.0
 MAX_CONSECUTIVE_FAILURES = 10
 SEARCH_TIMEOUT_SECONDS = 30.0
-
-# Labour law keywords to search
-LABOUR_KEYWORDS: list[str] = [
-    "licenciement",
-    "contrat de travail",
-    "convention collective",
-    "salaire",
-    "conge paye",
-    "inspection du travail",
-    "syndicat",
-    "apprentissage",
-    "formation professionnelle",
-    "representation du personnel",
-    "heures supplementaires",
-    "chomage",
-    "medecine du travail",
-    "harcelement",
-    "interim",
-    "preavis",
-    "rupture du contrat",
-    "droit du travail",
-    "delegue du personnel",
-    "accident du travail",
-    "conge maternite",
-    "SMIG",
-    "salaire minimum",
-    "greve",
-]
 
 OUTPUT_FILE = "journal_monaco.jsonl"
 CHECKPOINT_FILE = ".monaco_scraper_checkpoint.json"
@@ -145,7 +117,7 @@ def _search_page_urls(
         response.raise_for_status()
     except requests.RequestException as exc:
         logger.warning("Search page load failed (kw=%s offset=%d): %s", keyword, offset, exc)
-        return []
+        raise ArticleFetchError("Journal search request failed") from exc
 
     soup = BeautifulSoup(response.text, "html.parser")
     links = soup.select("a[href*='/Journaux/']")
@@ -153,9 +125,11 @@ def _search_page_urls(
     for link in links:
         href = link.get("href") or ""
         # Only article detail pages: /Journaux/YYYY/Journal-NNN/slug
-        parts = [p for p in href.split("/") if p]
-        if len(parts) >= 4:
-            full = urljoin(BASE_URL, href)
+        try:
+            full = canonical_article_url(href)
+        except ValueError:
+            continue
+        if full not in urls:
             urls.append(full)
     return urls
 
@@ -194,151 +168,13 @@ def iter_search_results(
 # Article extraction
 # ---------------------------------------------------------------------------
 
-# Lines that appear as boilerplate on every page
-_BOILERPLATE = re.compile(
-    r"^("
-    r"Aller au contenu|Aller.+navigation|Aller.+recherche|"
-    r"Accueil$|Journaux$|Categories$|Editos$|Guide|A propos|"
-    r"Nous contacter|Mentions|Plan du site|Sites li|"
-    r"Voir le site|^MENU$|^Francais$|^Anglais$|"
-    r"icon-|logo-|image-|^svg$|^path|^fill|"
-    r"Tous droits|^Version 20|"
-    r"Visualiser le journal|Telecharger le journal|Imprimer l|"
-    r"Retour au sommaire|Article suivant|Article pr|"
-    r"Recevoir le sommaire|Je m'abonne|Acheter le Journal|En savoir plus|"
-    r"Veuillez compl|Mon adresse|^Publications$"
-    r")",
-    re.IGNORECASE,
-)
-
-# Marks start of real legal content
-_CONTENT_START = re.compile(
-    r"(ALBERT|Vu la loi|Vu l'|Article\s+\d|Art\.\s+\d|"
-    r"Nous ordonnons|Arretons|loi n|ordonnance n)",
-    re.IGNORECASE,
-)
-
-
-def _extract_article_text(page: Page) -> str:
-    """Extract clean legal text from an article detail page."""
-    full = page.inner_text("body")
-    lines: list[str] = []
-    in_content = False
-
-    for line in full.splitlines():
-        line = line.strip()
-        if not line or len(line) < 3:
-            continue
-        if _BOILERPLATE.match(line):
-            continue
-        if not in_content and _CONTENT_START.search(line):
-            in_content = True
-        if in_content:
-            lines.append(line)
-
-    return "\n".join(lines).strip()
-
-
-def _parse_date(raw: str) -> str:
-    """Convert 'DD/MM/YYYY' or french written date to ISO YYYY-MM-DD."""
-    raw = raw.strip()
-    m = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", raw)
-    if m:
-        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
-
-    MONTHS = {
-        "janvier": "01", "fevrier": "02", "mars": "03", "avril": "04",
-        "mai": "05", "juin": "06", "juillet": "07", "aout": "08",
-        "septembre": "09", "octobre": "10", "novembre": "11", "decembre": "12",
-    }
-    simplified = (
-        raw.lower()
-        .replace("\xe9", "e").replace("\xe8", "e").replace("\xea", "e")
-        .replace("\xfb", "u").replace("\xf4", "o").replace("\xe0", "a")
-    )
-    m2 = re.search(r"(\d{1,2})\s+(\w+)\s+(\d{4})", simplified)
-    if m2:
-        month = MONTHS.get(m2.group(2), "01")
-        return f"{m2.group(3)}-{month}-{int(m2.group(1)):02d}"
-
-    # Year only from URL pattern
-    m3 = re.search(r"(\d{4})", raw)
-    return m3.group(1) if m3 else raw
-
-
-def fetch_article(page: Page, url: str) -> ArticleRecord | None:
-    """
-    Fetch and parse a single article detail page.
-    Returns None on 404 or if extracted text is too short.
-    """
+def fetch_article(page: Page, url: str) -> ArticleRecord:
+    """Use the same source-scoped extraction as the isolated HTTP collector."""
     try:
         _goto(page, url)
+        return ArticleRecord(**parse_article(page.content().encode("utf-8"), url))
     except Exception as exc:
         raise ArticleFetchError(url) from exc
-
-    # Detect 404
-    try:
-        body_text = page.inner_text("body")
-    except Exception as exc:
-        raise ArticleFetchError(url) from exc
-
-    if "Erreur 404" in body_text or "erreur 404" in body_text.lower():
-        logger.debug("404: %s", url)
-        return None
-
-    # --- Title: prefer h1 ---
-    titre = ""
-    for sel in ["h1", "h2", ".article-title"]:
-        el = page.query_selector(sel)
-        if el:
-            t = el.inner_text().strip()
-            if len(t) > 10:
-                titre = t
-                break
-    if not titre:
-        title_el = page.query_selector("title")
-        if title_el:
-            titre = title_el.inner_text().split("-")[0].strip()
-
-    # --- Date ---
-    date_str = ""
-    date_el = page.query_selector("[class*=date]")
-    if date_el:
-        date_str = _parse_date(date_el.inner_text())
-    if not date_str:
-        m = re.search(r"/Journaux/(\d{4})/", url)
-        date_str = m.group(1) if m else ""
-
-    # --- Category (breadcrumb or category label) ---
-    category = ""
-    cat_el = page.query_selector(".breadcrumbs, [class*=categorie], [class*=category]")
-    if cat_el:
-        category = cat_el.inner_text().strip().replace("\n", " > ")
-
-    # --- Legal text ---
-    text = _extract_article_text(page)
-    if len(text) < 50:
-        logger.debug("Too short, skipping: %s", url)
-        return None
-
-    journal_num_m = re.search(r"Journal-(\d+)", url)
-    journal_num = journal_num_m.group(1) if journal_num_m else ""
-    slug = url.rstrip("/").split("/")[-1][:80]
-    doc_id = f"JDM-{journal_num}-{slug}"
-
-    return ArticleRecord(
-        id=doc_id,
-        titre=titre,
-        text=text,
-        date=date_str,
-        source=url,
-        type="journal_monaco",
-        metadata={
-            "journal_numero": journal_num,
-            "category": category,
-            "url": url,
-        },
-    )
 
 
 def fetch_article_with_retries(page: Page, url: str) -> ArticleRecord | None:

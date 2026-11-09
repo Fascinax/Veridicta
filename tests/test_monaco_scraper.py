@@ -110,11 +110,10 @@ def test_search_page_urls_parses_only_journal_article_links():
     assert urls == ["https://journaldemonaco.gouv.mc/Journaux/2024/Journal-1/article"]
 
 
-def test_search_page_urls_returns_empty_on_http_failure():
+def test_search_page_urls_raises_instead_of_claiming_exhaustion_on_http_failure():
     class FailingSession:
         def get(self, url, timeout):
             raise monaco_scraper.requests.RequestException("temporary failure")
 
-    urls = monaco_scraper._search_page_urls(FailingSession(), "licenciement", 0)
-
-    assert urls == []
+    with pytest.raises(monaco_scraper.ArticleFetchError, match="search request failed"):
+        monaco_scraper._search_page_urls(FailingSession(), "licenciement", 0)

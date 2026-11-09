@@ -182,3 +182,44 @@ Le rapport `eval/results/audit/dense-index-20261107.json` lie les résultats au
 manifeste, à la révision du modèle et aux commits de construction/contrôle.
 Le candidat reste non activé et `release_ready=false` : couverture complémentaire,
 revue juridique indépendante et vérifications du déploiement restent nécessaires.
+
+## Lot 10 — Collecte complémentaire et qualification des sources
+
+- Collecteur HTTP du Journal avec TLS système vérifié, captures HTML attestées,
+  périmètre explicite et contrôle des compteurs/pagination ; pas de navigateur requis.
+- Publication datée sans inférence de date d'effet, IDs calculés sur l'URL entière,
+  extraction limitée au document et conservation des cellules fusionnées des tableaux.
+- Une erreur réseau ou un changement de structure ne signifie plus zéro résultat.
+- Respect du robots.txt : une pagination exclue laisse une couverture partielle visible.
+- Nouvelle collecte isolée : 3 366 documents LegiMonaco et 97 circulaires ; 3 463 IDs
+  distincts, aucune collision. Les 44 tableaux et 97 pages d'article sont conservés.
+- Les six corps vides sont vérifiés sur les pages sources, sans remplacement par des
+  notes ni modification de leur statut. Quatre indicateurs d'abrogation concordants,
+  deux fiches sans indicateur ni corps restent à qualifier.
+
+La couverture du Journal est complétée, sans devenir exhaustive : six recherches
+restent limitées par robots. Le nouveau snapshot brut n'est pas indexé ni activé.
+Le candidat du lot 9 et les index actifs conservent leurs empreintes.
+Les commandes, mesures et limites sont détaillées dans `docs/journal-coverage.md`.
+
+## Reste à faire après le lot 10
+
+Les charges ci-dessous sont des estimations de travail effectif, hors attente
+d'accès, d'export de source ou de disponibilité d'un juriste. Elles ne sont pas
+des engagements de date. Les lots techniques 1 à 10 sont poussés sur des branches ;
+leur intégration à `main` reste à décider après revue.
+
+| Chantier | Prochaine étape concrète | Charge indicative |
+| --- | --- | --- |
+| Corpus | Qualifier les 97 circulaires, les deux fiches ambiguës, les dates d'effet et le périmètre manquant ; obtenir un accès/export autorisé pour élargir le Journal, puis préparer/indexer le corpus retenu | 2–4 jours, dépendance source et revue juridique |
+| Évaluation indépendante | Faire construire et annoter 50–100 cas nouveaux avec réponses et passages par un juriste, puis exécuter le RAG complet et analyser les erreurs | 3–6 jours, dont du temps de juriste |
+| Modèles et rerankers | Comparer les challengers un par un, avec corpus/questions/paramètres communs, coût, latence, mémoire et qualité juridique revue | 1–3 jours après le jeu annoté |
+| Graphe, si retenu | Reconstruire dans une base isolée, vérifier provenance/versions/liens et mesurer son gain avant activation | 1–3 jours ; optionnel si le chemin hybride suffit |
+| Exploitation | Choisir l'hébergement et l'IdP, tester identité/accès, secrets, sauvegarde/restauration, quotas et alertes ; refaire le smoke du fournisseur exact et la readiness | 2–4 jours selon la cible |
+| Dépendances | Lever les deux exceptions documentées Ragas/DiskCache dès qu'une solution corrigée et compatible est disponible, puis relancer l'audit | 0,5–1 jour de validation, disponibilité externe |
+
+Le code et les tests locaux peuvent encore être améliorés sans ces accès.
+En revanche, une approbation juridique, une identité de déploiement et un accès
+source manquant ne peuvent pas être remplacés par des données synthétiques.
+Le benchmark des modèles dépend d'un jeu de référence fiable ; une meilleure
+similarité lexicale seule ne justifie pas une promotion.

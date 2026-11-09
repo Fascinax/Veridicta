@@ -17,7 +17,7 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=9.2,<10", "pytest-benchmark>=5.3.1,<6", "ruff>=0.15", "pip-audit>=2.10", "coverage>=7"]
 evaluation = ["ragas==0.4.3", "langchain-openai>=1.7.4,<2", "bert-score==0.3.13", "memory-profiler==0.61.0"]
-ingest = ["beautifulsoup4>=4.15,<5", "playwright>=1.64.1,<2"]
+ingest = ["beautifulsoup4>=4.15,<5", "playwright>=1.64.1,<2", "truststore>=0.10.5,<0.11"]
 
 [tool.uv]
 package = false
