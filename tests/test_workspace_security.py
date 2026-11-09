@@ -1,9 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-import ast
 import json
 import os
-from pathlib import Path
 
 import pytest
 
@@ -144,8 +142,8 @@ def test_authenticated_mode_fails_closed_without_valid_identity(claims):
 
 
 def test_oidc_issuer_is_part_of_owner_identity():
-    one = workspace_owner("authenticated", "session", {"is_logged_in": True, "iss": "issuer-a", "sub": "same"})
-    two = workspace_owner("authenticated", "session", {"is_logged_in": True, "iss": "issuer-b", "sub": "same"})
+    one = workspace_owner("authenticated", "session", {"is_logged_in": True, "iss": "issuer-a", "sub": "same", "exp": 4_000_000_000})
+    two = workspace_owner("authenticated", "session", {"is_logged_in": True, "iss": "issuer-b", "sub": "same", "exp": 4_000_000_000})
     assert one != two
 
 
@@ -153,10 +151,7 @@ def test_streamlit_sessions_have_separate_workspace_stores(tmp_path, monkeypatch
     from streamlit.testing.v1 import AppTest
     monkeypatch.setenv("VERIDICTA_WORKSPACE_DIR", str(tmp_path))
     monkeypatch.setenv("VERIDICTA_WORKSPACE_MODE", "session")
-    source = Path("ui/app.py").read_text(encoding="utf-8")
-    node = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_get_workspace_store")
-    script = ("import streamlit as st\nimport uuid, os\nfrom workspaces.store import WorkspaceStore\n"
-              "from workspaces.identity import workspace_owner\n" + ast.get_source_segment(source, node)
+    script = ("import streamlit as st\nfrom ui.access import get_workspace_store as _get_workspace_store\n"
               + "\nstore = _get_workspace_store()\nif st.button('Create'): store.create('Private')\nst.text(str(len(store.list())))\n")
     first = AppTest.from_string(script).run()
     first.button[0].click().run()

@@ -97,3 +97,9 @@ Le lot 13 ajoute une répétition de récupération locale sur données synthét
 avec intégrité des octets et conservation des dates d'audit. Son succès ne valide
 pas les accès, le stockage ni la récupération sur l'hébergement choisi. Ces
 preuves restent à produire sur la cible ; voir `docs/workspace-recovery.md`.
+
+Le lot 14 impose en mode authentifié une liste explicite de couples OIDC `iss` /
+`sub`, relue à chaque interaction, et une expiration obligatoire. Le contrôle
+local `tools.access_check` vérifie la configuration de cette politique sans
+contacter l'IdP. Il ne constitue pas une preuve d'hébergement ou de connexion
+réelle ; ces essais restent requis. Voir `docs/access-control.md`.

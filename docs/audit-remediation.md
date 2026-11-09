@@ -291,3 +291,19 @@ IdP, chiffrement ni droits de l'hébergement. Les objectifs RPO/RTO et la répé
 sur la cible restent à définir. Les index et annotations historiques restent
 inchangés. Détails : `docs/workspace-recovery.md` et
 `eval/results/audit/workspace-recovery-20261108.json`.
+
+## Lot 14 — Autorisation explicite des comptes authentifiés
+
+- Liste privée de couples exacts `iss` / `sub`, refus par défaut en l'absence
+  de politique valide ou pour un compte non approuvé ; aucun droit fondé sur l'e-mail.
+- Expiration OIDC obligatoire et vérification de `nbf` lorsqu'il est présent.
+- Contrôle isolé avant stockage, téléchargement d'index et corps du RAG ; état
+  privé de session effacé lors d'un refus ou d'un changement de propriétaire.
+- Politique relue sans cache à chaque interaction pour appliquer les retraits.
+- Précontrôle CLI sans identifiants ni chemins privés, modèles de configuration
+  sans compte réel, tests unitaires et Streamlit sur des identités synthétiques.
+
+La configuration et les essais sur un IdP/hébergement réels restent à faire.
+Un traitement en cours n'est pas annulé instantanément ; les autres onglets sont
+recontrôlés à leur prochaine interaction. Aucun index actif, dossier réel ou
+annotation de revue n'est modifié. Voir `docs/access-control.md`.
