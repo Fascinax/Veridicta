@@ -40,3 +40,35 @@ ne constituent pas une mise à jour automatique de l'actualité juridique.
 
 Les dossiers et journaux privés ne sont pas inclus dans les manifestes de corpus.
 Ne jamais publier ces données lors d'un upload des artefacts.
+
+## Préparation contrôlée d'un candidat
+
+```powershell
+uv run --locked python -m data_ingest.prepare_candidate --source-manifest data/snapshots/<collecte>/snapshot.manifest.json --out data/snapshots/<nouveau-candidat>
+```
+
+La destination doit être neuve et séparée de la source. L'outil vérifie le
+manifeste, copie les octets bruts déclarés, contrôle leur empreinte, refuse les
+défauts bloquants, produit les chunks et un manifeste qui conserve la date de
+collecte et la couverture. Une erreur laisse un statut `failed` diagnostiquable ;
+aucun ancien dossier/index n'est remplacé. Le statut `prepared` n'active rien.
+
+Le candidat local du 6 novembre contient 35 887 chunks. La construction dense
+reste distincte et explicite, avant un nouveau scellement :
+
+```powershell
+uv run --locked python -m retrievers.baseline_rag --build --chunks data/snapshots/<candidat>/processed/chunks.jsonl --index-dir data/snapshots/<candidat>/index
+uv run --locked python -m retrievers.lancedb_rag --build-from-faiss --index-dir data/snapshots/<candidat>/index --db-dir data/snapshots/<candidat>/index/lancedb
+```
+
+Sceller ensuite le candidat sans modifier sa date de collecte ou sa couverture :
+
+```powershell
+uv run --locked python -m data_ingest.prepare_candidate --seal data/snapshots/<candidat>
+```
+
+Ce scellement vérifie le bundle réel et sa correspondance avec les chunks préparés,
+refuse toute modification des fichiers bruts/traités et conserve les métadonnées
+de collecte. Le statut `indexed` reste `release_ready=false`. Puis suivre [le contrôle de release](production-readiness.md), dont les preuves
+humaines et fournisseur sont requises. Les fichiers de preuve privée ne sont pas
+à joindre au corpus public.
