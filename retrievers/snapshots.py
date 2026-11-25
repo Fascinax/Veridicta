@@ -47,7 +47,10 @@ def verify_manifest(path: Path, max_age_days: float = 30, now: datetime | None =
     collected = datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))
     if collected.tzinfo is None or max_age_days <= 0:
         raise ValueError("Invalid collection timestamp or freshness budget")
-    age_days = ((now or datetime.now(timezone.utc)) - collected).total_seconds() / 86400
+    reference_time = now or datetime.now(timezone.utc)
+    if reference_time.utcoffset() is None:
+        raise ValueError("Snapshot verification time needs a timezone")
+    age_days = (reference_time - collected).total_seconds() / 86400
     if not 0 <= age_days <= max_age_days:
         raise ValueError("Snapshot is stale or dated in the future")
     actual_files = {
