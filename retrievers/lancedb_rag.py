@@ -35,7 +35,11 @@ from retrievers.snapshots import active_data_root
 
 logger = logging.getLogger(__name__)
 
-LANCEDB_DIR = active_data_root() / "index" / "lancedb"
+
+def active_lancedb_dir() -> Path:
+    return active_data_root() / "index" / "lancedb"
+
+
 LANCEDB_TABLE_NAME = "chunks"
 
 RRF_K = RRF_CONFIG.rrf_k
@@ -52,9 +56,11 @@ DEFAULT_TOP_K = 5
 
 def build_lancedb_index(
     chunks_path: Path = Path("data/processed/chunks.jsonl"),
-    db_dir: Path = LANCEDB_DIR,
+    db_dir: Path | None = None,
 ) -> None:
     """Embed chunks with Solon and create a LanceDB table with vector + FTS indexes."""
+    if db_dir is None:
+        db_dir = active_lancedb_dir()
     import jsonlines
     import lancedb
     from retrievers.baseline_rag import _load_embedder, _embed_passages
@@ -103,9 +109,11 @@ def build_lancedb_index(
 
 def build_lancedb_from_faiss(
     index_dir: Path = Path("data/index"),
-    db_dir: Path = LANCEDB_DIR,
+    db_dir: Path | None = None,
 ) -> None:
     """Build LanceDB table from an existing FAISS index + chunks_map.jsonl (no re-embedding)."""
+    if db_dir is None:
+        db_dir = active_lancedb_dir()
     import faiss
     import jsonlines
     import lancedb
@@ -170,9 +178,11 @@ def build_lancedb_from_faiss(
 
 
 def load_lancedb_index(
-    db_dir: Path = LANCEDB_DIR,
+    db_dir: Path | None = None,
 ) -> "lancedb.table.Table":
     """Open an existing LanceDB table. Raises FileNotFoundError if not built."""
+    if db_dir is None:
+        db_dir = active_lancedb_dir()
     import lancedb
 
     db_path = db_dir
@@ -367,7 +377,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunks", default="data/processed/chunks.jsonl", metavar="PATH",
     )
     parser.add_argument(
-        "--db-dir", default=str(LANCEDB_DIR), metavar="DIR",
+        "--db-dir", default=str(active_lancedb_dir()), metavar="DIR",
     )
     parser.add_argument(
         "--index-dir", default="data/index", metavar="DIR",

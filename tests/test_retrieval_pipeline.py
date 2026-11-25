@@ -163,3 +163,14 @@ def test_temporal_filter_remains_fail_closed_after_parent_child_expansion(
     )
 
     assert [chunk["chunk_id"] for chunk in retrieved] == ["d1-1"]
+
+
+def test_version_without_document_does_not_join_unrelated_chunks():
+    from retrievers.parent_child import expand_parent_child_candidates
+
+    rows = [{"chunk_id": key, "version_id": "2024", "parent_id": "section-1",
+             "chunk_index": pos} for pos, key in enumerate(("one", "two"))]
+    selected = expand_parent_child_candidates(rows[:1], rows, ParentChildConfig())
+    assert [row["chunk_id"] for row in selected] == ["one"]
+
+
