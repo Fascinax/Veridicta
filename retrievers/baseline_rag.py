@@ -577,7 +577,7 @@ def answer(
     else:  # pragma: no cover - guarded by resolve_llm_backend
         raise ValueError(f"Unsupported backend: {active_backend!r}")
     response_text, grounding_report = enforce_grounding(
-        response_text,
+        response_text or "",
         prompt_trace.used_chunks,
     )
 
@@ -630,7 +630,8 @@ def answer_stream(
         prompt_version=prompt_version, history=conversation_history,
     ))
     if not prompt_trace.used_chunks:
-        return iter((NO_SOURCES_RESPONSE,)), {
+        response_text, grounding_report = enforce_grounding(NO_SOURCES_RESPONSE, [])
+        return iter((response_text,)), {
             "prompt_trace": prompt_trace,
             "used_chunks": prompt_trace.used_chunks,
             "omitted_chunks": prompt_trace.omitted_chunks,
@@ -640,7 +641,7 @@ def answer_stream(
             "backend": active_backend,
             "model": resolved_model,
             "prompt_version": prompt_version,
-            "grounding": None,
+            "grounding": grounding_report.to_dict(),
             "failure_stage": "retrieval",
             "failure_reason": "no_sources",
         }
@@ -670,7 +671,12 @@ def answer_stream(
         "grounding": None,
     }
     def verified_output() -> Iterator[str]:
-        response = "".join(token_gen)
+        try:
+            response = "".join(token_gen)
+        except Exception as exc:
+            trace["failure_stage"] = "generation"
+            trace["failure_reason"] = type(exc).__name__
+            raise
         guarded, report = enforce_grounding(response, prompt_trace.used_chunks)
         trace["grounding"] = report.to_dict()
         yield guarded
