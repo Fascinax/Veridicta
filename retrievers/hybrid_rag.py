@@ -36,7 +36,7 @@ from retrievers.baseline_rag import (
     CHUNKS_PATH,
     DEFAULT_TOP_K,
     FAISS_FILENAME,
-    INDEX_DIR,
+    active_index_dir,
     _embed_query,
     _load_embedder,
     answer,
@@ -110,8 +110,10 @@ def _load_chunk_texts(index_dir: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def build_bm25_index(chunks: list[dict], index_dir: Path = INDEX_DIR) -> bm25s.BM25:
+def build_bm25_index(chunks: list[dict], index_dir: Path | None = None) -> bm25s.BM25:
     """Tokenize chunk texts, fit bm25s, and persist the sparse index to disk."""
+    if index_dir is None:
+        index_dir = active_index_dir()
     index_dir.mkdir(parents=True, exist_ok=True)
     corpus_texts = [chunk.get("text", "") for chunk in chunks]
     tokenized_corpus = _tokenize_texts(corpus_texts, show_progress=True)
@@ -125,8 +127,10 @@ def build_bm25_index(chunks: list[dict], index_dir: Path = INDEX_DIR) -> bm25s.B
     return bm25
 
 
-def load_bm25_index(index_dir: Path = INDEX_DIR) -> bm25s.BM25:
+def load_bm25_index(index_dir: Path | None = None) -> bm25s.BM25:
     """Load a bm25s index, rebuilding it from chunks_map if needed."""
+    if index_dir is None:
+        index_dir = active_index_dir()
     save_dir = _bm25_index_path(index_dir)
     if save_dir.exists():
         bm25 = bm25s.BM25.load(save_dir, load_corpus=False)
@@ -242,7 +246,7 @@ def hybrid_retrieve(
 
 def build_all(
     chunks_path: Path = CHUNKS_PATH,
-    index_dir: Path = INDEX_DIR,
+    index_dir: Path | None = None,
     force: bool = False,
 ) -> None:
     """Build FAISS (if missing) + BM25 index.
@@ -251,6 +255,8 @@ def build_all(
     saving the ~20-minute re-embedding step.
     Pass ``force=True`` (or ``--force`` via the CLI) to force a full FAISS rebuild.
     """
+    if index_dir is None:
+        index_dir = active_index_dir()
     faiss_ready = (
         not force
         and (index_dir / FAISS_FILENAME).exists()
@@ -303,7 +309,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunks", default=str(CHUNKS_PATH), metavar="PATH",
     )
     parser.add_argument(
-        "--index-dir", default=str(INDEX_DIR), metavar="DIR",
+        "--index-dir", default=str(active_index_dir()), metavar="DIR",
     )
     return parser
 
