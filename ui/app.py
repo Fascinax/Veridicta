@@ -45,18 +45,23 @@ except Exception:
     st.stop()
 
 from retrievers.baseline_rag import (
+    DEFAULT_PROMPT_VERSION,
     DEFAULT_TOP_K,
     active_index_dir,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
-    OMNIROUTE_DEFAULT_MODEL,
     answer,
     answer_stream,
     load_index,
     _load_embedder,
 )
-from retrievers.config import count_llm_tokens, get_context_budget_tokens, resolve_llm_backend
+from retrievers.config import (
+    OMNIROUTE_DEFAULT_MODEL,
+    count_llm_tokens,
+    get_context_budget_tokens,
+    resolve_llm_backend,
+)
 from retrievers.grounding import enforce_grounding
 from retrievers.orchestrator import OrchestrationEscalation, OrchestrationState, run_orchestration
 from retrievers.pipeline import RetrievalPipeline
@@ -66,7 +71,6 @@ from retrievers.traceability import (
     build_prompt_trace,
     citation_source_numbers,
     get_audit_log_path,
-    normalize_citations,
     new_trace_id,
 )
 from workspaces.store import WorkspaceStore
@@ -600,19 +604,28 @@ def _render_sources(
 
 def _render_trace(trace: dict) -> None:
     audit_log_path = trace.get("audit_log_path") or str(get_audit_log_path())
-    st.markdown(
-        "\n".join(
-            [
-                f"**Trace ID**: {html.escape(trace.get('trace_id', 'n/a'))}",
-                f"**Retriever**: {html.escape(trace.get('retriever', 'n/a'))}",
-                f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
-                f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
-                f"**Contexte**: {trace.get('context_tokens', 0)} / {trace.get('max_context_tokens', 0)} tokens (~{trace.get('context_chars', 0)} caractères)",
-                f"**Sources citées**: {', '.join(f'[Source {number}]' for number in trace.get('cited_source_numbers', [])) or 'aucune'}",
-                f"**Audit log**: {html.escape(audit_log_path)}",
-            ]
+    lines = [
+        f"**Trace ID**: {html.escape(trace.get('trace_id', 'n/a'))}",
+        f"**Retriever**: {html.escape(trace.get('retriever', 'n/a'))}",
+        f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
+        f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
+        f"**Contexte**: {trace.get('context_tokens', 0)} / {trace.get('max_context_tokens', 0)} tokens (~{trace.get('context_chars', 0)} caractères)",
+        f"**Sources citées**: {', '.join(f'[Source {number}]' for number in trace.get('cited_source_numbers', [])) or 'aucune'}",
+        f"**Audit log**: {html.escape(audit_log_path)}",
+    ]
+    grounding = trace.get("grounding")
+    if isinstance(grounding, dict):
+        lines.append(
+            f"**Grounding**: {grounding.get('supported_count', 0)} soutenue(s) / "
+            f"{grounding.get('unsupported_count', 0)} écartée(s) / "
+            f"{grounding.get('abstained_count', 0)} abstention(s)"
         )
-    )
+    if trace.get("failure_stage"):
+        reason = trace.get("failure_reason") or "unknown"
+        lines.append(
+            f"**Statut d'incident**: {html.escape(str(trace['failure_stage']))} ({html.escape(str(reason))})"
+        )
+    st.markdown("\n".join(lines))
     retrieval_trace = trace.get("retrieval_trace")
     if retrieval_trace:
         st.caption("Trace metadata-only : le texte des chunks et les secrets ne sont pas exposés dans ce détail.")
@@ -674,7 +687,8 @@ def _fallback_generation_trace(prompt: str, backend: str, model: str) -> dict:
         "max_context_tokens": max_context_tokens,
         "backend": resolved_backend,
         "model": model,
-        "prompt_version": 1,
+        "prompt_version": DEFAULT_PROMPT_VERSION,
+        "grounding": None,
     }
 
 
@@ -772,12 +786,11 @@ def _generate_response(
             return_trace=True,
             conversation_history=conversation_history,
         )
-    except EnvironmentError as exc:
-        response_text = f"⚠️ {public_error_message(exc)}"
-        generation_trace = _fallback_generation_trace(prompt, backend, model)
     except Exception as exc:
         response_text = f"⚠️ {public_error_message(exc)}"
         generation_trace = _fallback_generation_trace(prompt, backend, model)
+        generation_trace["failure_stage"] = "generation"
+        generation_trace["failure_reason"] = type(exc).__name__
     return trace_id, response_text, generation_trace
 
 
@@ -838,22 +851,58 @@ def _generate_orchestrated_response(
         "verify": verify,
     }
     run_orchestration(state, state_nodes)
+    fallback_trace = _fallback_generation_trace(prompt, backend, model)
     generation_trace = state.metadata.get("generation_trace", {})
     if not isinstance(generation_trace, dict):
         generation_trace = {}
-    generation_trace = dict(generation_trace)
+    generation_trace = {**fallback_trace, **generation_trace}
     generation_trace["orchestration"] = state.to_trace()
     if state.decision == "escalate":
         generation_trace = {
-            **_fallback_generation_trace(prompt, backend, model),
             **generation_trace,
             "failure_stage": state.failure_stage,
             "failure_reason": state.failure_reason,
+            "grounding": None,
         }
         response_text = "⚠️ La réponse doit être vérifiée par un opérateur humain."
     else:
         response_text = state.answer_text
     return response_text, generation_trace
+
+
+def _grounding_summary(grounding: object) -> dict[str, object] | None:
+    if not isinstance(grounding, dict):
+        return None
+    return {
+        "source_count": grounding.get("source_count", 0),
+        "claim_count": grounding.get("claim_count", 0),
+        "supported_count": grounding.get("supported_count", 0),
+        "unsupported_count": grounding.get("unsupported_count", 0),
+        "abstained_count": grounding.get("abstained_count", 0),
+        "unsupported_claim_rate": grounding.get("unsupported_claim_rate", 0.0),
+    }
+
+
+def _build_audit_failure_classification(
+    generation_trace: dict,
+    *,
+    generation_error: bool,
+) -> dict[str, object]:
+    grounding = _grounding_summary(generation_trace.get("grounding"))
+    stage = generation_trace.get("failure_stage")
+    reason = generation_trace.get("failure_reason")
+    if stage is None and grounding is not None and grounding["unsupported_count"]:
+        stage = "grounding"
+        reason = "unsupported_claims_filtered"
+    return {
+        "stage": stage or "none",
+        "reason": reason or "",
+        "generation_error": generation_error,
+        "supported_claim_count": grounding["supported_count"] if grounding else 0,
+        "unsupported_claim_count": grounding["unsupported_count"] if grounding else 0,
+        "abstained_claim_count": grounding["abstained_count"] if grounding else 0,
+        "unsupported_claim_rate": grounding["unsupported_claim_rate"] if grounding else None,
+    }
 
 
 def _build_trace_payload(
@@ -884,6 +933,9 @@ def _build_trace_payload(
         "context_tokens": generation_trace.get("context_tokens", 0),
         "max_context_tokens": generation_trace.get("max_context_tokens", 0),
         "cited_source_numbers": citation_source_numbers(response_text),
+        "grounding": _grounding_summary(generation_trace.get("grounding")),
+        "failure_stage": generation_trace.get("failure_stage"),
+        "failure_reason": generation_trace.get("failure_reason"),
         "retrieval_trace": serialized_retrieval_trace,
         "orchestration": generation_trace.get("orchestration"),
         "audit_log_path": str(audit_log_path) if audit_log_path is not None else str(get_audit_log_path()),
@@ -1097,13 +1149,21 @@ def _handle_prompt(
                     )
         except Exception as exc:
             generation_error = True
-            err_suffix = f"\n\n⚠️ {public_error_message(exc)}"
-            response_text = (response_text + err_suffix) if response_text else f"⚠️ {public_error_message(exc)}"
-        response_text, grounding_report = enforce_grounding(
-            response_text,
-            generation_trace.get("used_chunks", []),
-        )
-        generation_trace["grounding"] = grounding_report.to_dict()
+            response_text = f"⚠️ {public_error_message(exc)}"
+            generation_trace["failure_stage"] = "generation"
+            generation_trace["failure_reason"] = type(exc).__name__
+            generation_trace["grounding"] = None
+
+        if (
+            not generation_error
+            and generation_trace.get("failure_stage") is None
+            and generation_trace.get("grounding") is None
+        ):
+            response_text, grounding_report = enforce_grounding(
+                response_text,
+                generation_trace.get("used_chunks", []),
+            )
+            generation_trace["grounding"] = grounding_report.to_dict()
 
         elapsed = time.perf_counter() - t0
         used_chunks = generation_trace.get("used_chunks", [])
@@ -1121,13 +1181,14 @@ def _handle_prompt(
             retriever=retriever_label,
             backend=generation_trace.get("backend", backend),
             model=generation_trace.get("model", model),
-            prompt_version=generation_trace.get("prompt_version", 1),
+            prompt_version=generation_trace.get("prompt_version", DEFAULT_PROMPT_VERSION),
             latency_s=elapsed,
             stage_latencies_s={"retrieval": retrieval_elapsed, "generation": elapsed - retrieval_elapsed},
             retrieval_trace=retrieval_trace,
-            failure_classification={"generation_error": generation_error,
-                                    "unsupported_claim_count": grounding_report.unsupported_count,
-                                    "abstained_claim_count": grounding_report.abstained_count},
+            failure_classification=_build_audit_failure_classification(
+                generation_trace,
+                generation_error=generation_error,
+            ),
         )
         trace_payload = _build_trace_payload(
             trace_id,
