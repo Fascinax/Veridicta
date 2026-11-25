@@ -35,6 +35,12 @@ def test_v2_preserves_bytes_and_mtimes_including_crlf_and_unicode(tmp_path):
         payload, audit.read_bytes(), audit.stat().st_mtime_ns)
 
 
+def test_owner_backup_cannot_publish_in_parent_storage(tmp_path):
+    store, _, _ = _source(tmp_path)
+    with pytest.raises(ValueError, match="outside workspace storage"):
+        backup_to_file(store, tmp_path / "source" / "archive.json")
+
+
 def test_restored_old_audits_remain_eligible_for_the_same_retention_cutoff(tmp_path):
     source, _, _ = _source(tmp_path)
     destination = WorkspaceStore(tmp_path / "destination")
