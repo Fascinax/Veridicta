@@ -149,13 +149,20 @@ def _paginate_es(base_payload: dict) -> Iterator[dict]:
         raise ValueError("Source did not provide an exact hit count")
     logger.info("Total documents to fetch: %d", total)
 
+    seen_hits = set()
     with tqdm(total=total) as pbar:
         for offset in range(0, total, BATCH_SIZE):
-            page = _es_query({**base_payload, "from": offset, "size": BATCH_SIZE})
+            page = _es_query({**base_payload, "from": offset, "size": BATCH_SIZE, "track_total_hits": True})
             hits = page["hits"]["hits"]
             if len(hits) != min(BATCH_SIZE, total - offset):
                 raise ValueError("Incomplete source page; snapshot collection must be retried")
+            if page["hits"].get("total") != count_resp["hits"]["total"]:
+                raise ValueError("Source hit count changed during collection")
             for hit in hits:
+                identity = (hit.get("_index"), hit.get("_id"))
+                if not identity[1] or identity in seen_hits:
+                    raise ValueError("Missing or repeated source hit during collection")
+                seen_hits.add(identity)
                 yield hit["_source"]
                 pbar.update(1)
 
@@ -177,7 +184,7 @@ def _source_version_metadata(src: dict) -> dict:
     raw_path = src.get("path", "")
     metadata = {"version_key": _clean_path(raw_path), "version_id": raw_path}
     for source_field, normalized_field in (("startDate", "valid_from"), ("endDate", "valid_to")):
-        if source_field not in src or src[source_field] is None or src[source_field] == []:
+        if src.get(source_field) in (None, [], ""):
             continue
         value = src[source_field]
         if isinstance(value, list) and len(value) == 1:
