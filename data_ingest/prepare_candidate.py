@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import shutil
 
+from filelock import FileLock
+
 from data_ingest.corpus_quality import inspect_corpus
 from data_ingest.data_processor import process
 from retrievers.snapshots import create_manifest, file_digest, verify_manifest
@@ -28,16 +30,24 @@ def prepare_candidate(request: CandidateRequest) -> dict:
     if destination.is_relative_to(source) or source.is_relative_to(destination):
         raise ValueError("Candidate must be separate from the source snapshot")
     manifest = verify_manifest(source_manifest)
-    raw_files = {name: metadata for name, metadata in manifest["files"].items() if name.startswith("raw/")}
-    if not raw_files:
+    if not any(name.startswith("raw/") for name in manifest["files"]):
         raise ValueError("Source has no raw corpus")
     destination.mkdir(parents=True, exist_ok=False)
+    with FileLock(str(destination / ".dense-index.lock"), timeout=0):
+        return _prepare_in_destination(request, destination, manifest)
+
+
+def _prepare_in_destination(request: CandidateRequest, destination: Path, manifest: dict) -> dict:
+    source_manifest = request.source_manifest.resolve()
+    source = source_manifest.parent
     status_path = destination / "candidate-status.json"
     status = {"status": "preparing", "release_ready": False,
               "source_manifest_sha256": file_digest(source_manifest)}
     _write_json(status_path, status)
     try:
-        for relative, expected in raw_files.items():
+        for relative, expected in manifest["files"].items():
+            if not relative.startswith("raw/"):
+                continue
             target = (destination / relative).resolve()
             if not target.is_relative_to(destination):
                 raise ValueError("Raw path escapes candidate")
@@ -74,8 +84,17 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def seal_candidate(root: Path) -> dict:
     root = root.resolve()
+    if not root.is_dir():
+        raise ValueError("Candidate directory does not exist")
+    with FileLock(str(root / ".dense-index.lock"), timeout=0):
+        return _seal_locked(root)
+
+
+def _seal_locked(root: Path) -> dict:
     status_path = root / "candidate-status.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))
+    if status.get("status") == "sealing" and status.get("release_ready") is False:
+        return _resume_seal(root, status)
     if status.get("status") != "prepared" or status.get("release_ready") is not False:
         raise ValueError("Only a prepared, unpromoted candidate can be sealed")
     manifest_path = root / "snapshot.manifest.json"
@@ -94,8 +113,31 @@ def seal_candidate(root: Path) -> dict:
     _write_json(pending, new)
     verify_manifest(pending)
     verify_index_bundle(pending)
+    status.update(status="sealing", pending_manifest_sha256=file_digest(pending))
+    _write_json(status_path, status)
     pending.replace(manifest_path)
-    status.update(status="indexed", manifest_sha256=file_digest(manifest_path),
+    return _mark_indexed(status_path, status)
+
+
+def _resume_seal(root: Path, status: dict) -> dict:
+    manifest = root / "snapshot.manifest.json"
+    pending = root / "candidate.manifest.pending.json"
+    expected_digest = status["pending_manifest_sha256"]
+    current_digest = file_digest(manifest)
+    if current_digest != expected_digest:
+        if current_digest != status["manifest_sha256"] or file_digest(pending) != expected_digest:
+            raise ValueError("Candidate manifest changed during sealing")
+        verify_manifest(pending)
+        verify_index_bundle(pending)
+        pending.replace(manifest)
+    else:
+        verify_manifest(manifest)
+        verify_index_bundle(manifest)
+    return _mark_indexed(root / "candidate-status.json", status)
+
+
+def _mark_indexed(status_path: Path, status: dict) -> dict:
+    status.update(status="indexed", manifest_sha256=status.pop("pending_manifest_sha256"),
                   remaining=["coverage and legal review", "independent evaluation", "provider smoke"])
     _write_json(status_path, status)
     return status
