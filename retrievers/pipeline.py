@@ -165,6 +165,7 @@ class RetrievalPipeline:
             )
 
         eligible_target = k * max(1, reranker_candidate_multiplier) if use_reranker else k
+        reranker_budget = max(trace_candidate_k, eligible_target)
         retrieval_attempts = []
         while True:
             fetched = self._dispatch_retriever(
@@ -243,7 +244,7 @@ class RetrievalPipeline:
                 raise RuntimeError(
                     "FlashRank reranker unavailable. Install flashrank to enable reranking."
                 )
-            reranker_pool = raw_candidates[:eligible_target]
+            reranker_pool = raw_candidates[:reranker_budget]
             final_candidates, reranked_candidates = rerank_with_trace(
                 query,
                 reranker_pool,
