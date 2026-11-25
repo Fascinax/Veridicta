@@ -41,7 +41,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from retrievers.baseline_rag import (
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
@@ -1749,7 +1749,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--index-dir",
-        default=str(INDEX_DIR),
+        default=str(active_index_dir()),
         help="Directory containing veridicta.faiss + chunks_map.jsonl",
     )
     parser.add_argument(

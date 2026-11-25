@@ -94,3 +94,14 @@ def test_collectors_break_date_ties_with_stable_source_path(monkeypatch, tmp_pat
                     scraper.collect_projets_loi, scraper.collect_jurisprudence, scraper.collect_cross_court_jurisprudence):
         collect(tmp_path / (collect.__name__ + ".jsonl"))
     assert all(payload["sort"][-1] == {"path": "asc"} for payload in payloads)
+def test_repeated_es_hit_is_rejected_even_with_full_pages(monkeypatch):
+    from data_ingest import legimonaco_scraper as scraper
+
+    total = {"value": 2, "relation": "eq"}
+    hit = {"_id": "same", "_index": "laws", "_source": {"path": "/law"}}
+    page = {"hits": {"total": total, "hits": [hit]}}
+    responses = iter([{"hits": {"total": total}}, page, page])
+    monkeypatch.setattr(scraper, "BATCH_SIZE", 1)
+    monkeypatch.setattr(scraper, "_es_query", lambda payload: next(responses))
+    with pytest.raises(ValueError, match="repeated source hit"):
+        list(scraper._paginate_es({}))

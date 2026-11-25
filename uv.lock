@@ -2593,6 +2593,7 @@ dependencies = [
     { name = "streamlit", extra = ["auth"], marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
     { name = "urllib3", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
@@ -2638,6 +2639,7 @@ requires-dist = [
     { name = "streamlit", extras = ["auth"], specifier = ">=1.67.0,<2" },
     { name = "torch", specifier = "==2.13.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "tqdm", specifier = ">=4.70.1,<5" },
+    { name = "tzdata", marker = "sys_platform == 'win32'", specifier = ">=2026.6" },
     { name = "urllib3", specifier = ">=2.8.0,<3" },
 ]
 
