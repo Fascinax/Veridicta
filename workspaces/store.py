@@ -81,7 +81,8 @@ class WorkspaceStore:
     """Persist each workspace below its own directory with atomic writes."""
 
     def __init__(self, root: str | Path, owner_id: str | None = None) -> None:
-        self.root = Path(root).resolve()
+        self.storage_root = Path(root).resolve()
+        self.root = self.storage_root
         if owner_id is not None:
             if not owner_id.strip():
                 raise ValueError("owner must not be empty")
