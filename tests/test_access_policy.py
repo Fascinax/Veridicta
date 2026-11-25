@@ -12,6 +12,28 @@ from workspaces.access import (
 from workspaces.identity import workspace_owner
 
 ISSUER = "https://idp.example.invalid/tenant-a"
+
+
+@pytest.mark.parametrize("configured,exists", [(True, False), (False, True), (False, False)])
+def test_secrets_failure_only_allows_absent_default_paths(monkeypatch, tmp_path, configured, exists):
+    from types import SimpleNamespace
+    from ui import server_config
+
+    path = tmp_path / "secrets.toml"
+    if exists:
+        path.touch()
+    monkeypatch.setattr(server_config.config, "is_manually_set", lambda _: configured)
+    def unavailable(key):
+        raise ValueError("synthetic configuration failure")
+    monkeypatch.setattr(server_config, "st", SimpleNamespace(
+        get_option=lambda _: [str(path)], secrets=SimpleNamespace(get=unavailable)))
+    if configured or exists:
+        with pytest.raises(ValueError, match="configuration failure"):
+            server_config.load_server_config(["VERIDICTA_WORKSPACE_MODE"])
+    else:
+        server_config.load_server_config(["VERIDICTA_WORKSPACE_MODE"])
+
+
 CLAIMS = {"is_logged_in": True, "iss": ISSUER, "sub": "synthetic-one", "exp": 4_000_000_000}
 
 
