@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import stat
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -18,6 +19,7 @@ from workspaces.store import WorkspaceStore, RESTORE_MARKER, _require_available,
 
 MAX_BACKUP_BYTES = 50 * 1024 * 1024
 MAX_BACKUP_FILES = 10_000
+RESTORE_AREAS = ("workspaces", "audit")
 
 
 def backup(store: WorkspaceStore) -> bytes:
@@ -152,29 +154,42 @@ def _promote(staging: Path, root: Path) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     try:
-        for area in ("workspaces", "audit"):
+        for area in RESTORE_AREAS:
             destination = _contained(root, area)
             destination.rmdir()
-            try:
-                _contained(staging, area).replace(destination)
-            except OSError:
-                destination.mkdir(exist_ok=True)
-                raise
+            _contained(staging, area).replace(destination)
             promoted.append(area)
-    except OSError:
-        try:
-            for area in reversed(promoted):
-                _contained(root, area).replace(_contained(staging, area))
-                _contained(root, area).mkdir()
-        except OSError:
-            raise RuntimeError("Restore interrupted; destination remains blocked") from None
+    except OSError as error:
+        if not _roll_back(staging, root, promoted):
+            raise RuntimeError("Restore interrupted; destination remains blocked") from error
         marker.unlink()
         raise
     marker.unlink()
 
 
+def _roll_back(staging: Path, root: Path, promoted: list[str]) -> bool:
+    """Return the scope to two empty data areas; the marker may only be cleared on success."""
+
+    try:
+        for area in reversed(promoted):
+            _contained(root, area).replace(_contained(staging, area))
+        for area in RESTORE_AREAS:
+            _contained(root, area).mkdir(exist_ok=True)
+        return all(_is_empty_directory(_contained(root, area)) for area in RESTORE_AREAS)
+    except OSError:
+        return False
+
+
+def _is_empty_directory(path: Path) -> bool:
+    return (not path.is_symlink() and not path.is_junction() and path.is_dir()
+            and next(path.iterdir(), None) is None)
+
+
 def restore(store: WorkspaceStore, payload: bytes) -> None:
-    files = _decode_backup(payload)
+    _restore_files(store, _decode_backup(payload))
+
+
+def _restore_files(store: WorkspaceStore, files: list[BackupFile]) -> None:
     with store._lock:
         _require_available(store.root)
         for entry in files:
@@ -201,14 +216,55 @@ def backup_to_file(store: WorkspaceStore, destination: Path) -> dict:
                    or ((parent / "workspaces").is_dir() and (parent / "audit").is_dir())
                    for parent in target.parents)):
         raise ValueError("backup output must be outside workspace storage")
+    if target.exists() or target.is_symlink():
+        raise FileExistsError(f"backup output already exists: {target}")
     payload = backup(store)
-    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    # Write a hidden sibling first and publish it only once fully flushed, so an
+    # interrupted or failed write never leaves a truncated archive at the final name.
+    temporary = target.with_name(f".{target.name}.{uuid4().hex}.partial")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _publish_without_replacing(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    _fsync_directory(target.parent)
     return {"status": "backed_up", "schema_version": 2,
             "files": len(json.loads(payload)["files"]), "archive_bytes": len(payload)}
+
+
+def _publish_without_replacing(temporary: Path, target: Path) -> None:
+    if os.name == "nt":
+        os.rename(temporary, target)  # Windows rename refuses an existing destination.
+        return
+    os.link(temporary, target)  # POSIX link refuses an existing destination; rename would replace it.
+    temporary.unlink()
+
+
+def _fsync_directory(directory: Path) -> None:
+    if os.name == "nt":
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def read_backup_file(path: Path) -> bytes:
+    """Read an archive without loading more than the accepted maximum into memory."""
+
+    with path.open("rb") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise ValueError("backup must be a regular file")
+        payload = handle.read(MAX_BACKUP_BYTES + 1)
+    if len(payload) > MAX_BACKUP_BYTES:
+        raise ValueError("backup exceeds size limit")
+    return payload
 
 
 def purge_expired(store: WorkspaceStore, cutoff: datetime, *, apply: bool = False) -> list[str]:
@@ -269,6 +325,9 @@ def main() -> None:
         parser.error("backup and restore require --file")
     if args.operation == "purge" and args.days < 1:
         parser.error("--days must be positive")
+    if (args.root / RESTORE_MARKER).exists():
+        parser.error("workspace scope has an interrupted restore; recover into a new scope")
+    files = None
     if args.operation != "restore":
         if not (args.root / "workspaces").is_dir() or not (args.root / "audit").is_dir():
             parser.error("an existing workspace scope is required")
@@ -277,11 +336,17 @@ def main() -> None:
     elif args.root.exists() and (not args.root.is_dir() or any(args.root.iterdir())):
         if not (args.root / "workspaces").is_dir() or not (args.root / "audit").is_dir():
             parser.error("restore requires a new directory or an empty workspace scope")
+    if args.operation == "restore":
+        # Fully read and validate the archive before the destination scope is created.
+        try:
+            files = _decode_backup(read_backup_file(args.file))
+        except (OSError, ValueError) as error:
+            parser.error(f"invalid backup file: {error}")
     store = WorkspaceStore(args.root)
     if args.operation == "backup":
         print(json.dumps(backup_to_file(store, args.file)))
     elif args.operation == "restore":
-        restore(store, args.file.read_bytes())
+        _restore_files(store, files)
         print(json.dumps({"status": "restored"}))
     else:
         cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
