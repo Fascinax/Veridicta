@@ -17,6 +17,10 @@ def question_key(text: str) -> str:
 
 
 def validate_intake(cases: list[dict], regression: list[dict], *, require_reviewed: bool = False) -> dict:
+    if not isinstance(cases, list) or not all(isinstance(row, dict) for row in cases):
+        raise ValueError("Cases must be a list of objects")
+    if not isinstance(regression, list) or not all(isinstance(row, dict) and isinstance(row.get("question"), str) for row in regression):
+        raise ValueError("Regression cases must provide questions")
     existing = {question_key(row["question"]) for row in regression}
     ids, questions = set(), set()
     reviewed = 0
@@ -29,9 +33,13 @@ def validate_intake(cases: list[dict], regression: list[dict], *, require_review
         ids.add(row["id"])
         questions.add(key)
         if row.get("review_status") == "reviewed":
-            if not row.get("reviewed_by") or not row.get("reference_answer") or not row.get("supporting_passages"):
+            if not all(isinstance(row.get(field), str) and row[field].strip() for field in ("reviewed_by", "reference_answer")):
                 raise ValueError("Reviewed legal cases require an explicit reviewer, answer and passages")
-            if any(not passage.get("source_url") or not passage.get("text") for passage in row["supporting_passages"]):
+            passages = row.get("supporting_passages")
+            if not isinstance(passages, list) or not passages or not all(
+                isinstance(passage, dict) and all(isinstance(passage.get(field), str) and passage[field].strip()
+                                                  for field in ("source_url", "text")) for passage in passages
+            ):
                 raise ValueError("Evidence requires source URLs and exact passages")
             reviewed += 1
         elif row.get("review_status") != "pending":

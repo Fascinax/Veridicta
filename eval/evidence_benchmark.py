@@ -14,11 +14,16 @@ from retrievers.grounding import verify_grounding
 
 
 def evaluate_cases(cases: list[dict], verifier=verify_grounding) -> dict:
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("A guard benchmark requires at least one case")
     results = []
     for case in cases:
         report = verifier(case["answer"], case["sources"])
         accepted = report.supported_count > 0 and report.unsupported_count == 0
-        results.append({"id": case["id"], "expected_supported": case["expected_supported"], "accepted": accepted, "pass": accepted == case["expected_supported"]})
+        abstained = report.abstained_count > 0 and not (report.supported_count or report.unsupported_count)
+        passed = accepted == case["expected_supported"] and abstained == case.get("expected_abstained", False)
+        results.append({"id": case["id"], "expected_supported": case["expected_supported"],
+                        "accepted": accepted, "abstained": abstained, "pass": passed})
     accepted = [row for row in results if row["accepted"]]
     return {
         "scope": "synthetic_guard_regression_only",

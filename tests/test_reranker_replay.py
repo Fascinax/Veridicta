@@ -36,6 +36,18 @@ def test_pool_cannot_overwrite_an_existing_run(tmp_path):
         save_pool(tmp_path, [_case()], {})
 
 
+def test_empty_reranker_workload_leaves_no_partial_run(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from eval import reranker_replay
+
+    args = Namespace(out=tmp_path / "run", pool=tmp_path / "pool", questions=tmp_path / "questions")
+    cases = [RawRetrievalCase(_case().question, [], 0)]
+    monkeypatch.setattr(reranker_replay, "load_pool", lambda *_: (cases, {}))
+    with pytest.raises(ValueError, match="no candidates"):
+        reranker_replay.replay(args)
+    assert not args.out.exists()
+
+
 def test_output_cannot_change_a_frozen_input_directory(tmp_path):
     with pytest.raises(ValueError, match="separate"):
         check_output(tmp_path / "pool/run", tmp_path / "pool")

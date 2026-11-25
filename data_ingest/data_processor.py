@@ -204,6 +204,9 @@ def _normalise_metadata(doc: dict) -> dict:
     for name in ("effective_from", "effective_to", "valid_from", "valid_to", "version_key", "version_id", "legal_status"):
         if doc.get(name) is not None:
             raw_metadata[name] = doc[name]
+    reviews = [row["applicability_review"] for row in (doc, raw_metadata) if "applicability_review" in row]
+    if reviews:
+        raw_metadata["applicability_review"] = "approved" if all(review == "approved" for review in reviews) else "pending"
     if doc.get("type") == "projet_loi":
         raw_metadata["legal_status"] = "draft"
     elif is_explicitly_repealed(raw_metadata.get("abrogee")):
