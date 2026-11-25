@@ -32,17 +32,17 @@ _SECRET_KEYS = [
     "VERIDICTA_WORKSPACE_MODE", "VERIDICTA_WORKSPACE_DIR", "VERIDICTA_QUERY_EXPANSION",
     "VERIDICTA_SNAPSHOT_MANIFEST", "VERIDICTA_ACCESS_POLICY_FILE", "VERIDICTA_REQUEST_LIMITS_DB",
 ]
-try:
-    for _k in _SECRET_KEYS:
-        _v = st.secrets.get(_k)
-        if _v and not os.getenv(_k):
-            os.environ[_k] = str(_v)
-except Exception:
-    pass  # Running locally without secrets.toml — fine
-
 # Make project root importable when launched as `streamlit run ui/app.py`
 _ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_ROOT))
+
+from ui.server_config import load_server_config
+
+try:
+    load_server_config(_SECRET_KEYS)
+except Exception:
+    st.error("Impossible de lire la configuration du serveur. Contactez l’administrateur.")
+    st.stop()
 
 from retrievers.baseline_rag import (
     DEFAULT_TOP_K,
