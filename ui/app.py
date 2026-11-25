@@ -282,10 +282,15 @@ def _get_request_limits() -> RequestLimits:
 
 
 def _bounded_request(handler):
+    from inspect import signature
+
+    parameters = signature(handler)
     @wraps(handler)
     def bounded(prompt, *args, **kwargs):
         try:
             store = kwargs.get("workspace_store")
+            if store is None and args:
+                store = parameters.bind(prompt, *args, **kwargs).arguments.get("workspace_store")
             scope = store.scope_key if store is not None else st.session_state.get("workspace_owner_scope", "unscoped")
             with _get_request_limits().admit(scope, prompt):
                 return handler(prompt, *args, **kwargs)
