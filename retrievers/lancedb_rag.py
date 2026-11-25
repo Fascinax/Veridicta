@@ -19,6 +19,7 @@ Query:
 from __future__ import annotations
 
 from lancedb.index import FTS
+from filelock import FileLock
 import lancedb
 
 import argparse
@@ -27,6 +28,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 
@@ -63,7 +65,6 @@ def build_lancedb_index(
     if db_dir is None:
         db_dir = active_lancedb_dir()
     import jsonlines
-    import lancedb
     from retrievers.baseline_rag import _load_embedder, _embed_passages
 
     logger.info("Loading chunks from %s", chunks_path)
@@ -93,18 +94,12 @@ def build_lancedb_index(
         }
         records.append(record)
 
-    db_dir.mkdir(parents=True, exist_ok=True)
-    db = lancedb.connect(str(db_dir))
-
     logger.info("Creating LanceDB table '%s' with %d records ...", LANCEDB_TABLE_NAME, len(records))
-    table = db.create_table(LANCEDB_TABLE_NAME, records, mode="overwrite")
-
-    logger.info("Creating FTS index on 'text' column ...")
-    table.create_index("text", config=FTS(), replace=True)
+    _publish_lancedb(db_dir, records, len(records))
 
     logger.info(
         "LanceDB index built: %s  (%d rows, dim=%d)",
-        db_dir, table.count_rows(), vectors.shape[1],
+        db_dir, len(records), vectors.shape[1],
     )
 
 
@@ -117,7 +112,6 @@ def build_lancedb_from_faiss(
         db_dir = active_lancedb_dir()
     import faiss
     import jsonlines
-    import lancedb
 
     faiss_path = index_dir / "veridicta.faiss"
     map_path = index_dir / "chunks_map.jsonl"
@@ -169,19 +163,55 @@ def build_lancedb_from_faiss(
             if next(rows, None) is not None:
                 raise ValueError("Chunk map grew during LanceDB import")
 
-    db_dir.mkdir(parents=True, exist_ok=True)
-    db = lancedb.connect(str(db_dir))
     logger.info("Streaming %d records into LanceDB in batches of %d", n_vectors, LANCE_IMPORT_BATCH_SIZE)
     data = pa.RecordBatchReader.from_batches(schema, batches())
-    table = db.create_table(LANCEDB_TABLE_NAME, data, mode="overwrite")
-
-    logger.info("Creating FTS index on 'text' column ...")
-    table.create_index("text", config=FTS(), replace=True)
+    _publish_lancedb(db_dir, data, n_vectors)
 
     logger.info(
         "LanceDB index built from FAISS: %s  (%d rows, dim=%d)",
-        db_dir, table.count_rows(), dim,
+        db_dir, n_vectors, dim,
     )
+
+
+def _publish_lancedb(db_dir: Path, data, expected_rows: int) -> None:
+    if db_dir.is_symlink():
+        raise FileExistsError(f"LanceDB destination already exists: {db_dir}")
+    destination = db_dir.resolve()
+    candidate_root = destination.parent.parent
+    status_path = candidate_root / "candidate-status.json"
+    is_candidate = destination.parent.name == "index" and status_path.is_file()
+    if is_candidate:
+        staging_parent = candidate_root
+        lock_path = candidate_root / ".dense-index.lock"
+    else:
+        staging_parent = destination.parent
+        staging_parent.mkdir(parents=True, exist_ok=True)
+        lock_path = staging_parent / f".{destination.name}.build.lock"
+    with FileLock(str(lock_path), timeout=0):
+        if destination.exists() or destination.is_symlink():
+            raise FileExistsError(f"LanceDB destination already exists: {destination}")
+        if is_candidate:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            if status.get("status") != "prepared" or status.get("release_ready") is not False:
+                raise ValueError("Only a prepared, unpromoted candidate can receive a LanceDB index")
+        with TemporaryDirectory(prefix=".lancedb-build-", dir=staging_parent) as temporary:
+            staging = Path(temporary) / "store"
+            _build_lancedb_store(staging, data, expected_rows)
+            if destination.exists() or destination.is_symlink():
+                raise FileExistsError(f"LanceDB destination already exists: {destination}")
+            staging.rename(destination)
+
+
+def _build_lancedb_store(staging: Path, data, expected_rows: int) -> None:
+    db = lancedb.connect(str(staging))
+    table = db.create_table(LANCEDB_TABLE_NAME, data)
+    logger.info("Creating FTS index on 'text' column ...")
+    table.create_index("text", config=FTS())
+    table = db.open_table(LANCEDB_TABLE_NAME)
+    if table.count_rows() != expected_rows or not any(
+        index.index_type == "FTS" and index.columns == ["text"] for index in table.list_indices()
+    ):
+        raise ValueError("Staged LanceDB store failed row count or FTS validation")
 
 
 # ---------------------------------------------------------------------------
