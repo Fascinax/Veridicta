@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+from pathlib import Path
 import shutil
 
 import faiss
@@ -78,7 +79,8 @@ def test_sealing_requires_a_real_complete_index(tmp_path):
         seal_candidate(destination)
 
 
-def test_sealing_preserves_collection_time_and_never_approves_a_release(tmp_path):
+@pytest.mark.parametrize("interrupt_at", [None, "manifest", "status"])
+def test_sealing_preserves_collection_time_and_never_approves_a_release(tmp_path, monkeypatch, interrupt_at):
     source = _source(tmp_path / "source", [{"id": "one", "text": "text"}])
     destination = tmp_path / "candidate"
     prepare_candidate(CandidateRequest(source, destination))
@@ -88,9 +90,31 @@ def test_sealing_preserves_collection_time_and_never_approves_a_release(tmp_path
     shutil.copytree(fixture_root / "index", destination / "index")
     manifest = destination / "snapshot.manifest.json"
     shutil.copyfile(destination / "processed/chunks.jsonl", destination / "index/chunks_map.jsonl")
+    if interrupt_at:
+        replace = Path.replace
+        interrupted_target = manifest if interrupt_at == "manifest" else destination / "candidate-status.json"
+
+        def interrupt(path, target):
+            if target == interrupted_target and (interrupt_at == "manifest" or
+                                                json.loads(path.read_text())["status"] == "indexed"):
+                raise InterruptedError("interrupted seal")
+            return replace(path, target)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "replace", interrupt)
+            with pytest.raises(InterruptedError):
+                seal_candidate(destination)
+        assert json.loads((destination / "candidate-status.json").read_text())["status"] == "sealing"
     result = seal_candidate(destination)
     assert result["status"] == "indexed" and result["release_ready"] is False
     assert verify_manifest(manifest)["collected_at"] == json.loads(source.read_text())["collected_at"]
+
+
+def test_sealing_respects_candidate_writer_lock(tmp_path):
+    from filelock import FileLock, Timeout
+
+    with FileLock(str(tmp_path / ".dense-index.lock")), pytest.raises(Timeout):
+        seal_candidate(tmp_path)
 
 
 def test_sealing_refuses_index_map_of_another_corpus_with_same_count(tmp_path):

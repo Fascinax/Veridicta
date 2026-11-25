@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+from tempfile import TemporaryDirectory
 import time
 
 import faiss
@@ -49,10 +50,14 @@ def fill_vectors(texts: list[str], encoder, request: tuple[Path, dict, IndexBuil
     state_path = work / "checkpoint.json"
     vector_path = work / "vectors.npy"
     shape = (len(texts), identity["embedding_dimension"])
-    if state_path.exists():
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-        if state["identity"] != identity:
-            raise ValueError("Checkpoint belongs to another corpus, model or runtime")
+    if not state_path.exists():
+        if vector_path.exists() or vector_path.is_symlink():
+            raise ValueError("Untracked vector checkpoint; use a new work directory")
+        _write_json(state_path, {"identity": identity, "completed_rows": 0, "blocks": []})
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    if state["identity"] != identity:
+        raise ValueError("Checkpoint belongs to another corpus, model or runtime")
+    if vector_path.exists():
         vectors = np.load(vector_path, mmap_mode="r+")
         if vectors.shape != shape or vectors.dtype != np.float32:
             raise ValueError("Checkpoint vector shape mismatch")
@@ -66,11 +71,15 @@ def fill_vectors(texts: list[str], encoder, request: tuple[Path, dict, IndexBuil
         if end != state["completed_rows"]:
             raise ValueError("Checkpoint progress mismatch")
     else:
-        if vector_path.exists():
-            raise ValueError("Untracked vector checkpoint; use a new work directory")
-        vectors = np.lib.format.open_memmap(vector_path, mode="w+", dtype="float32", shape=shape)
-        state = {"identity": identity, "completed_rows": 0, "blocks": []}
-        _write_json(state_path, state)
+        if state["completed_rows"] != 0 or state["blocks"] or vector_path.is_symlink():
+            raise ValueError("Checkpoint vectors are missing")
+        with TemporaryDirectory(prefix="vectors-", dir=work) as temporary:
+            staging = Path(temporary) / "vectors.npy"
+            vectors = np.lib.format.open_memmap(staging, mode="w+", dtype="float32", shape=shape)
+            vectors.flush()
+            del vectors
+            staging.rename(vector_path)
+        vectors = np.load(vector_path, mmap_mode="r+")
     while state["completed_rows"] < len(texts):
         start = state["completed_rows"]
         end = min(start + config.checkpoint_rows, len(texts))
@@ -102,7 +111,7 @@ def _build_locked(root: Path, config: IndexBuildConfig) -> dict:
     manifest = root / "snapshot.manifest.json"
     if status.get("status") != "prepared" or file_digest(manifest) != status.get("manifest_sha256"):
         raise ValueError("Only an unchanged prepared candidate can be indexed")
-    verify_manifest(manifest)
+    prepared_manifest = verify_manifest(manifest)
     destination = (root / "index").resolve()
     work = (root / ".dense-build").resolve()
     if not destination.is_relative_to(root) or not work.is_relative_to(root) or work == root:
@@ -123,6 +132,9 @@ def _build_locked(root: Path, config: IndexBuildConfig) -> dict:
             texts.append(row["text"])
     if not texts or len(texts) != status["chunk_count"]:
         raise ValueError("Empty, duplicate or inconsistent candidate chunks")
+    chunks_digest = prepared_manifest["files"]["processed/chunks.jsonl"]["sha256"]
+    if file_digest(chunks_path) != chunks_digest:
+        raise ValueError("Prepared chunks changed while reading")
     del ids
     started = time.perf_counter()
     import torch
@@ -132,7 +144,7 @@ def _build_locked(root: Path, config: IndexBuildConfig) -> dict:
         raise RuntimeError("CUDA was requested but is unavailable")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-    identity = {"algorithm_version": "candidate-index-v1", "chunks_sha256": file_digest(chunks_path), "embed_model": EMBEDDING_CONFIG.model_name,
+    identity = {"algorithm_version": "candidate-index-v1", "chunks_sha256": chunks_digest, "embed_model": EMBEDDING_CONFIG.model_name,
                 "embed_revision": EMBEDDING_CONFIG.revision, "embedding_dimension": EMBEDDING_CONFIG.dimension,
                 "embed_query_prefix": EMBEDDING_CONFIG.query_prefix, "dtype": "float32", "normalized": True,
                 "device": config.device,
@@ -156,27 +168,52 @@ def _build_locked(root: Path, config: IndexBuildConfig) -> dict:
     del texts
     if config.device == "cuda":
         torch.cuda.empty_cache()
-    staging = work / "index"
-    staging.mkdir(exist_ok=True)
-    index = faiss.IndexFlatIP(EMBEDDING_CONFIG.dimension)
-    index.add(np.asarray(vectors))
-    faiss.write_index(index, str(staging / "veridicta.faiss"))
-    shutil.copyfile(chunks_path, staging / "chunks_map.jsonl")
-    _write_json(staging / "embedding_config.json", {key: identity[key] for key in
-                ("embed_model", "embed_revision", "embedding_dimension", "embed_query_prefix")} | {"chunk_count": chunk_count})
-    from retrievers.hybrid_rag import build_bm25_index
-    with chunks_path.open(encoding="utf-8") as handle:
-        chunks = [json.loads(line) for line in handle]
-    build_bm25_index(chunks, staging)
     configuration = asdict(config)
     configuration.pop("reuse_manifest")
     report = {"schema_version": "1.0", "status": "built", "identity": identity, "configuration": configuration,
               "vector_reuse": reuse_summary,
-              "chunk_count": len(chunks), "elapsed_s": round(time.perf_counter() - started, 3),
-              "completed_at_utc": datetime.now(timezone.utc).isoformat(), "release_ready": False}
-    _write_json(staging / "build-report.json", report)
-    staging.replace(destination)
+              "chunk_count": chunk_count, "release_ready": False}
+    with TemporaryDirectory(prefix="index-", dir=work) as temporary:
+        staging = Path(temporary) / "index"
+        staging.mkdir()
+        _stage_index(staging, vectors, chunks_path)
+        if file_digest(staging / "chunks_map.jsonl") != identity["chunks_sha256"]:
+            raise ValueError("Staged chunk map differs from the embedded corpus")
+        verify_manifest(manifest)
+        report.update(elapsed_s=round(time.perf_counter() - started, 3),
+                      completed_at_utc=datetime.now(timezone.utc).isoformat())
+        _write_json(staging / "build-report.json", report)
+        if destination.exists() or destination.is_symlink():
+            raise FileExistsError("Candidate index already exists; it will not be overwritten")
+        staging.rename(destination)
     return report
+
+
+def _stage_index(staging: Path, vectors: np.ndarray, chunks_path: Path) -> None:
+    from retrievers.hybrid_rag import build_bm25_index, load_bm25_index
+
+    index = faiss.IndexFlatIP(EMBEDDING_CONFIG.dimension)
+    index.add(np.asarray(vectors))
+    faiss_path = staging / "veridicta.faiss"
+    faiss.write_index(index, str(faiss_path))
+    del index
+    saved = faiss.read_index(str(faiss_path))
+    if (saved.ntotal, saved.d) != vectors.shape:
+        raise ValueError("Staged FAISS index shape mismatch")
+    del saved
+    chunk_map = staging / "chunks_map.jsonl"
+    shutil.copyfile(chunks_path, chunk_map)
+    _write_json(staging / "embedding_config.json", {
+        "embed_model": EMBEDDING_CONFIG.model_name, "embed_revision": EMBEDDING_CONFIG.revision,
+        "embedding_dimension": EMBEDDING_CONFIG.dimension, "embed_query_prefix": EMBEDDING_CONFIG.query_prefix,
+        "chunk_count": len(vectors),
+    })
+    with chunk_map.open(encoding="utf-8") as handle:
+        chunks = [json.loads(line) for line in handle]
+    if len(chunks) != len(vectors):
+        raise ValueError("Staged chunk map row count mismatch")
+    build_bm25_index(chunks, staging)
+    load_bm25_index(staging)
 
 
 def main() -> None:
