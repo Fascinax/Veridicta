@@ -49,3 +49,6 @@ def test_ui_limit_wrapper_does_not_render_identity_widgets_again():
     exec(compile(ast.Module(body=[node], type_ignores=[]), "ui/app.py", "exec"), namespace)
     handler = namespace["_bounded_request"](lambda prompt, **kwargs: prompt)
     assert handler("question", workspace_store=SimpleNamespace(scope_key="owner")) == "question"
+    positional = namespace["_bounded_request"](lambda prompt, workspace_store: prompt)
+    assert positional("again", SimpleNamespace(scope_key="other-owner")) == "again"
+    assert "other-owner" in limits._requests

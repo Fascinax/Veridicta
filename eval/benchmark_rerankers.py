@@ -51,7 +51,7 @@ from eval.evaluate import (  # noqa: E402
 from retrievers.baseline_rag import (  # noqa: E402
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     _load_embedder,
     answer,
@@ -899,7 +899,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--questions", default="eval/test_questions.json")
     parser.add_argument("--contract", default="eval/evaluation_contract.json")
     parser.add_argument("--allow-custom-questions", action="store_true")
-    parser.add_argument("--index-dir", default=str(INDEX_DIR))
+    parser.add_argument("--index-dir", default=str(active_index_dir()))
     parser.add_argument(
         "--retriever",
         default="lancedb",

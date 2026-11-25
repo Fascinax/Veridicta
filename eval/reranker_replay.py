@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
-from datetime import date, datetime, timezone
+from dataclasses import asdict, replace
+from datetime import datetime, timezone
 from importlib.metadata import version
 import json
 import math
@@ -12,6 +12,7 @@ from pathlib import Path
 import platform
 import time
 import zipfile
+from zoneinfo import ZoneInfo
 
 from eval.benchmark_rerankers import (
     BenchmarkConfig, BenchmarkDependencies, CrossEncoderRuntime, EvalQuestion,
@@ -87,9 +88,10 @@ def collect(args: argparse.Namespace) -> None:
     _validate_questions(args, args.questions)
     manifest = verify_manifest(args.snapshot)
     snapshot_digest = file_digest(args.snapshot)
-    policy_date = date.today().isoformat()
+    policy_date = datetime.now(ZoneInfo("Europe/Monaco")).date()
     args.index_dir = args.snapshot.parent / "index"
     pipeline = _load_pipeline(args)
+    pipeline.applicability = replace(pipeline.applicability, current_date=policy_date)
     try:
         cases = collect_raw_retrieval(load_questions(args.questions), pipeline,
                                       RetrievalCollectionConfig(args.retriever, args.candidate_k))
@@ -105,13 +107,13 @@ def collect(args: argparse.Namespace) -> None:
                     raise ValueError("Candidate text differs from sealed corpus")
                 matched.add(row["chunk_id"])
     verify_manifest(args.snapshot)
-    if len(matched) != len(selected) or file_digest(args.snapshot) != snapshot_digest or policy_date != date.today().isoformat():
-        raise ValueError("Corpus identity or applicability date changed during retrieval")
+    if len(matched) != len(selected) or file_digest(args.snapshot) != snapshot_digest:
+        raise ValueError("Corpus identity changed during retrieval")
     provenance = {"snapshot_manifest_sha256": snapshot_digest,
                   "snapshot_collected_at": manifest["collected_at"],
                   "questions_sha256": file_digest(args.questions), "retriever": args.retriever,
                   "candidate_k": args.candidate_k, "query_expansion": False,
-                  "applicability_policy_date": policy_date,
+                  "applicability_policy_date": policy_date.isoformat(),
                   "embedding_config": json.loads((args.index_dir / "embedding_config.json").read_text(encoding="utf-8"))}
     result = save_pool(args.out, cases, provenance)
     print(json.dumps({"status": "frozen", "questions": len(cases), "pool_sha256": result["candidates_sha256"]}))
@@ -147,13 +149,15 @@ def local_adapter(args: argparse.Namespace):
 def replay(args: argparse.Namespace) -> None:
     check_output(args.out, args.pool)
     cases, manifest = load_pool(args.pool, args.questions)
+    warm_case = next((case for case in cases if case.candidates), None)
+    if warm_case is None:
+        raise ValueError("Frozen pool contains no candidates to rerank")
     args.out.mkdir(parents=True, exist_ok=False)
     try:
         import torch
 
         torch.set_num_threads(args.torch_threads)
         adapter, artifacts = local_adapter(args)
-        warm_case = next(case for case in cases if case.candidates)
         started = time.perf_counter()
         adapter.rank(warm_case.question.question, warm_case.candidates[:2])
         warmup_s = time.perf_counter() - started

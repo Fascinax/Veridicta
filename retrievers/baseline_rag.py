@@ -73,9 +73,10 @@ NO_SOURCES_RESPONSE = (
     "Les sources fournies ne permettent pas de répondre de manière fiable à cette question."
 )
 
-# LLM backend configuration
+def active_index_dir() -> Path:
+    return active_data_root() / "index"
 
-INDEX_DIR = active_data_root() / "index"
+
 FAISS_FILENAME = "veridicta.faiss"
 CHUNKS_MAP_FILENAME = "chunks_map.jsonl"
 INDEX_METADATA_FILENAME = "embedding_config.json"
@@ -297,8 +298,10 @@ def _ensure_index_compatibility(index: faiss.Index, index_dir: Path) -> None:
 # --- Index build ---
 
 
-def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) -> None:
+def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path | None = None) -> None:
     """Embed all chunks and write FAISS index + chunk map to index_dir."""
+    if index_dir is None:
+        index_dir = active_index_dir()
     index_dir.mkdir(parents=True, exist_ok=True)
     faiss_path = index_dir / FAISS_FILENAME
     map_path = index_dir / CHUNKS_MAP_FILENAME
@@ -342,8 +345,10 @@ def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) ->
 # --- Index load ---
 
 
-def load_index(index_dir: Path = INDEX_DIR) -> tuple[faiss.Index, list[dict]]:
+def load_index(index_dir: Path | None = None) -> tuple[faiss.Index, list[dict]]:
     """Load FAISS index and chunk map. Raises FileNotFoundError if not yet built."""
+    if index_dir is None:
+        index_dir = active_index_dir()
     faiss_path = index_dir / FAISS_FILENAME
     map_path = index_dir / CHUNKS_MAP_FILENAME
 
@@ -698,7 +703,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to chunks.jsonl used during --build",
     )
     parser.add_argument(
-        "--index-dir", default=str(INDEX_DIR), metavar="DIR",
+        "--index-dir", default=str(active_index_dir()), metavar="DIR",
         help="Directory for FAISS index files (default: data/index)",
     )
     return parser
