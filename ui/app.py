@@ -46,7 +46,7 @@ except Exception:
 
 from retrievers.baseline_rag import (
     DEFAULT_TOP_K,
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
@@ -201,7 +201,7 @@ st.markdown(
 
 @st.cache_resource(show_spinner="Chargement de l'index vectoriel…")
 def _get_index():
-    return load_index(INDEX_DIR)
+    return load_index(active_index_dir())
 
 
 @st.cache_resource(show_spinner="Chargement du modèle d'embedding…")
@@ -215,7 +215,7 @@ def _get_bm25():
     if not _HYBRID_AVAILABLE:
         return None
     try:
-        return load_bm25_index(INDEX_DIR)
+        return load_bm25_index(active_index_dir())
     except FileNotFoundError:
         return None
 
@@ -246,10 +246,15 @@ def _get_request_limits() -> SharedRequestLimits:
 
 
 def _bounded_request(handler):
+    from inspect import signature
+
+    parameters = signature(handler)
     @wraps(handler)
     def bounded(prompt, *args, **kwargs):
         try:
             store = kwargs.get("workspace_store")
+            if store is None and args:
+                store = parameters.bind(prompt, *args, **kwargs).arguments.get("workspace_store")
             scope = store.scope_key if store is not None else st.session_state.get("workspace_owner_scope", "unscoped")
             with _get_request_limits().admit(scope, prompt):
                 return handler(prompt, *args, **kwargs)

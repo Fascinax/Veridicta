@@ -4,6 +4,7 @@ version = "0.2.0"
 description = "Evidence-oriented retrieval for Monegasque labour law"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "tzdata>=2026.6; sys_platform == 'win32'",
   "tqdm>=4.70.1,<5", "python-dotenv>=1.2.4,<2",
   "sentence-transformers>=6.2.0,<7", "torch==2.13.0",
   "faiss-cpu>=1.15.1,<2", "bm25s>=0.3.16,<0.4", "PyStemmer>=3.1.0,<4",

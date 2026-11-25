@@ -4,6 +4,19 @@ from eval.review_sets import validate_intake
 from eval.evidence_benchmark import evaluate_cases
 
 
+def test_empty_sets_cannot_pass_either_evaluation_gate():
+    with pytest.raises(ValueError, match="at least one"):
+        evaluate_cases([])
+    with pytest.raises(ValueError, match="human review"):
+        validate_intake([], [], require_reviewed=True)
+
+
+def test_rejected_claim_is_not_an_abstention():
+    case = {"id": "q", "answer": "Le délai est de 300 jours.", "sources": [],
+            "expected_supported": False, "expected_abstained": True}
+    assert evaluate_cases([case])["passed"] == 0
+
+
 def test_unreviewed_cases_cannot_be_promoted_to_legal_evaluation():
     with pytest.raises(ValueError, match="human review"):
         validate_intake([{"id": "new", "question": "Une question nouvelle ?", "review_status": "pending"}], [], require_reviewed=True)

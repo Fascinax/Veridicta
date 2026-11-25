@@ -87,13 +87,19 @@ class WorkspaceStore:
                 raise ValueError("owner must not be empty")
             scope = hashlib.sha256(owner_id.encode("utf-8")).hexdigest()
             self.root = _contained(self.root, "owners", scope)
+        # Only the scope directory itself is created outside the lock: it holds the lock file.
         self.root.mkdir(parents=True, exist_ok=True)
         self.scope_key = str(self.root)
         self._lock = FileLock(str(self.root / ".workspace.lock"), timeout=20)
         self.workspace_root = _contained(self.root, "workspaces")
         self.audit_root = _contained(self.root, "audit")
-        self.workspace_root.mkdir(parents=True, exist_ok=True)
-        self.audit_root.mkdir(parents=True, exist_ok=True)
+        # Data areas are created under the scope lock and never while a restore is pending:
+        # a concurrent constructor must not recreate a directory that a restore promotion has
+        # just removed, nor repair a scope that an interrupted restore left blocked.
+        with self._lock:
+            _require_available(self.root)
+            self.workspace_root.mkdir(exist_ok=True)
+            self.audit_root.mkdir(exist_ok=True)
 
     @_locked
     def create(self, name: str, tags: list[str] | None = None) -> CaseWorkspace:

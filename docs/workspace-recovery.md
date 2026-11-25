@@ -29,6 +29,14 @@ Les fautes d'écriture, de promotion et de retour arrière sont injectées dans
 les tests unitaires, dans leurs propres répertoires temporaires. Aucune panne
 matérielle ou coupure du poste n'est provoquée par l'exercice réel.
 
+Le marqueur `.restore-pending.json` n'est effacé qu'après un retour arrière
+vérifié : `workspaces/` et `audit/` doivent exister et être vides. Sinon le
+périmètre reste bloqué. `WorkspaceStore` crée ces répertoires sous le verrou du
+périmètre et refuse un périmètre bloqué au lieu de les recréer. La CLI lit
+l'archive avec une borne de taille et la valide avant de créer la destination.
+Une sauvegarde est écrite dans un fichier caché voisin, puis publiée sans
+remplacement : un échec d'écriture ne laisse pas d'archive tronquée.
+
 ## Résultats du 8 novembre 2026
 
 L'exercice final est sous `data/audit/workspace-recovery-drill-20261108-v2`.

@@ -224,6 +224,92 @@ def test_successful_restore_removes_its_marker_and_staging(tmp_path):
     assert not (destination.root / RESTORE_MARKER).exists() and not list(destination.root.glob(".restore-*"))
 
 
+def test_failed_rollback_recreation_keeps_the_marker_instead_of_leaving_a_silent_gap(tmp_path, monkeypatch):
+    source, _, _ = _source(tmp_path)
+    destination = WorkspaceStore(tmp_path / "destination")
+    original_replace, original_mkdir = Path.replace, Path.mkdir
+
+    def fail_audit_promotion(path, target):
+        if path.parent.name.startswith(".restore-") and path.name == "audit":
+            raise OSError("synthetic promotion failure")
+        return original_replace(path, target)
+
+    def fail_audit_recreation(path, *args, **kwargs):
+        if path == destination.audit_root:
+            raise OSError("synthetic rollback failure")
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", fail_audit_promotion)
+    monkeypatch.setattr(Path, "mkdir", fail_audit_recreation)
+    with pytest.raises(RuntimeError, match="blocked"):
+        restore(destination, backup(source))
+    monkeypatch.undo()
+    assert not destination.audit_root.exists()
+    assert (destination.root / RESTORE_MARKER).exists() and list(destination.root.glob(".restore-*"))
+    with pytest.raises(RuntimeError, match="interrupted"):
+        WorkspaceStore(destination.root)
+    assert not destination.audit_root.exists()
+
+
+def test_constructor_does_not_recreate_areas_of_a_blocked_scope(tmp_path):
+    root = tmp_path / "blocked"
+    root.mkdir()
+    (root / RESTORE_MARKER).write_text('{"status": "restoring"}', encoding="utf-8")
+    with pytest.raises(RuntimeError, match="interrupted"):
+        WorkspaceStore(root)
+    assert sorted(path.name for path in root.iterdir() if path.name != ".workspace.lock") == [RESTORE_MARKER]
+
+
+def test_constructor_waits_for_the_scope_lock_before_creating_areas(tmp_path):
+    import threading
+
+    from filelock import FileLock
+
+    root = tmp_path / "scope"
+    root.mkdir()
+    holder = FileLock(str(root / ".workspace.lock"))
+    holder.acquire()
+    worker = threading.Thread(target=WorkspaceStore, args=(root,))
+    try:
+        worker.start()
+        worker.join(0.5)
+        assert worker.is_alive() and not (root / "workspaces").exists() and not (root / "audit").exists()
+    finally:
+        holder.release()
+    worker.join(10)
+    assert not worker.is_alive() and (root / "workspaces").is_dir() and (root / "audit").is_dir()
+
+
+def test_failed_archive_write_never_publishes_a_truncated_backup(tmp_path, monkeypatch):
+    store, _, _ = _source(tmp_path)
+    destination = tmp_path / "backup.json"
+
+    def fail_fsync(descriptor):
+        raise OSError("synthetic disk failure")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="synthetic"):
+        backup_to_file(store, destination)
+    assert not destination.exists() and not list(tmp_path.glob(".backup.json.*"))
+
+
+def test_published_archive_is_complete_and_leaves_no_partial_file(tmp_path):
+    store, _, _ = _source(tmp_path)
+    destination = tmp_path / "backup.json"
+    backup_to_file(store, destination)
+    assert destination.read_bytes() == backup(store) and not list(tmp_path.glob(".backup.json.*"))
+
+
+def test_backup_file_reader_is_bounded(tmp_path, monkeypatch):
+    from workspaces import operations
+
+    archive = tmp_path / "large.json"
+    archive.write_bytes(b"x" * 64)
+    monkeypatch.setattr(operations, "MAX_BACKUP_BYTES", 16)
+    with pytest.raises(ValueError, match="size"):
+        operations.read_backup_file(archive)
+
+
 def test_recovery_drill_uses_new_synthetic_scopes_and_reports_its_limits(tmp_path):
     from tools.workspace_recovery_drill import run_drill
 
@@ -279,6 +365,64 @@ def test_restore_cli_refuses_an_unrelated_nonempty_directory(tmp_path, monkeypat
     with pytest.raises(SystemExit):
         main()
     assert [path.name for path in root.iterdir()] == ["keep.txt"]
+
+
+@pytest.mark.parametrize("content", [b"not-json", b'{"schema_version":2,"files":[{"path":"../x"}]}'])
+def test_restore_cli_rejects_an_invalid_archive_before_creating_a_destination(tmp_path, monkeypatch, content):
+    from workspaces.operations import main
+
+    root, archive = tmp_path / "new", tmp_path / "backup.json"
+    archive.write_bytes(content)
+    monkeypatch.setattr(sys, "argv", ["operations", "restore", "--root", str(root), "--file", str(archive)])
+    with pytest.raises(SystemExit):
+        main()
+    assert not root.exists()
+
+
+def test_restore_cli_rejects_an_oversized_archive_before_creating_a_destination(tmp_path, monkeypatch):
+    from workspaces import operations
+
+    source, _, _ = _source(tmp_path)
+    root, archive = tmp_path / "new", tmp_path / "backup.json"
+    archive.write_bytes(backup(source))
+    monkeypatch.setattr(operations, "MAX_BACKUP_BYTES", 64)
+    monkeypatch.setattr(sys, "argv", ["operations", "restore", "--root", str(root), "--file", str(archive)])
+    with pytest.raises(SystemExit):
+        operations.main()
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("operation", ["backup", "restore", "purge"])
+def test_cli_refuses_a_blocked_scope_without_recreating_its_areas(tmp_path, monkeypatch, operation):
+    from workspaces.operations import main
+
+    root, archive = tmp_path / "blocked", tmp_path / "backup.json"
+    root.mkdir()
+    (root / "workspaces").mkdir()
+    (root / RESTORE_MARKER).write_text("{}", encoding="utf-8")
+    archive.write_bytes(b'{"schema_version":2,"files":[]}')
+    args = ["operations", operation, "--root", str(root)]
+    if operation != "purge":
+        args += ["--file", str(archive if operation == "restore" else tmp_path / "out.json")]
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit):
+        main()
+    assert not (root / "audit").exists() and not (tmp_path / "out.json").exists()
+
+
+def test_cli_backup_then_restore_round_trips_into_a_new_scope(tmp_path, monkeypatch, capsys):
+    from workspaces.operations import main
+
+    source = WorkspaceStore(tmp_path / "source")
+    case = source.create("Synthetic CLI fixture")
+    source.add_private_note(case.workspace_id, "Note synthétique")
+    archive, restored = tmp_path / "backup.json", tmp_path / "restored"
+    for argv in (["operations", "backup", "--root", str(source.root), "--file", str(archive)],
+                 ["operations", "restore", "--root", str(restored), "--file", str(archive)]):
+        monkeypatch.setattr(sys, "argv", argv)
+        main()
+    assert json.loads(capsys.readouterr().out.splitlines()[-1]) == {"status": "restored"}
+    assert backup(WorkspaceStore(restored)) == archive.read_bytes() == backup(source)
 
 
 def test_workspace_id_is_checked_even_when_the_archive_hash_was_recomputed(tmp_path):
