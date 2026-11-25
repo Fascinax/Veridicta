@@ -210,8 +210,10 @@ def _restore_files(store: WorkspaceStore, files: list[BackupFile]) -> None:
 
 
 def backup_to_file(store: WorkspaceStore, destination: Path) -> dict:
+    if destination.is_symlink():
+        raise FileExistsError("backup destination is a symbolic link")
     target = destination.resolve()
-    if (target.is_relative_to(store.root)
+    if (target.is_relative_to(store.storage_root)
             or any((parent / ".workspace.lock").exists()
                    or ((parent / "workspaces").is_dir() and (parent / "audit").is_dir())
                    for parent in target.parents)):
