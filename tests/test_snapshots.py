@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -21,6 +23,26 @@ def test_changed_artifact_fails_real_digest_verification(tmp_path):
     (tmp_path / "index/chunks.jsonl").write_text("modified", encoding="utf-8")
     with pytest.raises(ValueError, match="integrity"):
         verify_manifest(path)
+
+
+def test_missing_snapshot_is_checked_at_first_use_not_import(tmp_path, monkeypatch):
+    monkeypatch.setenv("VERIDICTA_SNAPSHOT_MANIFEST", str(tmp_path / "missing.json"))
+    script = """
+from retrievers import baseline_rag, hybrid_rag, lancedb_rag
+for resolve in (baseline_rag.active_index_dir, lancedb_rag.active_lancedb_dir):
+    try:
+        resolve()
+    except FileNotFoundError:
+        continue
+    raise AssertionError("Expected the configured snapshot to be verified")
+"""
+    subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def test_snapshot_verification_rejects_naive_clock(tmp_path):
+    path = _snapshot(tmp_path, datetime.now(timezone.utc))
+    with pytest.raises(ValueError, match="timezone"):
+        verify_manifest(path, now=datetime(2026, 1, 1))
 
 
 def test_new_manifest_does_not_make_an_old_collection_fresh(tmp_path):
