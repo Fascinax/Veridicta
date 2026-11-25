@@ -1,10 +1,13 @@
 import json
+from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from retrievers.candidate_index import fill_vectors, IndexBuildConfig, build_candidate_index
+from retrievers.config import EMBEDDING_CONFIG
 from retrievers.snapshots import create_manifest, file_digest
 from datetime import datetime, timezone
 
@@ -35,6 +38,22 @@ def test_resume_rejects_changed_input_identity(tmp_path):
     changed = _identity() | {"chunks_sha256": "different"}
     with pytest.raises(ValueError, match="another corpus"):
         fill_vectors(["two"], encoder, (tmp_path, changed, IndexBuildConfig()))
+
+
+def test_resume_after_interruption_before_vector_publication(tmp_path, monkeypatch):
+    request = (tmp_path, _identity(), IndexBuildConfig())
+    encoder = SimpleNamespace(encode=lambda texts, **kwargs: [[1, 0] for _ in texts])
+
+    def interrupt(*args):
+        raise InterruptedError("before vector publication")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "rename", interrupt)
+        with pytest.raises(InterruptedError):
+            fill_vectors(["one"], encoder, request)
+    assert json.loads((tmp_path / "checkpoint.json").read_text())["completed_rows"] == 0
+    assert not (tmp_path / "vectors.npy").exists()
+    assert np.array_equal(fill_vectors(["one"], encoder, request), [[1, 0]])
 
 
 def test_resume_rejects_corrupt_completed_vectors(tmp_path):
@@ -75,3 +94,26 @@ def test_changed_prepared_input_is_rejected_before_model_loading(tmp_path):
     (tmp_path / "processed/chunks.jsonl").write_text("changed", encoding="utf-8")
     with pytest.raises(ValueError, match="integrity"):
         build_candidate_index(tmp_path, IndexBuildConfig())
+
+
+def test_builder_ignores_staging_left_by_an_interrupted_run(tmp_path, monkeypatch):
+    _prepared(tmp_path)
+    interrupted = tmp_path / ".dense-build/index"
+    interrupted.mkdir(parents=True)
+    (interrupted / "partial").write_text("partial", encoding="utf-8")
+    dimension = EMBEDDING_CONFIG.dimension
+    vector = [1] + [0] * (dimension - 1)
+    encoder = SimpleNamespace(
+        float=lambda: None, get_sentence_embedding_dimension=lambda: dimension, max_seq_length=16,
+        encode=lambda texts, **kwargs: [vector for _ in texts],
+    )
+    monkeypatch.setitem(sys.modules, "sentence_transformers", SimpleNamespace(
+        SentenceTransformer=lambda *args, **kwargs: encoder,
+    ))
+
+    result = build_candidate_index(tmp_path, IndexBuildConfig())
+
+    assert result["chunk_count"] == 1
+    assert (tmp_path / "index/veridicta.faiss").is_file()
+    assert not (tmp_path / "index/partial").exists()
+    assert (interrupted / "partial").read_text(encoding="utf-8") == "partial"
