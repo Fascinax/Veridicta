@@ -135,7 +135,7 @@ def _load_resources(full: bool):
         run_eval,
         print_report,
     )
-    from retrievers.baseline_rag import _load_embedder, load_index, INDEX_DIR
+    from retrievers.baseline_rag import _load_embedder, load_index, active_index_dir
 
     print("Loading questions ...")
     questions = load_questions(QUESTIONS_PATH)
@@ -147,7 +147,7 @@ def _load_resources(full: bool):
     if RETRIEVER in ("hybrid", "hybrid_graph"):
         from retrievers.hybrid_rag import load_bm25_index
         print("Loading BM25 index ...")
-        bm25 = load_bm25_index(INDEX_DIR)
+        bm25 = load_bm25_index(active_index_dir())
 
     if RETRIEVER in ("graph", "hybrid_graph", "lancedb_graph"):
         from retrievers.graph_rag import load_neo4j_manager
@@ -164,7 +164,7 @@ def _load_resources(full: bool):
         print(f"  LanceDB: {lancedb_table.count_rows()} rows")
     else:
         print("Loading FAISS index ...")
-        index, chunks = load_index(INDEX_DIR)
+        index, chunks = load_index(active_index_dir())
         print(f"  {index.ntotal} vectors, {len(chunks)} chunks")
 
     print("Loading embedder ...")
