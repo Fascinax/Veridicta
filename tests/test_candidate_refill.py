@@ -59,6 +59,34 @@ def test_exhausted_backend_stops_without_retry(monkeypatch):
     assert pipeline.retrieve("synthetic question") == [] and calls == [20]
 
 
+def test_reranker_budget_survives_an_oversized_refill(monkeypatch):
+    rows = _rows({"type": "projet_loi"}, allowed=39)[19:]
+    pipeline, calls = _pipeline(monkeypatch, rows)
+
+    def rerank(query, candidates, *, k, candidate_k, min_score):
+        assert candidate_k == len(candidates) == 20
+        assert candidates == rows[1:21]
+        return candidates[:k], candidates
+
+    monkeypatch.setattr(module, "rerank_with_trace", rerank)
+    selected, trace = pipeline.retrieve_with_trace("question", use_reranker=True)
+    assert selected == rows[1:6]
+    assert calls == [20, 40]
+    assert len(trace.raw_candidates) == 39
+
+
+def test_frozen_benchmark_does_not_refill_after_exclusions(monkeypatch):
+    from eval.benchmark_rerankers import RetrievalCollectionConfig, collect_raw_retrieval
+    from eval.evaluate import EvalQuestion
+
+    rows = _rows({"type": "projet_loi"}, allowed=39)[19:]
+    pipeline, calls = _pipeline(monkeypatch, rows)
+    question = EvalQuestion("q", "question", "réponse", [])
+    cases = collect_raw_retrieval([question], pipeline, RetrievalCollectionConfig("faiss", 20))
+    assert calls == [20]
+    assert cases[0].candidates == rows[1:20]
+
+
 def test_all_excluded_sources_stop_at_bounded_automatic_pool(monkeypatch):
     rows = [{"chunk_id": str(i), "applicability_review": "pending"} for i in range(1000)]
     pipeline, calls = _pipeline(monkeypatch, rows)

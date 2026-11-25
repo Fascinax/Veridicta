@@ -537,6 +537,7 @@ def collect_raw_retrieval(
             query_expansion=config.query_expansion,
             use_reranker=False,
             trace_candidate_k=config.candidate_k,
+            allow_refill=False,
         )
         cases.append(
             RawRetrievalCase(

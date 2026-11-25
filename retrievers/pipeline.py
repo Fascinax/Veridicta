@@ -143,6 +143,7 @@ class RetrievalPipeline:
         hybrid_faiss_weight: float | None = None,
         hybrid_bm25_weight: float | None = None,
         trace_candidate_k: int = RAW_TRACE_CANDIDATE_K,
+        allow_refill: bool = True,
         parent_child_config: ParentChildConfig | None = None,
         as_of: date | None = None,
     ) -> tuple[list[dict], RetrievalTrace]:
@@ -193,7 +194,7 @@ class RetrievalPipeline:
                     if decision["decision"] == "unknown"
                 }
             retrieval_attempts.append({"requested": raw_candidate_k, "returned": len(fetched), "eligible": len(raw_candidates)})
-            if (len(raw_candidates) >= eligible_target or len(fetched) < raw_candidate_k
+            if (not allow_refill or len(raw_candidates) >= eligible_target or len(fetched) < raw_candidate_k
                     or raw_candidate_k >= MAX_REFILL_CANDIDATES):
                 break
             raw_candidate_k = min(MAX_REFILL_CANDIDATES, raw_candidate_k * 2)
@@ -242,11 +243,12 @@ class RetrievalPipeline:
                 raise RuntimeError(
                     "FlashRank reranker unavailable. Install flashrank to enable reranking."
                 )
+            reranker_pool = raw_candidates[:eligible_target]
             final_candidates, reranked_candidates = rerank_with_trace(
                 query,
-                raw_candidates,
+                reranker_pool,
                 k=k,
-                candidate_k=len(raw_candidates),
+                candidate_k=len(reranker_pool),
                 min_score=reranker_min_score,
             )
             decisions.append(
