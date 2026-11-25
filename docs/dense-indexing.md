@@ -21,6 +21,9 @@ python -m retrievers.candidate_index --candidate data/snapshots/<candidat> --dev
 La commande peut être relancée après interruption avant publication du dossier
 `index/`. Après publication, elle refuse l'écrasement. Le répertoire de travail
 reste un cache local, exclu des fichiers attestés et des uploads du corpus.
+Un checkpoint à zéro ligne peut recréer un fichier de vecteurs absent. Un
+ancien fichier de vecteurs sans checkpoint est conservé et nécessite un
+nouveau répertoire de travail.
 
 ## Environnement CUDA isolé, Windows x64 / Python 3.12
 
@@ -62,6 +65,9 @@ python -m data_ingest.prepare_candidate --seal data/snapshots/<candidat>
 ```
 
 Le scellement vérifie les fichiers et la correspondance avec les chunks préparés.
+LanceDB est publié après la création de l'index plein texte et la vérification
+du nombre de lignes. Utiliser une destination neuve pour reconstruire un index.
+Si le scellement s'interrompt, relancer la même commande `--seal`.
 Il conserve `release_ready=false`. La préparation, l'indexation et des requêtes
 de smoke ne constituent pas une validation juridique indépendante.
 
