@@ -290,7 +290,17 @@ class RetrievalPipeline:
                 self.chunks,
                 parent_child_config,
             )
-            final_candidates = [chunk for chunk in final_candidates if self.applicability.accepts(chunk, as_of)]
+            expanded_candidates = final_candidates
+            final_candidates = []
+            excluded_after_expansion = []
+            for chunk in expanded_candidates:
+                if self.applicability.accepts(chunk, as_of):
+                    final_candidates.append(chunk)
+                else:
+                    excluded_after_expansion.append(str(chunk.get("chunk_id", "")))
+            if excluded_after_expansion:
+                decisions.append({"stage": "applicability_filter", "phase": "parent_child",
+                                  "excluded_ids": excluded_after_expansion})
             if as_of is not None:
                 expanded_temporal = select_as_of(final_candidates, as_of)
                 final_candidates = expanded_temporal.selected

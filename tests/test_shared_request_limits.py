@@ -278,6 +278,25 @@ def test_factory_uses_explicit_shared_database_path(tmp_path, monkeypatch):
     assert request_limits_from_environment().database == path
 
 
+def test_default_quota_survives_local_workspace_restore(tmp_path, monkeypatch):
+    from workspaces.operations import backup, restore
+    from workspaces.store import WorkspaceStore
+
+    dest = tmp_path / "destination"
+    monkeypatch.delenv("VERIDICTA_REQUEST_LIMITS_DB", raising=False)
+    monkeypatch.setenv("VERIDICTA_WORKSPACE_DIR", str(dest))
+    source = WorkspaceStore(tmp_path / "source")
+    case = source.create("Synthetic restore")
+    limits = request_limits_from_environment()
+    with limits.admit("synthetic", "question"):
+        pass
+    target = WorkspaceStore(dest)
+    restore(target, backup(source))
+    assert target.get(case.workspace_id).name == case.name
+    with limits.admit("synthetic", "second question"):
+        pass
+
+
 def test_ui_stops_before_handler_if_shared_quota_is_unavailable(tmp_path):
     source = Path("ui/app.py").read_text(encoding="utf-8")
     node = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_bounded_request")

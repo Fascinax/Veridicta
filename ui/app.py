@@ -32,21 +32,21 @@ _SECRET_KEYS = [
     "VERIDICTA_WORKSPACE_MODE", "VERIDICTA_WORKSPACE_DIR", "VERIDICTA_QUERY_EXPANSION",
     "VERIDICTA_SNAPSHOT_MANIFEST", "VERIDICTA_ACCESS_POLICY_FILE", "VERIDICTA_REQUEST_LIMITS_DB",
 ]
-try:
-    for _k in _SECRET_KEYS:
-        _v = st.secrets.get(_k)
-        if _v and not os.getenv(_k):
-            os.environ[_k] = str(_v)
-except Exception:
-    pass  # Running locally without secrets.toml — fine
-
 # Make project root importable when launched as `streamlit run ui/app.py`
 _ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_ROOT))
 
+from ui.server_config import load_server_config
+
+try:
+    load_server_config(_SECRET_KEYS)
+except Exception:
+    st.error("Impossible de lire la configuration du serveur. Contactez l’administrateur.")
+    st.stop()
+
 from retrievers.baseline_rag import (
     DEFAULT_TOP_K,
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
@@ -201,7 +201,7 @@ st.markdown(
 
 @st.cache_resource(show_spinner="Chargement de l'index vectoriel…")
 def _get_index():
-    return load_index(INDEX_DIR)
+    return load_index(active_index_dir())
 
 
 @st.cache_resource(show_spinner="Chargement du modèle d'embedding…")
@@ -215,7 +215,7 @@ def _get_bm25():
     if not _HYBRID_AVAILABLE:
         return None
     try:
-        return load_bm25_index(INDEX_DIR)
+        return load_bm25_index(active_index_dir())
     except FileNotFoundError:
         return None
 
@@ -246,10 +246,15 @@ def _get_request_limits() -> SharedRequestLimits:
 
 
 def _bounded_request(handler):
+    from inspect import signature
+
+    parameters = signature(handler)
     @wraps(handler)
     def bounded(prompt, *args, **kwargs):
         try:
             store = kwargs.get("workspace_store")
+            if store is None and args:
+                store = parameters.bind(prompt, *args, **kwargs).arguments.get("workspace_store")
             scope = store.scope_key if store is not None else st.session_state.get("workspace_owner_scope", "unscoped")
             with _get_request_limits().admit(scope, prompt):
                 return handler(prompt, *args, **kwargs)

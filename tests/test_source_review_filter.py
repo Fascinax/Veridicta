@@ -37,3 +37,10 @@ def test_approved_journal_can_enter_the_current_retrieval_policy():
 def test_top_level_review_marker_survives_chunk_preparation():
     chunks = _document_to_chunks({"id": "synthetic", "text": "A source to review.", "applicability_review": "pending"}, "fixture.jsonl")
     assert chunks[0].metadata["applicability_review"] == "pending" and not ApplicabilityPolicy().accepts(chunks[0].to_dict())
+@pytest.mark.parametrize("outer,inner", [("approved", "pending"), ("pending", "approved"), (None, "approved")])
+def test_contradictory_review_is_blocked_after_ingestion(outer, inner):
+    row = {"id": "synthetic", "text": "A source to review.", "applicability_review": outer,
+           "metadata": {"applicability_review": inner}}
+    chunks = _document_to_chunks(row, "fixture.jsonl")
+    assert chunks
+    assert all(not ApplicabilityPolicy().accepts(chunk.to_dict()) for chunk in chunks)
