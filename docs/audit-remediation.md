@@ -20,10 +20,12 @@ en conditions réelles. L'ancien client échouait avant le réseau avec un TypeE
 ## Lot 3 — Évaluation des preuves
 
 - La régression historique de 100 questions et ses annotations restent inchangées.
-- 16 cas synthétiques figent les contre-exemples des garde-fous, avec empreinte
+- 18 cas synthétiques figent les contre-exemples des garde-fous, avec empreinte
   et comparaison reproductible à la révision auditée `35f18fd`.
-- Résultat observé : 16/16 cas attendus sur la branche ; la comparaison porte
-  uniquement sur ces garde-fous déterministes, pas sur la qualité juridique.
+- Sur 18 cas, le vérificateur classe 17 propositions conformément aux annotations.
+  Il écarte aussi une reformulation fidèle et restitue la phrase citée en entier.
+  Les 18 réponses affichées satisfont les attentes de la suite synthétique.
+  Le rapport conserve séparément le verdict sur la proposition et le recours à un extrait.
 - Huit scénarios de relecture sont préparés, tous marqués `pending`. Le mode
   `--require-reviewed` bloque leur promotion tant que réponses, passages et
   relecteur ne sont pas renseignés.
