@@ -1717,6 +1717,7 @@ def _parse_pp_arguments(
     is_passive: bool,
     is_receive: bool,
     is_nominal: bool = False,
+    verb_stem: str = "",
 ) -> tuple[set[str], set[str], set[str], set[str]]:
     """Extract (direct_object, actor_pps, recipient_pps, source_pps) tokens."""
     direct_obj: set[str] = set()
@@ -1769,7 +1770,9 @@ def _parse_pp_arguments(
             ):
                 current_bucket = None
             else:
-                current_bucket = recipient_pps
+                # In "réclamer une indemnité au débiteur", the debtor supplies it.
+                debtor = tok in {"a", "au", "aux"} and verb_stem in {"demand", "reclam", "emprunt", "achet"}
+                current_bucket = source_pps if debtor else recipient_pps
             i += 1
             continue
 
@@ -1831,6 +1834,7 @@ def _extract_impersonal_obligation(tokens: list[_ClauseToken]) -> _ClauseRoles |
         allow_bare_object=True,
         is_passive=False,
         is_receive=is_receive,
+        verb_stem=stem,
     )
     if is_receive:
         actors = frozenset(source_pps | actor_pps)
@@ -1868,6 +1872,7 @@ def _extract_embedded_infinitive(
                 allow_bare_object=True,
                 is_passive=False,
                 is_receive=is_receive,
+                verb_stem=inf_stem,
             )
             if is_receive:
                 actors = frozenset(source_pps | actor_pps)
@@ -1972,6 +1977,7 @@ def _parse_single_clause(tokens: list[_ClauseToken]) -> list[_ClauseRoles]:
         allow_bare_object=not is_passive and voice != "copula",
         is_passive=is_passive,
         is_receive=is_receive,
+        verb_stem=verb_stem,
     )
 
     if voice == "copula":

@@ -488,3 +488,11 @@ def test_grounding_accepts_legitimate_paraphrases_preserving_role_direction() ->
         report = verify_grounding(paraphrase, [{"text": source_text}])
         assert report.supported_count == 1, f"{source_text} -> {paraphrase} ({report.claims[0].reason})"
         assert report.unsupported_count == 0, f"{source_text} -> {paraphrase}"
+
+def test_request_for_payment_preserves_creditor_and_debtor():
+    for verb in ("réclame", "demande"):
+        source = f"Le bailleur {verb} une indemnité au locataire."
+        swapped = f"Le locataire {verb} une indemnité au bailleur."
+        assert verify_grounding(source + " [Source 1]", [{"text": source}]).supported_count == 1
+        report = verify_grounding(swapped + " [Source 1]", [{"text": source}])
+        assert report.unsupported_count == 1
