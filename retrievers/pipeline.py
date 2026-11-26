@@ -165,7 +165,7 @@ class RetrievalPipeline:
             )
 
         eligible_target = k * max(1, reranker_candidate_multiplier) if use_reranker else k
-        reranker_budget = max(trace_candidate_k, eligible_target)
+        reranker_budget = raw_candidate_k
         retrieval_attempts = []
         while True:
             fetched = self._dispatch_retriever(

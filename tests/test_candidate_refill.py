@@ -108,6 +108,20 @@ def test_explicit_large_initial_budget_is_not_automatically_increased(monkeypatc
     assert calls == [300]
 
 
+def test_historical_reranker_can_select_from_entire_initial_window(monkeypatch):
+    rows = [{"chunk_id": str(i), "effective_from": "2020-01-01"} for i in range(40)]
+    pipeline, calls = _pipeline(monkeypatch, rows)
+
+    def rerank(query, candidates, *, k, candidate_k, min_score):
+        assert len(candidates) == candidate_k == 40
+        return candidates[24:24 + k], candidates
+
+    monkeypatch.setattr(module, "rerank_with_trace", rerank)
+    selected, _ = pipeline.retrieve_with_trace("question", k=2, as_of=date(2021, 1, 1), use_reranker=True)
+    assert [row["chunk_id"] for row in selected] == ["24", "25"]
+    assert calls == [40]
+
+
 def test_backend_failure_during_refill_is_not_hidden(monkeypatch):
     pipeline, _ = _pipeline(monkeypatch, [])
     def fail_later(*args, k, **kwargs):
