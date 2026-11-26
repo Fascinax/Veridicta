@@ -27,8 +27,9 @@ def evaluate_cases(cases: list[dict], verifier=verify_grounding, enforcer=enforc
         if "expected_excerpt" in case and not accepted:
             rendered, _ = enforcer(case["answer"], case["sources"])
             lines = rendered.splitlines()
-            excerpt_returned = bool(lines and lines[0] == case["expected_excerpt"] and all(
-                all(claim.status == "abstained" for claim in verifier(line, []).claims) for line in lines[1:]
+            expected = case["expected_excerpt"].splitlines()
+            excerpt_returned = bool(expected and lines[:len(expected)] == expected and all(
+                all(claim.status == "abstained" for claim in verifier(line, []).claims) for line in lines[len(expected):]
             ))
             row["excerpt_returned"] = excerpt_returned
             row["pass"] = excerpt_returned and not abstained
