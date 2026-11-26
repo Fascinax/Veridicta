@@ -1929,7 +1929,12 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tuple[object | None, object | None, object | None]:
+def _load_optional_retrievers(
+    args: argparse.Namespace,
+    index_dir: Path,
+    *,
+    lancedb_dir: Path | None = None,
+) -> tuple[object | None, object | None, object | None]:
     adaptive = args.retriever == "adaptive"
     bm25 = None
     if args.retriever in ("hybrid", "hybrid_graph") or adaptive:
@@ -1972,7 +1977,7 @@ def _load_optional_retrievers(args: argparse.Namespace, index_dir: Path) -> tupl
         else:
             print("Loading LanceDB table ...")
             try:
-                lancedb_table = load_lancedb_index()
+                lancedb_table = load_lancedb_index(lancedb_dir) if lancedb_dir is not None else load_lancedb_index()
             except FileNotFoundError as exc:
                 if not adaptive:
                     sys.exit(f"ERROR: {exc}")

@@ -1,0 +1,795 @@
+{
+  "schema_version": "1.0",
+  "checked_at": "2026-11-07T16:50:53.566482+00:00",
+  "implementation_commit": "fa8403875ef27d4588687fdefca2aa0af6a14cf5",
+  "branch": "audit/11-reranker-evaluation",
+  "scope": "historical_visible_keyword_regression_not_legal_validation",
+  "protocol": {
+    "shared_pool": true,
+    "pool_sha256": "e27e4476a827f5c79b72762e269ca23b0aa32d80eb5013a360ee70246d98cdb9",
+    "question_count": 100,
+    "candidate_counts": {
+      "min": 4,
+      "max": 20,
+      "total": 1511,
+      "fewer_than_k": {
+        "5": 1,
+        "10": 15
+      }
+    },
+    "top_ks": [
+      5,
+      10
+    ],
+    "generation": false,
+    "max_length": 512,
+    "cross_encoder_batch_size": 8,
+    "timing_includes_input_copy": true,
+    "warmup_passages": 2,
+    "dedicated_benchmark_host": false,
+    "cpu": "AMD Ryzen 5 5600G, 12 logical processors",
+    "ram_measurement_available": false
+  },
+  "runs": {
+    "none": {
+      "status": "completed",
+      "schema_version": "1.0",
+      "checked_at": "2026-11-07T16:37:04.808958+00:00",
+      "model": {
+        "key": "none",
+        "family": "identity",
+        "model_name": "retrieval-order",
+        "revision": null
+      },
+      "artifacts": {},
+      "runtime": {
+        "python": "3.12.10",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "packages": {
+          "torch": "2.13.0+cu130",
+          "sentence-transformers": "6.2.0",
+          "transformers": "5.22.2",
+          "flashrank": "0.2.10",
+          "onnxruntime": "1.31.1"
+        },
+        "requested_torch_device": "cuda",
+        "batch_size": 8,
+        "max_length": 512,
+        "warmup_seconds": 1.1199968867003918e-05,
+        "rss_after_warmup_mb": null,
+        "onnx_available_providers": [
+          "AzureExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "torch_cuda_available": true,
+        "torch_threads": 4,
+        "cuda_matmul_allow_tf32": false,
+        "cuda_device_name": "NVIDIA GeForce RTX 4070 Ti",
+        "cuda_peak_allocated_mb": 0.0,
+        "cuda_peak_reserved_mb": 0.0
+      },
+      "pool_manifest_sha256": "a2e4401d52c727a796e7925b930d622019b9347a017a09b2b4f4ad0ce5e3c035",
+      "pool_sha256": "e27e4476a827f5c79b72762e269ca23b0aa32d80eb5013a360ee70246d98cdb9",
+      "provenance": {
+        "snapshot_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+        "snapshot_collected_at": "2026-11-06T20:33:06.116541+00:00",
+        "questions_sha256": "8f8fa783f839044e6fe9acadac78749e8db9b5696c87c86171b5bcbf9abf7162",
+        "retriever": "faiss",
+        "candidate_k": 20,
+        "query_expansion": false,
+        "applicability_policy_date": "2026-11-07",
+        "embedding_config": {
+          "embed_model": "OrdalieTech/Solon-embeddings-large-0.1",
+          "embed_revision": "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef",
+          "embedding_dimension": 1024,
+          "embed_query_prefix": "query: ",
+          "chunk_count": 35887
+        }
+      },
+      "summaries": [
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "none",
+          "reranker_model": "retrieval-order",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 5,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.763,
+          "mrr": 0.95,
+          "context_precision": 0.8775,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 4.791,
+          "rerank_latency_ms_p95": 3.2249,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        },
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "none",
+          "reranker_model": "retrieval-order",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 10,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.849,
+          "mrr": 0.9511,
+          "context_precision": 0.8745,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 4.791,
+          "rerank_latency_ms_p95": 3.2249,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        }
+      ],
+      "candidate_counts": {
+        "min": 4,
+        "max": 20,
+        "total": 1511,
+        "fewer_than_k": {
+          "5": 1,
+          "10": 15
+        }
+      },
+      "semantics": "Historical visible regression; keyword proxies only, no generation, no independent legal evaluation.",
+      "release_ready": false
+    },
+    "flashrank": {
+      "status": "completed",
+      "schema_version": "1.0",
+      "checked_at": "2026-11-07T16:44:01.766291+00:00",
+      "model": {
+        "key": "flashrank",
+        "family": "flashrank",
+        "model_name": "ms-marco-MultiBERT-L-12",
+        "revision": null
+      },
+      "artifacts": {
+        "repo": "prithivida/flashrank",
+        "revision": "858a1ac046a05663a35367eac852d7f76feeefdd",
+        "archive_sha256": "2c8ae5542f1538e355e9f295d349fc030b5cf7d398c8728c362f0e5129776971"
+      },
+      "runtime": {
+        "python": "3.12.10",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "packages": {
+          "torch": "2.13.0+cu130",
+          "sentence-transformers": "6.2.0",
+          "transformers": "5.22.2",
+          "flashrank": "0.2.10",
+          "onnxruntime": "1.31.1"
+        },
+        "requested_torch_device": "cuda",
+        "batch_size": 8,
+        "max_length": 512,
+        "warmup_seconds": 2.1759546999819577,
+        "rss_after_warmup_mb": null,
+        "onnx_available_providers": [
+          "AzureExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "torch_cuda_available": true,
+        "torch_threads": 4,
+        "cuda_matmul_allow_tf32": false,
+        "cuda_device_name": "NVIDIA GeForce RTX 4070 Ti",
+        "cuda_peak_allocated_mb": 0.0,
+        "cuda_peak_reserved_mb": 0.0,
+        "actual_providers": [
+          "CPUExecutionProvider"
+        ]
+      },
+      "pool_manifest_sha256": "a2e4401d52c727a796e7925b930d622019b9347a017a09b2b4f4ad0ce5e3c035",
+      "pool_sha256": "e27e4476a827f5c79b72762e269ca23b0aa32d80eb5013a360ee70246d98cdb9",
+      "provenance": {
+        "snapshot_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+        "snapshot_collected_at": "2026-11-06T20:33:06.116541+00:00",
+        "questions_sha256": "8f8fa783f839044e6fe9acadac78749e8db9b5696c87c86171b5bcbf9abf7162",
+        "retriever": "faiss",
+        "candidate_k": 20,
+        "query_expansion": false,
+        "applicability_policy_date": "2026-11-07",
+        "embedding_config": {
+          "embed_model": "OrdalieTech/Solon-embeddings-large-0.1",
+          "embed_revision": "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef",
+          "embedding_dimension": 1024,
+          "embed_query_prefix": "query: ",
+          "chunk_count": 35887
+        }
+      },
+      "summaries": [
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "flashrank",
+          "reranker_model": "ms-marco-MultiBERT-L-12",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 5,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.761,
+          "mrr": 0.927,
+          "context_precision": 0.8735,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 3743.4003,
+          "rerank_latency_ms_p95": 5046.8875,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        },
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "flashrank",
+          "reranker_model": "ms-marco-MultiBERT-L-12",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 10,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.845,
+          "mrr": 0.927,
+          "context_precision": 0.8625,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 3743.4003,
+          "rerank_latency_ms_p95": 5046.8875,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        }
+      ],
+      "candidate_counts": {
+        "min": 4,
+        "max": 20,
+        "total": 1511,
+        "fewer_than_k": {
+          "5": 1,
+          "10": 15
+        }
+      },
+      "semantics": "Historical visible regression; keyword proxies only, no generation, no independent legal evaluation.",
+      "release_ready": false
+    },
+    "bge": {
+      "status": "completed",
+      "schema_version": "1.0",
+      "checked_at": "2026-11-07T16:46:27.891270+00:00",
+      "model": {
+        "key": "bge",
+        "family": "sentence_transformers",
+        "model_name": "BAAI/bge-reranker-v2-m3",
+        "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
+      },
+      "artifacts": {
+        "repo": "BAAI/bge-reranker-v2-m3",
+        "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+        "files": {
+          "config.json": "13dcd6c31d9fec9d1d8e158702072f62d7fa7d312a64b9fe057bec9a08cfe41a",
+          "model.safetensors": "d9e3e081faff1eefb84019509b2f5558fd74c1a05a2c7db22f74174fcedb5286",
+          "sentencepiece.bpe.model": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+          "special_tokens_map.json": "8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835",
+          "tokenizer.json": "69564b696052886ed0ac63fa393e928384e0f8caada38c1f4864a9bfbf379c15",
+          "tokenizer_config.json": "7e4c1cc848840aeccdd763458c18dd525eb0f795c992e00ebe9c28554e7db2d4"
+        }
+      },
+      "runtime": {
+        "python": "3.12.10",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "packages": {
+          "torch": "2.13.0+cu130",
+          "sentence-transformers": "6.2.0",
+          "transformers": "5.22.2",
+          "flashrank": "0.2.10",
+          "onnxruntime": "1.31.1"
+        },
+        "requested_torch_device": "cuda",
+        "batch_size": 8,
+        "max_length": 512,
+        "warmup_seconds": 14.956886800006032,
+        "rss_after_warmup_mb": null,
+        "onnx_available_providers": [
+          "AzureExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "torch_cuda_available": true,
+        "torch_threads": 4,
+        "cuda_matmul_allow_tf32": false,
+        "cuda_device_name": "NVIDIA GeForce RTX 4070 Ti",
+        "cuda_peak_allocated_mb": 2352.19384765625,
+        "cuda_peak_reserved_mb": 2480.0,
+        "actual_device": "cuda:0",
+        "dtype": "torch.float32",
+        "prompts": {},
+        "default_prompt_name": null
+      },
+      "pool_manifest_sha256": "a2e4401d52c727a796e7925b930d622019b9347a017a09b2b4f4ad0ce5e3c035",
+      "pool_sha256": "e27e4476a827f5c79b72762e269ca23b0aa32d80eb5013a360ee70246d98cdb9",
+      "provenance": {
+        "snapshot_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+        "snapshot_collected_at": "2026-11-06T20:33:06.116541+00:00",
+        "questions_sha256": "8f8fa783f839044e6fe9acadac78749e8db9b5696c87c86171b5bcbf9abf7162",
+        "retriever": "faiss",
+        "candidate_k": 20,
+        "query_expansion": false,
+        "applicability_policy_date": "2026-11-07",
+        "embedding_config": {
+          "embed_model": "OrdalieTech/Solon-embeddings-large-0.1",
+          "embed_revision": "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef",
+          "embedding_dimension": 1024,
+          "embed_query_prefix": "query: ",
+          "chunk_count": 35887
+        }
+      },
+      "summaries": [
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "bge",
+          "reranker_model": "BAAI/bge-reranker-v2-m3",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 5,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.805,
+          "mrr": 0.965,
+          "context_precision": 0.9255,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 330.9744,
+          "rerank_latency_ms_p95": 450.0969,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        },
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "bge",
+          "reranker_model": "BAAI/bge-reranker-v2-m3",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 10,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.8635,
+          "mrr": 0.9667,
+          "context_precision": 0.8935,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 330.9744,
+          "rerank_latency_ms_p95": 450.0969,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        }
+      ],
+      "candidate_counts": {
+        "min": 4,
+        "max": 20,
+        "total": 1511,
+        "fewer_than_k": {
+          "5": 1,
+          "10": 15
+        }
+      },
+      "semantics": "Historical visible regression; keyword proxies only, no generation, no independent legal evaluation.",
+      "release_ready": false
+    },
+    "qwen3": {
+      "status": "completed",
+      "schema_version": "1.0",
+      "checked_at": "2026-11-07T16:50:05.674682+00:00",
+      "model": {
+        "key": "qwen3",
+        "family": "sentence_transformers",
+        "model_name": "Qwen/Qwen3-Reranker-0.6B",
+        "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473"
+      },
+      "artifacts": {
+        "repo": "Qwen/Qwen3-Reranker-0.6B",
+        "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+        "files": {
+          ".gitattributes": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930",
+          "1_LogitScore/config.json": "73e3156450564d8a98b7e47bcf5aace0f29600828b51937da545571e84db3ff3",
+          "chat_template.jinja": "6f682162495ec5b39fd9005c01b6aa2a74669379fe967039f1e2cbbe8752369d",
+          "config.json": "d479c427a9ca5295218063d4f9aca4f297ab4ac27487cca7af42c84643d51ef0",
+          "config_sentence_transformers.json": "6a153d6696f78fd588c1c728967f0b773ea869d3c6028f151ce71ebe49140762",
+          "generation_config.json": "81051cd3f6e77013827148d0b8a6ead93f8ac390d5ab805f849199f0af6a08db",
+          "merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "model.safetensors": "27cd75a405b9c1b46b59abfd88aaa209e6fed2a1972cde9b70e7659537c5e65b",
+          "modules.json": "6f13b6b4a89e577b591b2077bca40c67c26541a6740a8809267cb474f90806a9",
+          "README.md": "5bba8c734f6dd3ae48317b4139317e45a7fce48fc55e15670b23a0dd15492ab6",
+          "sentence_bert_config.json": "3234ebd224d492cbe8d55d5ec80a3f408451c4db3005bafb64fe1c51c763e01e",
+          "tokenizer.json": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+          "tokenizer_config.json": "253153d0738ceb4c668d2eff957714dd2bea0b56de772a9fdccd96cbf517e6a0",
+          "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      },
+      "runtime": {
+        "python": "3.12.10",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "packages": {
+          "torch": "2.13.0+cu130",
+          "sentence-transformers": "6.2.0",
+          "transformers": "5.22.2",
+          "flashrank": "0.2.10",
+          "onnxruntime": "1.31.1"
+        },
+        "requested_torch_device": "cuda",
+        "batch_size": 8,
+        "max_length": 512,
+        "warmup_seconds": 4.15808590000961,
+        "rss_after_warmup_mb": null,
+        "onnx_available_providers": [
+          "AzureExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "torch_cuda_available": true,
+        "torch_threads": 4,
+        "cuda_matmul_allow_tf32": false,
+        "cuda_device_name": "NVIDIA GeForce RTX 4070 Ti",
+        "cuda_peak_allocated_mb": 1652.25048828125,
+        "cuda_peak_reserved_mb": 1760.0,
+        "actual_device": "cuda:0",
+        "dtype": "torch.bfloat16",
+        "prompts": {
+          "query": "Given a web search query, retrieve relevant passages that answer the query"
+        },
+        "default_prompt_name": "query"
+      },
+      "pool_manifest_sha256": "a2e4401d52c727a796e7925b930d622019b9347a017a09b2b4f4ad0ce5e3c035",
+      "pool_sha256": "e27e4476a827f5c79b72762e269ca23b0aa32d80eb5013a360ee70246d98cdb9",
+      "provenance": {
+        "snapshot_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+        "snapshot_collected_at": "2026-11-06T20:33:06.116541+00:00",
+        "questions_sha256": "8f8fa783f839044e6fe9acadac78749e8db9b5696c87c86171b5bcbf9abf7162",
+        "retriever": "faiss",
+        "candidate_k": 20,
+        "query_expansion": false,
+        "applicability_policy_date": "2026-11-07",
+        "embedding_config": {
+          "embed_model": "OrdalieTech/Solon-embeddings-large-0.1",
+          "embed_revision": "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef",
+          "embedding_dimension": 1024,
+          "embed_query_prefix": "query: ",
+          "chunk_count": 35887
+        }
+      },
+      "summaries": [
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "qwen3",
+          "reranker_model": "Qwen/Qwen3-Reranker-0.6B",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 5,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.793,
+          "mrr": 0.9728,
+          "context_precision": 0.9315,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 444.5222,
+          "rerank_latency_ms_p95": 676.5363,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        },
+        {
+          "schema_version": "2.0",
+          "benchmark": "reranker",
+          "reranker_key": "qwen3",
+          "reranker_model": "Qwen/Qwen3-Reranker-0.6B",
+          "retriever": "faiss",
+          "query_expansion": false,
+          "candidate_pool": 20,
+          "top_k": 10,
+          "question_count": 100,
+          "scored_question_count": 100,
+          "recall_at_k": 0.855,
+          "mrr": 0.9728,
+          "context_precision": 0.8945,
+          "citation_faithfulness": null,
+          "retrieval_latency_ms_mean": 63.9809,
+          "rerank_latency_ms_mean": 444.5222,
+          "rerank_latency_ms_p95": 676.5363,
+          "memory_before_mb": null,
+          "memory_after_mb": null,
+          "memory_delta_mb": null,
+          "full_generation": false,
+          "generation_errors": 0
+        }
+      ],
+      "candidate_counts": {
+        "min": 4,
+        "max": 20,
+        "total": 1511,
+        "fewer_than_k": {
+          "5": 1,
+          "10": 15
+        }
+      },
+      "semantics": "Historical visible regression; keyword proxies only, no generation, no independent legal evaluation.",
+      "release_ready": false
+    }
+  },
+  "result_files_sha256": {
+    "none": {
+      "run.json": "54fcbea5da6925bc7af8f44d74fedf4fedd75370341657d2554c8d61db6ccca8",
+      "summary.jsonl": "d0baa55913424023556e6ffd7307720336ecd6fa72d02521fc430024b7fe1ade",
+      "observations.jsonl": "25a708632c8e83cd2bd6385a5ac78ac1c681a0ed5315e4689743f9e2b52cd1d7"
+    },
+    "flashrank": {
+      "run.json": "34bb9077d9aa3655d4bdf5686b7bfad31422e40d66edd3bd5e8665138d718667",
+      "summary.jsonl": "2c0e6c3b43c49babee4d1f0e55098f39af3af3a8495cb808c13c2c49d6e2d8e7",
+      "observations.jsonl": "f1ed397e855c75c74fbe956dc820450d1bc9f5e8e3b41586c151ab9700341308"
+    },
+    "bge": {
+      "run.json": "100489015d71fc915c805f26e8633c2ea28e611cf4deb86c3d4f98bd04853892",
+      "summary.jsonl": "153d94a83e95fb748cdb1379f78ec4cc2ebd8a9e37c13bddecdae8e11d789a41",
+      "observations.jsonl": "aa3024b52560441ec0c7f51a9971d63bfcb29ae09f745c5d109f3027d382e55a"
+    },
+    "qwen3": {
+      "run.json": "a9bcda6819b14e68b16ce581e2d7afde8ce7b16575ac86283e40b1b93bd6d344",
+      "summary.jsonl": "c094f13f72f9c0114fce58818dd164c6705b36022b4d98434f30802071ce93db",
+      "observations.jsonl": "f4659d26035f5ae11f3d33a2902f21db10e2bda87f68519231db6dd63d785329"
+    }
+  },
+  "paired_keyword_coverage_vs_retrieval_order": {
+    "flashrank": {
+      "5": {
+        "better_questions": 19,
+        "worse_questions": 19,
+        "unchanged_questions": 62,
+        "mean_delta": -0.002,
+        "largest_regressions": [
+          {
+            "question_id": "monaco-065",
+            "delta": -0.6
+          },
+          {
+            "question_id": "monaco-009",
+            "delta": -0.4
+          },
+          {
+            "question_id": "monaco-011",
+            "delta": -0.4
+          },
+          {
+            "question_id": "monaco-038",
+            "delta": -0.4
+          },
+          {
+            "question_id": "monaco-005",
+            "delta": -0.2
+          }
+        ]
+      },
+      "10": {
+        "better_questions": 8,
+        "worse_questions": 9,
+        "unchanged_questions": 83,
+        "mean_delta": -0.004,
+        "largest_regressions": [
+          {
+            "question_id": "monaco-018",
+            "delta": -0.4
+          },
+          {
+            "question_id": "monaco-006",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-008",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-016",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-031",
+            "delta": -0.2
+          }
+        ]
+      }
+    },
+    "bge": {
+      "5": {
+        "better_questions": 23,
+        "worse_questions": 10,
+        "unchanged_questions": 67,
+        "mean_delta": 0.042,
+        "largest_regressions": [
+          {
+            "question_id": "monaco-006",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-008",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-015",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-032",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-050",
+            "delta": -0.2
+          }
+        ]
+      },
+      "10": {
+        "better_questions": 11,
+        "worse_questions": 4,
+        "unchanged_questions": 85,
+        "mean_delta": 0.0145,
+        "largest_regressions": [
+          {
+            "question_id": "monaco-025",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-068",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-071",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-093",
+            "delta": -0.2
+          }
+        ]
+      }
+    },
+    "qwen3": {
+      "5": {
+        "better_questions": 20,
+        "worse_questions": 11,
+        "unchanged_questions": 69,
+        "mean_delta": 0.03,
+        "largest_regressions": [
+          {
+            "question_id": "monaco-011",
+            "delta": -0.4
+          },
+          {
+            "question_id": "monaco-006",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-008",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-017",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-050",
+            "delta": -0.2
+          }
+        ]
+      },
+      "10": {
+        "better_questions": 9,
+        "worse_questions": 6,
+        "unchanged_questions": 85,
+        "mean_delta": 0.006,
+        "largest_regressions": [
+          {
+            "question_id": "monaco-008",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-032",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-050",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-068",
+            "delta": -0.2
+          },
+          {
+            "question_id": "monaco-071",
+            "delta": -0.2
+          }
+        ]
+      }
+    }
+  },
+  "excluded_runs": [
+    {
+      "model": "qwen3",
+      "status": "failed",
+      "reason": "incomplete pinned local cache; completed in prefetch and rerun separately",
+      "used_in_comparison": false
+    }
+  ],
+  "preservation": {
+    "active_index_unchanged": true,
+    "active_index_sha256": {
+      "data/index/veridicta.faiss": "750ee8836812984807b80bc99914b5c997deb6c8c22946867c6e8b0bfd87918a",
+      "data/index/chunks_map.jsonl": "08d30adad8adcfb152c1981351a0afe0fa37d36193b56ac2e639ee8cac693366",
+      "data/index/embedding_config.json": "ad6fb5112b888dea260163d30c303b95f1ba50799a8d10b79d3bf1ae282fc85a"
+    },
+    "indexed_candidate_manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "main_commit": "35f18fdc475836191a34386b5ca4d24a14e467b0"
+  },
+  "validation": {
+    "local_tests": {
+      "passed": 471,
+      "skipped": 3,
+      "deselected": 16
+    },
+    "code_ci": "https://github.com/Fascinax/Veridicta/actions/runs/42392190914",
+    "ci_tests": {
+      "passed": 472,
+      "skipped": 2,
+      "deselected": 16
+    },
+    "summary_means_recomputed": true,
+    "same_pool_and_provenance_verified": true
+  },
+  "decision": {
+    "active_reranker_changed": false,
+    "release_ready": false,
+    "remaining": [
+      "Independent passage relevance and legal answer annotations",
+      "Embedding and generation challengers",
+      "CPU target / RAM and repeated latency qualification",
+      "Corpus review, deployment identity and release review"
+    ]
+  },
+  "limits": [
+    "Keyword coverage, MRR@k and context precision are lexical proxies, not legal accuracy.",
+    "Same 100 visible regression questions; not an independent holdout.",
+    "FlashRank ran on CPU; BGE and Qwen3 ran on CUDA with different dtypes.",
+    "Shared workstation, one timing pass per question; p95 is descriptive, not a production guarantee.",
+    "RSS is unavailable in the GPU runtime; no RAM comparison is claimed.",
+    "The newer 97 circulars are not part of the indexed corpus evaluated here."
+  ]
+}
