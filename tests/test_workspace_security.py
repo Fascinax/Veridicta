@@ -1,16 +1,19 @@
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
 import ast
 import json
 import os
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from filelock import FileLock
 
-from workspaces.identity import workspace_owner
-from workspaces.operations import backup, restore, purge_expired, purge_expired_audits
-from workspaces.store import WorkspaceStore
 from retrievers.traceability import build_prompt_trace, text_summary
+from workspaces.identity import workspace_owner
+from workspaces.operations import backup, main as operations_main, purge_expired, purge_expired_audits, restore
+from workspaces.store import RESTORE_MARKER, WorkspaceStore
 
 
 def _event():
@@ -162,3 +165,174 @@ def test_streamlit_sessions_have_separate_workspace_stores(tmp_path, monkeypatch
     first.button[0].click().run()
     second = AppTest.from_string(script).run()
     assert not first.exception and not second.exception and first.text[0].value == "1" and second.text[0].value == "0"
+
+
+def _multi_file_backup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> bytes:
+    monkeypatch.setenv("VERIDICTA_AUDIT_ENABLED", "true")
+    source = WorkspaceStore(tmp_path / "source", owner_id="owner-one")
+    first = source.create("Case One")
+    second = source.create("Case Two")
+    source.append_message(first.workspace_id, "user", "Question one")
+    source.append_audit(first.workspace_id, **_event())
+    source.append_audit(second.workspace_id, **_event())
+    payload = backup(source)
+    assert json.loads(payload)["schema_version"] == 2
+    assert len(json.loads(payload)["files"]) >= 4
+    return payload
+
+
+def test_restore_second_write_failure_leaves_empty_retryable_destination(tmp_path, monkeypatch):
+    payload = _multi_file_backup(tmp_path, monkeypatch)
+    destination = WorkspaceStore(tmp_path / "destination", owner_id="owner-one")
+    original_open = Path.open
+    staged_writes = 0
+
+    def fail_on_second_staged_write(path, *args, **kwargs):
+        nonlocal staged_writes
+        if any(part.startswith(".restore-") for part in path.parts) and args and args[0] == "xb":
+            staged_writes += 1
+            if staged_writes == 2:
+                raise OSError("synthetic second write failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_on_second_staged_write)
+    with pytest.raises(OSError, match="synthetic second write failure"):
+        restore(destination, payload)
+    monkeypatch.undo()
+
+    assert list(destination.workspace_root.iterdir()) == []
+    assert list(destination.audit_root.iterdir()) == []
+    assert not (destination.root / RESTORE_MARKER).exists()
+    assert not list(destination.root.glob(".restore-*"))
+
+    # Destination remains cleanly retryable with the same v1 archive
+    restore(destination, payload)
+    assert backup(destination) == payload
+    assert not (destination.root / RESTORE_MARKER).exists()
+    assert not list(destination.root.glob(".restore-*"))
+
+
+def test_restore_second_area_promotion_failure_rolls_back_and_remains_retryable(tmp_path, monkeypatch):
+    payload = _multi_file_backup(tmp_path, monkeypatch)
+    destination = WorkspaceStore(tmp_path / "destination", owner_id="owner-one")
+    original_replace = Path.replace
+
+    def fail_audit_promotion(path, target):
+        if path.parent.name.startswith(".restore-") and path.name == "audit":
+            raise OSError("synthetic audit promotion failure")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_audit_promotion)
+    with pytest.raises(OSError, match="synthetic audit promotion failure"):
+        restore(destination, payload)
+    monkeypatch.undo()
+
+    assert list(destination.workspace_root.iterdir()) == []
+    assert list(destination.audit_root.iterdir()) == []
+    assert not (destination.root / RESTORE_MARKER).exists()
+    assert not list(destination.root.glob(".restore-*"))
+
+    restore(destination, payload)
+    assert backup(destination) == payload
+
+
+def test_restore_failed_rollback_stays_blocked_for_all_operations(tmp_path, monkeypatch):
+    payload = _multi_file_backup(tmp_path, monkeypatch)
+    destination = WorkspaceStore(tmp_path / "destination", owner_id="owner-one")
+    original_replace = Path.replace
+
+    def fail_promotion_and_rollback(path, target):
+        if (path.parent.name.startswith(".restore-") and path.name == "audit") or path == destination.workspace_root:
+            raise OSError("synthetic rollback failure")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_promotion_and_rollback)
+    with pytest.raises(RuntimeError, match="blocked"):
+        restore(destination, payload)
+    monkeypatch.undo()
+
+    assert (destination.root / RESTORE_MARKER).exists()
+    assert list(destination.root.glob(".restore-*"))
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        restore(destination, payload)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        WorkspaceStore(destination.root)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        destination.list()
+    with pytest.raises(RuntimeError, match="interrupted"):
+        destination.create("Must not be written")
+    with pytest.raises(RuntimeError, match="interrupted"):
+        backup(destination)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        purge_expired(destination, datetime.now(timezone.utc), apply=True)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        purge_expired_audits(destination, datetime.now(timezone.utc), apply=True)
+
+
+def test_restore_failed_rollback_directory_recreation_keeps_scope_blocked(tmp_path, monkeypatch):
+    payload = _multi_file_backup(tmp_path, monkeypatch)
+    destination = WorkspaceStore(tmp_path / "destination", owner_id="owner-one")
+    original_replace, original_mkdir = Path.replace, Path.mkdir
+
+    def fail_audit_promotion(path, target):
+        if path.parent.name.startswith(".restore-") and path.name == "audit":
+            raise OSError("synthetic promotion failure")
+        return original_replace(path, target)
+
+    def fail_audit_recreation(path, *args, **kwargs):
+        if path == destination.audit_root:
+            raise OSError("synthetic mkdir failure")
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", fail_audit_promotion)
+    monkeypatch.setattr(Path, "mkdir", fail_audit_recreation)
+    with pytest.raises(RuntimeError, match="blocked"):
+        restore(destination, payload)
+    monkeypatch.undo()
+
+    assert not destination.audit_root.exists()
+    assert (destination.root / RESTORE_MARKER).exists()
+    assert list(destination.root.glob(".restore-*"))
+    with pytest.raises(RuntimeError, match="interrupted"):
+        WorkspaceStore(destination.root)
+    assert not destination.audit_root.exists()
+
+
+def test_store_constructor_waits_for_lock_and_never_repairs_blocked_scope(tmp_path):
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    (blocked / RESTORE_MARKER).write_text('{"status": "restoring"}', encoding="utf-8")
+    with pytest.raises(RuntimeError, match="interrupted"):
+        WorkspaceStore(blocked)
+    assert sorted(path.name for path in blocked.iterdir() if path.name != ".workspace.lock") == [RESTORE_MARKER]
+
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    holder = FileLock(str(locked / ".workspace.lock"))
+    holder.acquire()
+    worker = threading.Thread(target=WorkspaceStore, args=(locked,))
+    try:
+        worker.start()
+        worker.join(0.5)
+        assert worker.is_alive() and not (locked / "workspaces").exists() and not (locked / "audit").exists()
+    finally:
+        holder.release()
+    worker.join(10)
+    assert not worker.is_alive() and (locked / "workspaces").is_dir() and (locked / "audit").is_dir()
+
+
+@pytest.mark.parametrize("operation", ["backup", "restore", "purge"])
+def test_operations_cli_refuses_blocked_scope(tmp_path, monkeypatch, operation):
+    root, archive = tmp_path / "blocked", tmp_path / "backup.json"
+    root.mkdir()
+    (root / "workspaces").mkdir()
+    (root / RESTORE_MARKER).write_text("{}", encoding="utf-8")
+    archive.write_bytes(b'{"schema_version":1,"files":[]}')
+    args = ["operations", operation, "--root", str(root)]
+    if operation != "purge":
+        args += ["--file", str(archive if operation == "restore" else tmp_path / "out.json")]
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit):
+        operations_main()
+    assert not (root / "audit").exists() and not (tmp_path / "out.json").exists()
