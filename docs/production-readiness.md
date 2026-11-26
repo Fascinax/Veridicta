@@ -60,6 +60,14 @@ revue requise manque. Les preuves de fournisseur et d'hébergement doivent être
 réactualisées pour le déploiement choisi. Voir le rapport versionné
 `eval/results/audit/dense-index-20261107.json` et `docs/dense-indexing.md`.
 
+Une collecte complémentaire brute, séparée de ce candidat, contient désormais
+97 circulaires et les 3 366 documents LegiMonaco. Sa couverture reste partielle
+(six paginations de recherche exclues par robots) et ses dates d'effet ne sont
+pas inventées. Elle n'est pas indexée ni activée. Les six pages sources sans
+corps sont qualifiées structurellement et restent à revoir juridiquement.
+Voir `docs/journal-coverage.md` et le rapport
+`eval/results/audit/corpus-coverage-20261107.json`.
+
 Un index BM25 manquant dans un snapshot scellé n'est plus reconstruit implicitement
 au chargement. La construction doit précéder le scellement ; un accès en lecture
 ne doit pas changer les octets attestés. Le mode historique local conserve son
