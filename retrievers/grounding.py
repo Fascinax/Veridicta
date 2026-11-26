@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 import unicodedata
 
@@ -310,6 +310,7 @@ class GroundingClaim:
     status: str
     reason: str
     evidence: EvidenceSpan | None = None
+    context_sources: tuple[int, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -321,6 +322,7 @@ class GroundingClaim:
             "support_score": self.support_score,
             "status": self.status,
             "reason": self.reason,
+            "context_source_numbers": list(self.context_sources),
             "evidence_source_number": self.evidence.source_number if self.evidence else None,
         }
 
@@ -637,6 +639,37 @@ def _evidence_verdict(
     return score, "low_evidence_overlap", None
 
 
+def _document_context(claims: list[GroundingClaim], chunks: list[dict], passages: dict[int, str]):
+    """Keep every injected passage of the selected document version available to the reader."""
+    groups: dict[tuple[str, str], list[int]] = {}
+    by_number: dict[int, list[int]] = {}
+    for number, chunk in enumerate(chunks, 1):
+        document = str(chunk.get("parent_document_id") or chunk.get("doc_id") or "").strip()
+        if document:
+            version = chunk.get("version_id") or (chunk.get("metadata") or {}).get("version_id")
+            group = groups.setdefault((document, str(version or "")), [])
+            group.append(number)
+            by_number[number] = group
+
+    for group in groups.values():
+        if all(type(chunks[n - 1].get("chunk_index")) is int for n in group):
+            group.sort(key=lambda n: chunks[n - 1]["chunk_index"])
+
+    quoted = {c.evidence.source_number for c in claims if c.status == "supported" and c.evidence}
+    for claim in claims:
+        if claim.evidence is None:
+            yield claim
+            continue
+        number = claim.evidence.source_number
+        context = tuple(by_number.get(number, [number]))
+        if any(n not in passages for n in context):
+            yield replace(claim, status="unsupported", reason="document_context_unavailable", evidence=None)
+        elif claim.status == "supported" and not quoted.issuperset(context):
+            yield replace(claim, status="unsupported", reason="incomplete_document_context", context_sources=context)
+        else:
+            yield replace(claim, context_sources=context)
+
+
 def verify_grounding(
     answer: str,
     retrieved_chunks: list[dict],
@@ -699,7 +732,7 @@ def verify_grounding(
                 evidence=evidence,
             )
         )
-    return GroundingReport(tuple(claims), source_count, minimum_support)
+    return GroundingReport(tuple(_document_context(claims, retrieved_chunks, passages)), source_count, minimum_support)
 
 
 def enforce_grounding(
@@ -713,10 +746,9 @@ def enforce_grounding(
     for claim in report.claims:
         if claim.status == "abstained":
             kept_claims.append(claim.text)
-        elif claim.evidence is not None:
-            span = claim.evidence
-            passage = retrieved_chunks[span.source_number - 1]["text"].strip()
-            excerpt = f"{passage} [Source {span.source_number}]"
+        for number in claim.context_sources:
+            passage = retrieved_chunks[number - 1]["text"].strip()
+            excerpt = f"{passage} [Source {number}]"
             if excerpt not in kept_claims:
                 kept_claims.append(excerpt)
     if report.unsupported_count and _PARTIAL_ABSTENTION_NOTICE not in kept_claims:
