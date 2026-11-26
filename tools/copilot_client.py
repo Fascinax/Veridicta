@@ -19,7 +19,8 @@ import threading
 from collections.abc import Iterator
 from types import TracebackType
 
-from copilot import CopilotClient as _SdkClient, PermissionHandler
+from copilot import CopilotClient as _SdkClient
+from copilot.generated.rpc import PermissionDecisionUserNotAvailable
 
 from retrievers.config import COPILOT_DEFAULT_MODEL
 
@@ -61,7 +62,11 @@ def _build_sdk_client() -> _SdkClient:
     if token:
         opts["github_token"] = token
         opts["use_logged_in_user"] = False
-    return _SdkClient(opts)
+    return _SdkClient(**opts)
+
+
+def _deny_permission(*_args, **_kwargs) -> PermissionDecisionUserNotAvailable:
+    return PermissionDecisionUserNotAvailable()
 
 
 class CopilotClient:
@@ -114,12 +119,16 @@ class CopilotClient:
             client = _build_sdk_client()
             await client.start()
             try:
-                session = await client.create_session({
+                session = await client.create_session(**{
                     "model": self._model,
                     "system_message": {"mode": "replace", "content": system},
                     "available_tools": [],
+                    "skip_custom_instructions": True,
+                    "enable_config_discovery": False,
+                    "enable_skills": False,
+                    "enable_host_git_operations": False,
                     "infinite_sessions": {"enabled": False},
-                    "on_permission_request": PermissionHandler.approve_all,
+                    "on_permission_request": _deny_permission,
                 })
                 done = asyncio.Event()
                 result_parts: list[str] = []
@@ -131,7 +140,7 @@ class CopilotClient:
                         done.set()
 
                 session.on(on_event)
-                await session.send({"prompt": user})
+                await session.send(prompt=user)
                 await asyncio.wait_for(done.wait(), timeout=300)
                 await session.disconnect()
                 return "".join(result_parts)
@@ -160,13 +169,17 @@ class CopilotClient:
             client = _build_sdk_client()
             await client.start()
             try:
-                session = await client.create_session({
+                session = await client.create_session(**{
                     "model": self._model,
                     "system_message": {"mode": "replace", "content": system},
                     "streaming": True,
                     "available_tools": [],
+                    "skip_custom_instructions": True,
+                    "enable_config_discovery": False,
+                    "enable_skills": False,
+                    "enable_host_git_operations": False,
                     "infinite_sessions": {"enabled": False},
-                    "on_permission_request": PermissionHandler.approve_all,
+                    "on_permission_request": _deny_permission,
                 })
                 done = asyncio.Event()
 
@@ -179,7 +192,7 @@ class CopilotClient:
                         done.set()
 
                 session.on(on_event)
-                await session.send({"prompt": user})
+                await session.send(prompt=user)
                 await asyncio.wait_for(done.wait(), timeout=300)
                 await session.disconnect()
             finally:

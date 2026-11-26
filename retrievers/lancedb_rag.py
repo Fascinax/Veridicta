@@ -18,6 +18,9 @@ Query:
 
 from __future__ import annotations
 
+from lancedb.index import FTS
+import lancedb
+
 import argparse
 import json
 import logging
@@ -89,7 +92,7 @@ def build_lancedb_index(
     table = db.create_table(LANCEDB_TABLE_NAME, records, mode="overwrite")
 
     logger.info("Creating FTS index on 'text' column ...")
-    table.create_fts_index("text", replace=True)
+    table.create_index("text", config=FTS(), replace=True)
 
     logger.info(
         "LanceDB index built: %s  (%d rows, dim=%d)",
@@ -152,7 +155,7 @@ def build_lancedb_from_faiss(
     table = db.create_table(LANCEDB_TABLE_NAME, records, mode="overwrite")
 
     logger.info("Creating FTS index on 'text' column ...")
-    table.create_fts_index("text", replace=True)
+    table.create_index("text", config=FTS(), replace=True)
 
     logger.info(
         "LanceDB index built from FAISS: %s  (%d rows, dim=%d)",

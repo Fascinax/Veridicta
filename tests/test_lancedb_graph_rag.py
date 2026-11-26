@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from lancedb.index import FTS
+
 import json
 
 import numpy as np
@@ -43,7 +45,7 @@ def tiny_lance_table(tmp_path):
         )
 
     table = db.create_table("chunks", records, mode="overwrite")
-    table.create_fts_index("text", replace=True)
+    table.create_index("text", config=FTS(), replace=True)
     return table
 
 
@@ -146,7 +148,7 @@ class TestChunksByDocCache:
                 [{"vector": vec.tolist(), "text": "x", "doc_id": "d", "chunk_id": "c",
                   "source": "s", "title": "t", "metadata_json": "{}"}],
             )
-            t.create_fts_index("text", replace=True)
+            t.create_index("text", config=FTS(), replace=True)
             return t
 
         t1 = _make_table("db1")

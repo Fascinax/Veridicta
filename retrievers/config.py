@@ -22,9 +22,9 @@ _TOKENIZER_MODEL_ALIASES = {
 _MODEL_CONTEXT_WINDOWS = {
     "copilot": {"default": 128_000},
     "cerebras": {
-        "default": 8_192,
-        "gpt-oss-120b": 8_192,
-        "llama3.1-8b": 8_192,
+        "default": 65_536,
+        "gpt-oss-120b": 65_536,
+        "qwen-3.8-27b": 65_536,
     },
     "omniroute": {"default": 32_768},
 }
@@ -89,7 +89,7 @@ RRF_CONFIG = RRFConfig()
 GRAPH_CONFIG = GraphConfig()
 
 CEREBRAS_DEFAULT_MODEL = os.getenv("CEREBRAS_MODEL", "gpt-oss-120b")
-COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "gpt-4.1")
+COPILOT_DEFAULT_MODEL = os.getenv("COPILOT_MODEL", "claude-sonnet-5.5")
 OMNIROUTE_DEFAULT_BASE_URL = os.getenv(
     "OMNIROUTE_BASE_URL",
     "http://localhost:20128/v1",
