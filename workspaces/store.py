@@ -12,17 +12,25 @@ import textwrap
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any
-from functools import wraps
 
 from filelock import FileLock
+
+RESTORE_MARKER = ".restore-pending.json"
+
+
+def _require_available(root: Path) -> None:
+    if (root / RESTORE_MARKER).exists():
+        raise RuntimeError("Workspace scope has an interrupted restore; recover into a new scope")
 
 
 def _locked(method):
     @wraps(method)
     def synchronized(self, *args, **kwargs):
         with self._lock:
+            _require_available(self.root)
             return method(self, *args, **kwargs)
     return synchronized
 
@@ -73,19 +81,26 @@ class WorkspaceStore:
     """Persist each workspace below its own directory with atomic writes."""
 
     def __init__(self, root: str | Path, owner_id: str | None = None) -> None:
-        self.root = Path(root).resolve()
+        self.storage_root = Path(root).resolve()
+        self.root = self.storage_root
         if owner_id is not None:
             if not owner_id.strip():
                 raise ValueError("owner must not be empty")
             scope = hashlib.sha256(owner_id.encode("utf-8")).hexdigest()
             self.root = _contained(self.root, "owners", scope)
+        # Only the scope directory itself is created outside the lock: it holds the lock file.
         self.root.mkdir(parents=True, exist_ok=True)
         self.scope_key = str(self.root)
         self._lock = FileLock(str(self.root / ".workspace.lock"), timeout=20)
         self.workspace_root = _contained(self.root, "workspaces")
         self.audit_root = _contained(self.root, "audit")
-        self.workspace_root.mkdir(parents=True, exist_ok=True)
-        self.audit_root.mkdir(parents=True, exist_ok=True)
+        # Data areas are created under the scope lock and never while a restore is pending:
+        # a concurrent constructor must not recreate a directory that a restore promotion has
+        # just removed, nor repair a scope that an interrupted restore left blocked.
+        with self._lock:
+            _require_available(self.root)
+            self.workspace_root.mkdir(exist_ok=True)
+            self.audit_root.mkdir(exist_ok=True)
 
     @_locked
     def create(self, name: str, tags: list[str] | None = None) -> CaseWorkspace:
