@@ -304,7 +304,10 @@ source number. A matching sentence can appear between a party’s claim and a
 court’s rejection. Keeping that context preserves who made the claim and how
 the court ruled. The grounding report distinguishes a complete quotation from
 an isolated sentence or a paraphrase. If no suitable passage can be shown, the
-answer abstains. Context is limited to the retrieved passage.
+answer abstains. When several passages from the same identified document version reach the model,
+selecting one returns all of them with separate citations. If any of them cannot
+be quoted safely, the answer omits that group. Coverage is limited to the passages
+actually supplied to the model.
 
 Benchmark the current FlashRank model against the local multilingual BGE
 reranker:
