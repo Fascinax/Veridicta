@@ -4,7 +4,7 @@ eval/evaluate.py -- Veridicta RAG evaluation pipeline
 Metrics per question:
   - keyword_recall       : fraction of reference_keywords found in the answer
   - word_f1              : token-level F1 vs. reference_answer
-  - citation_faithfulness: fraction of cited laws/articles grounded in context
+  - citation_faithfulness: legacy field for source-number validity, not entailment
   - context_coverage     : fraction of answer tokens present in retrieved context
     - ragas_faithfulness   : claim-level grounding score computed by Ragas
     - ragas_context_precision: ranking precision of retrieved chunks via Ragas
@@ -45,6 +45,7 @@ from retrievers.baseline_rag import (
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
+    DEFAULT_PROMPT_VERSION,
     _load_embedder,
     answer,
     load_index,
@@ -118,7 +119,7 @@ except ImportError:
 
     DEFAULT_RAGAS_BACKEND = "cerebras"
     DEFAULT_RAGAS_LANGUAGE = "french"
-    DEFAULT_RAGAS_MODEL = "llama3.1-8b"
+    DEFAULT_RAGAS_MODEL = "qwen-3.8-27b"
 
     class RagasConfig:  # type: ignore[override]
         def __init__(self, *args, **kwargs) -> None:
@@ -215,7 +216,7 @@ class EvalRunConfig:
     parent_child: bool = False
     parent_child_neighbor_radius: int = 1
     parent_child_max_chunks: int | None = None
-    prompt_version: int = 1
+    prompt_version: int = DEFAULT_PROMPT_VERSION
     ragas_evaluator: RagasEvaluator | None = None
     use_bertscore: bool = False
     bertscore_model: str = "distilbert-base-multilingual-cased"
@@ -1164,7 +1165,7 @@ def _open_stream_file(stream_out: Path | None):
 def _stream_eval_result(stream_file_handle, result: EvalResult) -> None:
     if stream_file_handle is None:
         return
-    stream_file_handle.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+    stream_file_handle.write(json.dumps(_result_payload(result), ensure_ascii=False) + "\n")
     stream_file_handle.flush()
 
 
@@ -1177,11 +1178,19 @@ def _avg(values: list[float]) -> float:
     return round(sum(values) / len(values), 4) if values else 0.0
 
 
+def _result_payload(result: EvalResult) -> dict:
+    return {
+        **asdict(result),
+        "citation_reference_validity": result.citation_faithfulness,
+        "metric_semantics": "reference_validity_and_lexical_coverage_not_legal_entailment",
+    }
+
+
 def _write_results_file(results: list[EvalResult], out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         for result in results:
-            fh.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+            fh.write(json.dumps(_result_payload(result), ensure_ascii=False) + "\n")
 
 
 def _write_trace_file(

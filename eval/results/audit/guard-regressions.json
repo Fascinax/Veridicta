@@ -1,0 +1,383 @@
+{
+  "fixture_sha256": "6c8689bdf0053c5aa0e3d02c5dc99c499ff55e0d358bcc48f3e8e67b5e791db7",
+  "current": {
+    "scope": "synthetic_guard_regression_only",
+    "verifier_passed": 21,
+    "cases": 22,
+    "passed": 22,
+    "acceptance_rate": 0.13636363636363635,
+    "false_acceptance_rate": 0.0,
+    "results": [
+      {
+        "id": "exact",
+        "expected_supported": true,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "same-negation",
+        "expected_supported": true,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "decimal-law",
+        "expected_supported": true,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "short-supported",
+        "expected_supported": true,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "changed-number",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "reversed-negation",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "removed-negation",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "source-zero",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "source-overflow",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "mixed-invalid",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "missing-citation",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "unrelated",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "false-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "true-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": true,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "changed-date",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "partial-overlap",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "substituted-debtor",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "omitted-condition",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "contested-exact",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "contested-paraphrase",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "split-judgment-exact",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "split-judgment-paraphrase",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      }
+    ]
+  },
+  "comparison_revision": "35f18fd",
+  "historical": {
+    "scope": "synthetic_guard_regression_only",
+    "verifier_passed": 7,
+    "cases": 22,
+    "passed": 7,
+    "acceptance_rate": 0.7272727272727273,
+    "false_acceptance_rate": 0.8125,
+    "results": [
+      {
+        "id": "exact",
+        "expected_supported": true,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "same-negation",
+        "expected_supported": true,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "decimal-law",
+        "expected_supported": true,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "short-supported",
+        "expected_supported": true,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "changed-number",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "reversed-negation",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "removed-negation",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "source-zero",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "source-overflow",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "mixed-invalid",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "missing-citation",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "unrelated",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "false-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": true,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "true-abstention",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": true,
+        "verifier_pass": true,
+        "pass": true
+      },
+      {
+        "id": "changed-date",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "partial-overlap",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "substituted-debtor",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "omitted-condition",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "contested-exact",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "contested-paraphrase",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "split-judgment-exact",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "split-judgment-paraphrase",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      }
+    ]
+  }
+}
