@@ -136,8 +136,8 @@ def test_grounding_preserves_legal_article_abbreviations_and_headings() -> None:
         "Selon l'Art. 15. de l'ord. n° 1.234, le salarié dispose de 30 jours de préavis. [Source 1]"
     )
     inline_report = verify_grounding(inline_ref, chunks)
-    assert inline_report.supported_count == 1
-    assert inline_report.unsupported_count == 0
+    assert inline_report.unsupported_count == 1
+    assert inline_report.claims[0].evidence.source_number == 1
 
 
 def test_grounding_handles_adjacent_citations_without_stealing_or_dropping() -> None:
@@ -232,8 +232,8 @@ def test_grounding_detects_french_legal_negations_and_compound_polarity() -> Non
         "Le salarié handicapé n'a pas droit à cette indemnité forfaitaire. [Source 1]",
         noun_personne_source,
     )
-    assert noun_personne_report.supported_count == 1
-    assert noun_personne_report.unsupported_count == 0
+    assert noun_personne_report.unsupported_count == 1
+    assert noun_personne_report.claims[0].evidence.source_number == 1
 
 
 def test_grounding_checks_legal_acronyms_and_dotted_forms() -> None:
@@ -250,8 +250,8 @@ def test_grounding_checks_legal_acronyms_and_dotted_forms() -> None:
         "La SAM dépose ses statuts au Journal de Monaco. [Source 1]",
         sam_source,
     )
-    assert sam_claim.supported_count == 1
-    assert sam_claim.unsupported_count == 0
+    assert sam_claim.unsupported_count == 1
+    assert sam_claim.claims[0].evidence.source_number == 1
 
     sarl_claim = verify_grounding(
         "La SARL dépose ses statuts au Journal de Monaco. [Source 1]",
@@ -275,8 +275,8 @@ def test_grounding_checks_legal_acronyms_and_dotted_forms() -> None:
         "Le salarié en CDI dispose de 30 jours de préavis. [Source 1]",
         expanded_source,
     )
-    assert cdi_from_expanded.supported_count == 1
-    assert cdi_from_expanded.unsupported_count == 0
+    assert cdi_from_expanded.unsupported_count == 1
+    assert cdi_from_expanded.claims[0].evidence.source_number == 1
 
     cdd_from_expanded = verify_grounding(
         "Le salarié en CDD dispose de 30 jours de préavis. [Source 1]",
@@ -392,19 +392,20 @@ def test_grounding_rejects_directional_actor_patient_and_recipient_swaps() -> No
     for source_text, reversed_claim in reversed_pairs:
         report = verify_grounding(reversed_claim, [{"text": source_text}])
         assert report.unsupported_count == 1, f"{source_text} -> {reversed_claim}"
-        assert report.claims[0].reason == "conflicting_role_direction", f"{source_text} -> {reversed_claim}"
+        guarded, _ = enforce_grounding(reversed_claim, [{"text": source_text}])
+        assert reversed_claim not in guarded
 
     guarded, report = enforce_grounding(
         "Le bailleur restitue le montant au locataire. [Source 1]",
         [{"text": "Le locataire restitue le montant au bailleur."}],
     )
     assert report.unsupported_count == 1
-    assert report.claims[0].reason == "conflicting_role_direction"
+    assert report.claims[0].reason == "unverified_paraphrase"
     assert "Le bailleur restitue" not in guarded
     assert "ne permettent pas" in guarded
 
 
-def test_grounding_accepts_legitimate_paraphrases_preserving_role_direction() -> None:
+def test_grounding_returns_cited_source_for_related_paraphrases() -> None:
     legitimate_pairs = [
         (
             "Le locataire restitue le montant au bailleur.",
@@ -485,9 +486,10 @@ def test_grounding_accepts_legitimate_paraphrases_preserving_role_direction() ->
     ]
 
     for source_text, paraphrase in legitimate_pairs:
-        report = verify_grounding(paraphrase, [{"text": source_text}])
-        assert report.supported_count == 1, f"{source_text} -> {paraphrase} ({report.claims[0].reason})"
-        assert report.unsupported_count == 0, f"{source_text} -> {paraphrase}"
+        guarded, report = enforce_grounding(paraphrase, [{"text": source_text}])
+        assert report.unsupported_count == 1
+        assert f"{source_text} [Source 1]" in guarded, (source_text, paraphrase)
+
 
 def test_request_for_payment_preserves_creditor_and_debtor():
     for verb in ("réclame", "demande"):
@@ -496,3 +498,32 @@ def test_request_for_payment_preserves_creditor_and_debtor():
         assert verify_grounding(source + " [Source 1]", [{"text": source}]).supported_count == 1
         report = verify_grounding(swapped + " [Source 1]", [{"text": source}])
         assert report.unsupported_count == 1
+
+def test_substituted_debtor_uses_only_the_relevant_cited_sentence():
+    source = "Le bailleur réclame une indemnité au locataire."
+    chunks = [{"text": "Le garant participe à la réunion."}, {"text": source + " Le tribunal siège demain."}]
+    claim = "Le bailleur réclame une indemnité au garant. [Source 1] et [Source 2]"
+    guarded, report = enforce_grounding(claim, chunks)
+    assert report.unsupported_count == 1
+    assert guarded.splitlines()[0] == source + " [Source 2]"
+    assert "garant" not in guarded
+    assert enforce_grounding(guarded, chunks)[0] == guarded
+
+
+def test_extractive_guard_preserves_conditions_accents_and_relative_clauses():
+    for source, claim in [
+        ("Le préavis incombe à l'employeur.", "Le préavis incombe au salarié."),
+        ("Le recours contre l'employeur appartient au salarié.", "Le recours contre le salarié appartient à l'employeur."),
+        ("Le salarié qui a travaillé 12 mois reçoit une prime de l'employeur.", "Le salarié reçoit une prime de l'employeur."),
+        ("Le bailleur verse une prime\\nsi le contrat est renouvelé.", "Le bailleur verse une prime."),
+    ]:
+        guarded, report = enforce_grounding(claim + " [Source 1]", [{"text": source}])
+        assert report.supported_count == 0
+        assert guarded.splitlines()[0] == " ".join(source.split()) + " [Source 1]"
+
+
+def test_abstention_prefix_cannot_carry_an_uncited_obligation():
+    claim = "Les sources ne permettent pas de confirmer le délai et le salarié perd son droit."
+    guarded, report = enforce_grounding(claim, [])
+    assert report.unsupported_count == 1
+    assert "perd son droit" not in guarded
