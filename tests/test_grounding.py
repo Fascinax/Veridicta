@@ -499,13 +499,13 @@ def test_request_for_payment_preserves_creditor_and_debtor():
         report = verify_grounding(swapped + " [Source 1]", [{"text": source}])
         assert report.unsupported_count == 1
 
-def test_substituted_debtor_uses_only_the_relevant_cited_sentence():
+def test_substituted_debtor_uses_only_the_selected_passage():
     source = "Le bailleur réclame une indemnité au locataire."
     chunks = [{"text": "Le garant participe à la réunion."}, {"text": source + " Le tribunal siège demain."}]
     claim = "Le bailleur réclame une indemnité au garant. [Source 1] et [Source 2]"
     guarded, report = enforce_grounding(claim, chunks)
     assert report.unsupported_count == 1
-    assert guarded.splitlines()[0] == source + " [Source 2]"
+    assert guarded.splitlines()[0] == chunks[1]["text"] + " [Source 2]"
     assert "garant" not in guarded
     assert enforce_grounding(guarded, chunks)[0] == guarded
 
@@ -515,11 +515,11 @@ def test_extractive_guard_preserves_conditions_accents_and_relative_clauses():
         ("Le préavis incombe à l'employeur.", "Le préavis incombe au salarié."),
         ("Le recours contre l'employeur appartient au salarié.", "Le recours contre le salarié appartient à l'employeur."),
         ("Le salarié qui a travaillé 12 mois reçoit une prime de l'employeur.", "Le salarié reçoit une prime de l'employeur."),
-        ("Le bailleur verse une prime\\nsi le contrat est renouvelé.", "Le bailleur verse une prime."),
+        ("Le bailleur verse une prime\nsi le contrat est renouvelé.", "Le bailleur verse une prime."),
     ]:
         guarded, report = enforce_grounding(claim + " [Source 1]", [{"text": source}])
         assert report.supported_count == 0
-        assert guarded.splitlines()[0] == " ".join(source.split()) + " [Source 1]"
+        assert guarded.startswith(source + " [Source 1]\n")
 
 
 def test_abstention_prefix_cannot_carry_an_uncited_obligation():
@@ -527,3 +527,28 @@ def test_abstention_prefix_cannot_carry_an_uncited_obligation():
     guarded, report = enforce_grounding(claim, [])
     assert report.unsupported_count == 1
     assert "perd son droit" not in guarded
+
+
+def test_contested_obligation_preserves_attribution_and_ruling_in_stream(monkeypatch):
+    obligation = "Le locataire doit verser une indemnité au bailleur."
+    passage = f"Le bailleur soutient ce qui suit.\n{obligation} Le tribunal rejette cette demande."
+    chunks = [{"text": passage}]
+    for proposal, reason in [(obligation, "excerpt_requires_context"),
+                             (obligation.replace("bailleur", "propriétaire"), "unverified_paraphrase")]:
+        answer = proposal + " [Source 1]"
+        monkeypatch.setattr(baseline_rag, "_answer_copilot_stream", lambda *args: iter([answer]))
+        tokens, trace = baseline_rag.answer_stream("Que décide le tribunal ?", chunks, backend="copilot")
+        rendered = "".join(tokens)
+        assert rendered.startswith(passage + " [Source 1]\n")
+        assert trace["grounding"]["claims"][0]["reason"] == reason
+        assert trace["grounding"]["supported_count"] == 0
+        assert enforce_grounding(rendered, chunks)[0] == rendered
+        assert verify_grounding(rendered, chunks).supported_count == 1
+
+
+def test_context_with_embedded_citation_cannot_be_partially_published():
+    chunks = [{"text": "Le juge examine [Source 9]. Le locataire verse une indemnité."}]
+    rendered, report = enforce_grounding("Le locataire verse une indemnité. [Source 1]", chunks)
+    assert report.unsupported_count == 1
+    assert "indemnité" not in rendered
+    assert "[Source" not in rendered
