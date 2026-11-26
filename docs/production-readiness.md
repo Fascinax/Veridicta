@@ -103,3 +103,10 @@ Le lot 14 impose en mode authentifié une liste explicite de couples OIDC `iss` 
 local `tools.access_check` vérifie la configuration de cette politique sans
 contacter l'IdP. Il ne constitue pas une preuve d'hébergement ou de connexion
 réelle ; ces essais restent requis. Voir `docs/access-control.md`.
+
+Le lot 15 ajoute un candidat technique distinct construit à partir du corpus
+complémentaire du 7 novembre. Ses 97 circulaires restent en attente de revue et
+leurs 111 passages sont exclus du RAG. Les index et six requêtes de smoke CPU
+ont été vérifiés, sans génération ni promotion. La revue de release devra être
+liée au manifeste de ce candidat, si celui-ci est retenu ; le dossier humain
+existant demeure lié à son corpus figé. Voir `docs/incremental-indexing.md`.

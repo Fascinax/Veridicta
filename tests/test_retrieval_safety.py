@@ -32,6 +32,21 @@ def test_historical_lookup_looks_beyond_the_normal_top_k(monkeypatch):
     assert [row["chunk_id"] for row in pipeline.retrieve("question", as_of=date(2021, 1, 1))] == ["historical"]
 
 
+def test_pending_review_is_filtered_before_reranking_and_after_parent_expansion(monkeypatch):
+    from retrievers.parent_child import ParentChildConfig
+    approved = {"chunk_id": "approved", "doc_id": "same", "chunk_index": 0, "parent_id": "article", "text": "Approved fixture"}
+    pending = {"chunk_id": "pending", "doc_id": "same", "chunk_index": 1, "parent_id": "article", "text": "Pending fixture",
+               "metadata": {"applicability_review": "pending"}}
+    observed = []
+    monkeypatch.setattr(pipeline_module, "retrieve", lambda *args, **kwargs: [pending, approved])
+    monkeypatch.setattr(pipeline_module, "rerank_with_trace", lambda query, candidates, **kwargs: observed.extend(candidates) or (candidates, candidates))
+    pipeline = RetrievalPipeline(embedder=object(), index=object(), chunks=[approved, pending])
+    selected, trace = pipeline.retrieve_with_trace("synthetic question", use_reranker=True, parent_child_config=ParentChildConfig())
+    assert [row["chunk_id"] for row in observed] == ["approved"]
+    assert [row["chunk_id"] for row in selected] == ["approved"]
+    assert any(decision.get("excluded_ids") == ["pending"] for decision in trace.decisions)
+
+
 def test_parent_child_never_crosses_explicit_versions():
     one = {"chunk_id": "one", "doc_id": "law", "parent_id": "article", "chunk_index": 0, "metadata": {"version_id": "v1"}}
     two = {"chunk_id": "two", "doc_id": "law", "parent_id": "article", "chunk_index": 1, "metadata": {"version_id": "v2"}}
