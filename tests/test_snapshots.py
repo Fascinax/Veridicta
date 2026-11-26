@@ -45,6 +45,30 @@ def test_snapshot_verification_rejects_naive_clock(tmp_path):
         verify_manifest(path, now=datetime(2026, 1, 1))
 
 
+@pytest.mark.parametrize("payload", ["[]", "null"])
+def test_non_object_manifest_fails_readiness(tmp_path, payload):
+    from retrievers.readiness import check_corpus_manifest
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(payload, encoding="utf-8")
+    assert check_corpus_manifest(manifest).status == "fail"
+
+
+def test_cli_help_works_without_a_snapshot(tmp_path, monkeypatch):
+    from eval import benchmark_rerankers, evaluate
+    from retrievers import baseline_rag, hybrid_rag, lancedb_rag
+
+    monkeypatch.setenv("VERIDICTA_SNAPSHOT_MANIFEST", str(tmp_path / "missing.json"))
+    monkeypatch.setattr(sys, "argv", ["veridicta", "--help"])
+    for module in (baseline_rag, hybrid_rag, lancedb_rag, benchmark_rerankers):
+        with pytest.raises(SystemExit) as result:
+            module._build_parser().parse_args()
+        assert result.value.code == 0
+    with pytest.raises(SystemExit) as result:
+        evaluate._parse_args()
+    assert result.value.code == 0
+
+
 def test_new_manifest_does_not_make_an_old_collection_fresh(tmp_path):
     path = _snapshot(tmp_path, datetime.now(timezone.utc) - timedelta(days=40))
     with pytest.raises(ValueError, match="stale"):
