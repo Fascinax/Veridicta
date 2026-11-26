@@ -163,3 +163,22 @@ def test_temporal_filter_remains_fail_closed_after_parent_child_expansion(
     )
 
     assert [chunk["chunk_id"] for chunk in retrieved] == ["d1-1"]
+
+
+def test_version_without_document_does_not_join_unrelated_chunks():
+    from retrievers.parent_child import expand_parent_child_candidates
+
+    rows = [{"chunk_id": key, "version_id": "2024", "parent_id": "section-1",
+             "chunk_index": pos} for pos, key in enumerate(("one", "two"))]
+    selected = expand_parent_child_candidates(rows[:1], rows, ParentChildConfig())
+    assert [row["chunk_id"] for row in selected] == ["one"]
+
+
+def test_trace_identifies_inapplicable_neighbours(monkeypatch):
+    seed = {"doc_id": "law", "parent_id": "section", "chunk_id": "approved", "chunk_index": 0}
+    neighbour = dict(seed, chunk_id="draft", chunk_index=1, type="projet_loi")
+    pipeline = RetrievalPipeline(embedder=object(), index=object(), chunks=[seed, neighbour])
+    monkeypatch.setattr(pipeline_mod, "retrieve", lambda *args, **kwargs: [seed])
+    selected, trace = pipeline.retrieve_with_trace("question", parent_child_config=ParentChildConfig())
+    assert [row["chunk_id"] for row in selected] == ["approved"]
+    assert {"stage": "applicability_filter", "phase": "parent_child", "excluded_ids": ["draft"]} in trace.decisions

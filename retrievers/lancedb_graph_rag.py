@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
+from threading import Lock
 
 from retrievers.config import GRAPH_CONFIG
 from retrievers.graph_contract import bounded_graph_paths, graph_path_metadata
@@ -42,14 +43,23 @@ SEED_MULTIPLIER = GRAPH_CONFIG.seed_multiplier
 # Module-level cache: building chunks_by_doc from 49k rows is done once per table.
 _cached_chunks_by_doc: dict[str, list[dict]] | None = None
 _cached_table_id: int | None = None
+_cached_table_version: object | None = None
+_cached_table: object | None = None
+_table_cache_lock = Lock()
 
 
 def _get_chunks_by_doc(table) -> dict[str, list[dict]]:
+    with _table_cache_lock:
+        return _refresh_chunks_by_doc(table)
+
+
+def _refresh_chunks_by_doc(table) -> dict[str, list[dict]]:
     """Return a {doc_id → [chunk, …]} mapping, built once and cached per table."""
-    global _cached_chunks_by_doc, _cached_table_id  # noqa: PLW0603
+    global _cached_chunks_by_doc, _cached_table_id, _cached_table_version, _cached_table  # noqa: PLW0603
 
     tid = id(table)
-    if _cached_chunks_by_doc is None or _cached_table_id != tid:
+    version = getattr(table, "version", None)
+    if _cached_chunks_by_doc is None or _cached_table is not table or _cached_table_version != version:
         from retrievers.lancedb_rag import _table_to_chunks
 
         chunks = _table_to_chunks(table)
@@ -58,6 +68,8 @@ def _get_chunks_by_doc(table) -> dict[str, list[dict]]:
             mapping.setdefault(c.get("doc_id", ""), []).append(c)
         _cached_chunks_by_doc = mapping
         _cached_table_id = tid
+        _cached_table_version = version
+        _cached_table = table
         logger.info(
             "Built chunks_by_doc cache: %d docs, %d chunks",
             len(mapping),
