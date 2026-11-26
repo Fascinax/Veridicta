@@ -552,3 +552,48 @@ def test_context_with_embedded_citation_cannot_be_partially_published():
     assert report.unsupported_count == 1
     assert "indemnité" not in rendered
     assert "[Source" not in rendered
+
+
+def test_split_ruling_is_retained_in_both_generation_modes(monkeypatch):
+    claim = "Le locataire doit verser une indemnité au bailleur."
+    decision = "Le tribunal rejette cette demande."
+    chunks = [
+        {"doc_id": "jugement", "chunk_id": "a", "text": claim},
+        {"doc_id": "jugement", "chunk_id": "b", "text": decision},
+        {"doc_id": "autre", "text": "Le conseil se réunit."},
+    ]
+    for proposal in (claim, claim.replace("bailleur", "propriétaire")):
+        answer = proposal + " [Source 1]"
+        monkeypatch.setattr(baseline_rag, "_answer_copilot", lambda *args: answer)
+        monkeypatch.setattr(baseline_rag, "_answer_copilot_stream", lambda *args: iter([answer]))
+        direct, trace = baseline_rag.answer("Que décide le tribunal ?", chunks, backend="copilot", return_trace=True)
+        stream, stream_trace = baseline_rag.answer_stream("Que décide le tribunal ?", chunks, backend="copilot")
+        assert "".join(stream) == direct
+        assert direct.splitlines()[:2] == [claim + " [Source 1]", decision + " [Source 2]"]
+        assert "[Source 3]" not in direct
+        assert trace["grounding"]["supported_count"] == stream_trace["grounding"]["supported_count"] == 0
+        assert enforce_grounding(direct, chunks)[0] == direct
+
+
+def test_document_context_is_scoped_by_version_and_fails_closed_when_unquotable():
+    claim = "Le tribunal rejette cette demande."
+    chunks = [
+        {"doc_id": "arrêt", "version_id": "1", "text": claim},
+        {"doc_id": "arrêt", "metadata": {"version_id": "2"}, "text": "Voir [Source 9]."},
+    ]
+    answer = claim + " [Source 1]"
+    assert enforce_grounding(answer, chunks)[0] == answer
+    chunks[1]["metadata"]["version_id"] = "1"
+    rendered, report = enforce_grounding(answer, chunks)
+    assert claim not in rendered
+    assert report.claims[0].reason == "document_context_unavailable"
+
+
+def test_document_order_is_independent_of_retrieval_rank():
+    chunks = [
+        {"doc_id": "case", "chunk_index": 4, "text": "Le tribunal rejette cette demande."},
+        {"doc_id": "case", "chunk_index": 3, "text": "Le bailleur demande une indemnité."},
+    ]
+    rendered, report = enforce_grounding(chunks[1]["text"] + " [Source 2]", chunks)
+    assert rendered.splitlines()[:2] == [chunks[1]["text"] + " [Source 2]", chunks[0]["text"] + " [Source 1]"]
+    assert report.claims[0].context_sources == (2, 1)
