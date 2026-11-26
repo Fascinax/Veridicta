@@ -199,7 +199,12 @@ class _DummyStreamlit:
 
 def _load_ui_app(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(artifacts_mod, "ensure_artifacts", lambda **_kwargs: None)
-    return importlib.import_module("ui.app")
+    from ui.request_limits import RequestLimits
+
+    app = importlib.import_module("ui.app")
+    limits = RequestLimits()
+    monkeypatch.setattr(app, "_get_request_limits", lambda: limits)
+    return app
 
 
 def test_ui_handle_prompt_runs_grounding_once_and_persists_grounding_trace(

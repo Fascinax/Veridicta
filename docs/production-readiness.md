@@ -110,3 +110,9 @@ leurs 111 passages sont exclus du RAG. Les index et six requêtes de smoke CPU
 ont été vérifiés, sans génération ni promotion. La revue de release devra être
 liée au manifeste de ce candidat, si celui-ci est retenu ; le dossier humain
 existant demeure lié à son corpus figé. Voir `docs/incremental-indexing.md`.
+
+Le lot 16 partage les quotas de fréquence et les places de traitement entre
+processus du même serveur, avec SQLite et verrous système locaux. Des processus
+de test vérifient les admissions simultanées et la libération après arrêt brutal.
+Les workers doivent partager le même stockage ; cela ne valide pas une topologie
+multi-hôte ni les droits et alertes de la cible. Voir `docs/shared-request-limits.md`.
