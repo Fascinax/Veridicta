@@ -1,11 +1,11 @@
 {
-  "fixture_sha256": "a2695fa2dc5ed729a6e03db68f68834dd1b2b028faa5bb05158409d110321660",
+  "fixture_sha256": "783006912dcf5b7c3a04ccfdb0b8c24f8b95a68624e834dc9374e78e9ac40927",
   "current": {
     "scope": "synthetic_guard_regression_only",
-    "verifier_passed": 17,
-    "cases": 18,
-    "passed": 18,
-    "acceptance_rate": 0.16666666666666666,
+    "verifier_passed": 19,
+    "cases": 20,
+    "passed": 20,
+    "acceptance_rate": 0.15,
     "false_acceptance_rate": 0.0,
     "results": [
       {
@@ -154,6 +154,24 @@
         "verifier_pass": true,
         "pass": true,
         "excerpt_returned": true
+      },
+      {
+        "id": "contested-exact",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "contested-paraphrase",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
       }
     ]
   },
@@ -161,10 +179,10 @@
   "historical": {
     "scope": "synthetic_guard_regression_only",
     "verifier_passed": 7,
-    "cases": 18,
+    "cases": 20,
     "passed": 7,
-    "acceptance_rate": 0.6666666666666666,
-    "false_acceptance_rate": 0.75,
+    "acceptance_rate": 0.7,
+    "false_acceptance_rate": 0.7857142857142857,
     "results": [
       {
         "id": "exact",
@@ -304,6 +322,22 @@
       },
       {
         "id": "omitted-condition",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "contested-exact",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "contested-paraphrase",
         "expected_supported": false,
         "accepted": true,
         "abstained": false,
