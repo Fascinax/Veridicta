@@ -1,11 +1,11 @@
 {
-  "fixture_sha256": "783006912dcf5b7c3a04ccfdb0b8c24f8b95a68624e834dc9374e78e9ac40927",
+  "fixture_sha256": "6c8689bdf0053c5aa0e3d02c5dc99c499ff55e0d358bcc48f3e8e67b5e791db7",
   "current": {
     "scope": "synthetic_guard_regression_only",
-    "verifier_passed": 19,
-    "cases": 20,
-    "passed": 20,
-    "acceptance_rate": 0.15,
+    "verifier_passed": 21,
+    "cases": 22,
+    "passed": 22,
+    "acceptance_rate": 0.13636363636363635,
     "false_acceptance_rate": 0.0,
     "results": [
       {
@@ -172,6 +172,24 @@
         "verifier_pass": true,
         "pass": true,
         "excerpt_returned": true
+      },
+      {
+        "id": "split-judgment-exact",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
+      },
+      {
+        "id": "split-judgment-paraphrase",
+        "expected_supported": false,
+        "accepted": false,
+        "abstained": false,
+        "verifier_pass": true,
+        "pass": true,
+        "excerpt_returned": true
       }
     ]
   },
@@ -179,10 +197,10 @@
   "historical": {
     "scope": "synthetic_guard_regression_only",
     "verifier_passed": 7,
-    "cases": 20,
+    "cases": 22,
     "passed": 7,
-    "acceptance_rate": 0.7,
-    "false_acceptance_rate": 0.7857142857142857,
+    "acceptance_rate": 0.7272727272727273,
+    "false_acceptance_rate": 0.8125,
     "results": [
       {
         "id": "exact",
@@ -338,6 +356,22 @@
       },
       {
         "id": "contested-paraphrase",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "split-judgment-exact",
+        "expected_supported": false,
+        "accepted": true,
+        "abstained": false,
+        "verifier_pass": false,
+        "pass": false
+      },
+      {
+        "id": "split-judgment-paraphrase",
         "expected_supported": false,
         "accepted": true,
         "abstained": false,
