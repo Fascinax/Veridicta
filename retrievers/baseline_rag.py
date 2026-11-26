@@ -709,7 +709,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to chunks.jsonl used during --build",
     )
     parser.add_argument(
-        "--index-dir", default=str(active_index_dir()), metavar="DIR",
+        "--index-dir", default=None, metavar="DIR",
         help="Directory for FAISS index files (default: data/index)",
     )
     return parser
@@ -717,7 +717,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _build_parser().parse_args()
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
 
     if args.build:
         build_index(Path(args.chunks), index_dir)
