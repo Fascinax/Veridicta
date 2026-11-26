@@ -579,12 +579,32 @@ def _sentence_key(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).split()).removesuffix(".").strip()
 
 
+def _answer_segments(answer: str, passages: dict[int, str]):
+    """Treat a complete, source-attributed passage as one quotation, including line breaks."""
+    cursor = 0
+    for citation in re.finditer(r" \[Source (\d+)\](?=\n|$)", answer):
+        number = int(citation[1])
+        passage = passages.get(number)
+        if not passage:
+            continue
+        start = citation.start() - len(passage)
+        if start < cursor or (start and answer[start - 1] != "\n"):
+            continue
+        if not answer.startswith(passage, start):
+            continue
+        for left, right in _claim_spans(answer[cursor:start]):
+            yield cursor + left, cursor + right, None
+        yield start, citation.end(), EvidenceSpan(number, 0, len(passage))
+        cursor = citation.end()
+    for left, right in _claim_spans(answer[cursor:]):
+        yield cursor + left, cursor + right, None
+
+
 def _source_sentences(number: int, text: str):
     # A physical line break in a passage can separate a rule from its condition.
     for start, end in _claim_spans(text.replace("\n", " ")):
         sentence = text[start:end]
-        if not _SOURCE_PATTERN.search(normalize_citations(sentence)):
-            yield EvidenceSpan(number, start, end), sentence
+        yield EvidenceSpan(number, start, end), sentence
 
 
 def _evidence_verdict(
@@ -629,13 +649,21 @@ def verify_grounding(
     claims: list[GroundingClaim] = []
     source_count = len(retrieved_chunks)
     sources: dict[int, list[tuple[EvidenceSpan, str]]] = {}
-    for index, (start, end) in enumerate(_claim_spans(normalized), 1):
+    passages = {}
+    for number, chunk in enumerate(retrieved_chunks, 1):
+        passage = chunk.get("text", "").strip()
+        if passage and not _SOURCE_PATTERN.search(normalize_citations(passage)):
+            passages[number] = passage
+    for index, (start, end, evidence) in enumerate(_answer_segments(normalized, passages), 1):
         text = normalized[start:end].strip()
         source_numbers = tuple(sorted({int(number) for number in _SOURCE_PATTERN.findall(text)}))
         valid_source_numbers = tuple(number for number in source_numbers if 1 <= number <= source_count)
         invalid_source_numbers = tuple(number for number in source_numbers if not 1 <= number <= source_count)
-        evidence = None
-        if _is_abstention(text):
+        if evidence is not None:
+            status = "supported"
+            reason = "exact_evidence"
+            score = 1.0
+        elif _is_abstention(text):
             status = "abstained"
             reason = "explicit_source_limitation"
             score = 1.0
@@ -650,9 +678,12 @@ def verify_grounding(
         else:
             for number in valid_source_numbers:
                 if number not in sources:
-                    sources[number] = list(_source_sentences(number, retrieved_chunks[number - 1].get("text", "")))
+                    sources[number] = list(_source_sentences(number, passages.get(number, "")))
             sentences = [item for number in valid_source_numbers for item in sources[number]]
             score, reason, evidence = _evidence_verdict(text, sentences, minimum_support)
+            if reason == "exact_evidence" and evidence is not None:
+                if evidence.start != 0 or evidence.end != len(passages[evidence.source_number]):
+                    reason = "excerpt_requires_context"
             status = "supported" if reason == "exact_evidence" else "unsupported"
         claims.append(
             GroundingClaim(
@@ -676,7 +707,7 @@ def enforce_grounding(
     retrieved_chunks: list[dict],
     minimum_support: float = DEFAULT_MINIMUM_SUPPORT,
 ) -> tuple[str, GroundingReport]:
-    """Render cited source sentences and report verdicts on the original claims."""
+    """Render each selected passage in full and retain verdicts on the submitted claims."""
     report = verify_grounding(answer, retrieved_chunks, minimum_support)
     kept_claims = []
     for claim in report.claims:
@@ -684,11 +715,11 @@ def enforce_grounding(
             kept_claims.append(claim.text)
         elif claim.evidence is not None:
             span = claim.evidence
-            sentence = retrieved_chunks[span.source_number - 1]["text"][span.start:span.end]
-            excerpt = f"{' '.join(sentence.split())} [Source {span.source_number}]"
+            passage = retrieved_chunks[span.source_number - 1]["text"].strip()
+            excerpt = f"{passage} [Source {span.source_number}]"
             if excerpt not in kept_claims:
                 kept_claims.append(excerpt)
-    if report.unsupported_count:
+    if report.unsupported_count and _PARTIAL_ABSTENTION_NOTICE not in kept_claims:
         kept_claims.append(_PARTIAL_ABSTENTION_NOTICE)
     if not kept_claims:
         kept_claims = [_EMPTY_ABSTENTION_LEAD, _EMPTY_ABSTENTION_TAIL]
