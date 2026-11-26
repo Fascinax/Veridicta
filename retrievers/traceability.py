@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from filelock import FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,11 @@ def _truncate(text: str, limit: int = PREVIEW_LIMIT) -> str:
 
 
 def text_summary(text: str) -> dict[str, str]:
-    """Return a bounded, non-sensitive identifier and preview for text."""
-    return {"sha256": _hash_text(text), "preview": _truncate(text)}
+    """Hash text; include a preview only with explicit content logging enabled."""
+    summary = {"sha256": _hash_text(text)}
+    if include_full_audit_content():
+        summary["preview"] = _truncate(text)
+    return summary
 
 
 def _approximate_token_count(text: str) -> int:
@@ -267,9 +271,6 @@ def _metadata_summary(chunk: dict) -> dict:
         "category",
         "thematics",
         "article_titles",
-        "parties",
-        "interest",
-        "abstract",
     )
     return {
         key: metadata[key]
@@ -299,7 +300,7 @@ def _chunk_summary(chunk: dict, used_in_prompt: bool) -> dict:
         "prompt_rank": chunk.get("prompt_rank"),
         "prompt_decision": chunk.get("prompt_decision", ""),
         "omission_reason": chunk.get("omission_reason", ""),
-        "titre": chunk.get("titre", ""),
+        "titre": chunk.get("titre", "") if include_full_audit_content() else "",
         "type": chunk.get("type", ""),
         "date": chunk.get("date", ""),
         "source": chunk.get("source", ""),
@@ -314,7 +315,6 @@ def _chunk_summary(chunk: dict, used_in_prompt: bool) -> dict:
         "parent_child_source_chunk_id": chunk.get("parent_child_source_chunk_id", ""),
         "parent_child_distance": chunk.get("parent_child_distance"),
         "metadata": _metadata_summary(chunk),
-        "ingestion": chunk.get("ingestion", {}),
     }
     return {key: value for key, value in summary.items() if value not in (None, "", [], {})}
 
@@ -424,11 +424,18 @@ def append_audit_event(
     latency_s: float,
     retrieval_trace: object | None = None,
     failure_classification: Mapping[str, object] | None = None,
+    audit_dir: Path | None = None,
+    stage_latencies_s: Mapping[str, float] | None = None,
 ) -> Path | None:
     if not is_audit_enabled():
         return None
 
-    audit_log_path = get_audit_log_path()
+    if audit_dir is not None:
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", trace_id):
+            raise ValueError("invalid trace id")
+        audit_log_path = audit_dir / f"trace-{trace_id}.jsonl"
+    else:
+        audit_log_path = get_audit_log_path()
     audit_log_path.parent.mkdir(parents=True, exist_ok=True)
     include_content = include_full_audit_content()
     used_chunk_ids = {chunk.get("chunk_id", "") for chunk in prompt_trace.used_chunks}
@@ -443,13 +450,10 @@ def append_audit_event(
         "model": model,
         "prompt_version": prompt_version,
         "latency_s": round(latency_s, 3),
-        "query": {
-            "sha256": _hash_text(query),
-            "preview": _truncate(query),
-        },
+        "stage_latencies_s": dict(stage_latencies_s or {}),
+        "query": text_summary(query),
         "answer": {
-            "sha256": _hash_text(response_text),
-            "preview": _truncate(response_text),
+            **text_summary(response_text),
             "cited_source_numbers": sorted(cited_source_numbers),
         },
         "retrieval": {
@@ -477,8 +481,9 @@ def append_audit_event(
         record["query"]["text"] = query
         record["answer"]["text"] = response_text
 
-    with audit_log_path.open("a", encoding="utf-8") as audit_file:
-        audit_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    with FileLock(str(audit_log_path) + ".lock", timeout=20):
+        with audit_log_path.open("a", encoding="utf-8") as audit_file:
+            audit_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     logger.info(
         "Trace %s written to %s (%d retrieved / %d used)",
