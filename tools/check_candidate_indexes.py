@@ -13,26 +13,46 @@ from retrievers.release_evidence import verify_index_bundle
 from retrievers.snapshots import file_digest, verify_manifest
 
 
+CHUNK_COLUMNS = ("chunk_id", "doc_id", "text", "source", "title")
+
+
+def _check_chunk_content(row: dict, canonical: dict) -> None:
+    for column in CHUNK_COLUMNS:
+        default = canonical.get("titre", "") if column == "title" else ""
+        if row.get(column, "") != canonical.get(column, default):
+            raise ValueError(f"LanceDB chunk content differs from FAISS for {column}")
+
+    metadata = json.loads(row.get("metadata_json") or "{}")
+    expected = {key: value for key, value in canonical.items() if key not in CHUNK_COLUMNS}
+    if json.dumps(metadata, sort_keys=True) != json.dumps(expected, sort_keys=True):
+        raise ValueError("LanceDB chunk metadata differs from FAISS")
+
+
 def check_indexes(root: Path) -> dict:
     manifest = root / "snapshot.manifest.json"
     verify_manifest(manifest)
     verify_index_bundle(manifest)
     index = faiss.read_index(str(root / "index/veridicta.faiss"))
     with (root / "index/chunks_map.jsonl").open(encoding="utf-8") as handle:
-        positions = {json.loads(line)["chunk_id"]: position for position, line in enumerate(handle)}
+        chunks = {chunk["chunk_id"]: (position, chunk)
+                  for position, chunk in enumerate(map(json.loads, handle))}
     table = lancedb.connect(str(root / "index/lancedb")).open_table("chunks")
     if table.count_rows() != index.ntotal:
         raise ValueError("LanceDB and FAISS counts disagree")
+    columns = ["chunk_id", "vector", "text", "doc_id"]
+    columns.extend(name for name in ("source", "title", "metadata_json") if name in table.schema.names)
     seen = set()
     max_norm_error = 0.0
-    for batch in table.search().select(["chunk_id", "vector"]).limit(index.ntotal).to_batches(batch_size=512):
+    for batch in table.search().select(columns).limit(index.ntotal).to_batches(batch_size=512):
         rows = batch.to_pylist()
         ids = [row["chunk_id"] for row in rows]
-        if len(set(ids)) != len(ids) or seen.intersection(ids) or any(value not in positions for value in ids):
+        if len(set(ids)) != len(ids) or seen.intersection(ids) or any(value not in chunks for value in ids):
             raise ValueError("LanceDB has duplicate or unknown chunk IDs")
+        for row in rows:
+            _check_chunk_content(row, chunks[row["chunk_id"]][1])
         seen.update(ids)
         vectors = np.asarray([row["vector"] for row in rows], dtype="float32")
-        expected = np.vstack([index.reconstruct(positions[value]) for value in ids])
+        expected = np.vstack([index.reconstruct(chunks[value][0]) for value in ids])
         if not np.array_equal(vectors, expected):
             raise ValueError("LanceDB vectors differ from FAISS")
         norms = np.linalg.norm(vectors, axis=1)
