@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from retrievers.snapshots import verify_manifest
+from retrievers.release_evidence import verify_index_bundle, verify_release_review, verify_provider_smoke
 
 
 DEFAULT_MAX_CORPUS_AGE_DAYS = 30.0
@@ -37,6 +38,11 @@ class ReadinessContext:
     provider_error: Exception | None = None
     max_corpus_age_days: float = DEFAULT_MAX_CORPUS_AGE_DAYS
     now: datetime | None = None
+    release_review_path: Path | None = None
+    provider_smoke_path: Path | None = None
+    expected_backend: str | None = None
+    expected_model: str | None = None
+    expected_base_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,22 +137,41 @@ def check_provider_error(error: Exception | None) -> ReadinessCheck:
 
 def build_readiness_report(context: ReadinessContext) -> ReadinessReport:
     """Build the readiness report used by CI and operational smoke checks."""
+    corpus = check_corpus_manifest(context.manifest_path, context.max_corpus_age_days, context.now)
+    index_bundle = (_check_evidence("index_bundle", lambda: verify_index_bundle(context.manifest_path))
+                    if corpus.status == "pass" else ReadinessCheck(
+                        "index_bundle", "fail", "Index is not loaded because corpus integrity could not be verified"))
     checks = (
-        check_corpus_manifest(
-            context.manifest_path,
-            context.max_corpus_age_days,
-            context.now,
-        ),
+        corpus,
         check_source_count(context.source_count),
         check_provider_error(context.provider_error),
+        index_bundle,
+        _check_evidence("release_review", lambda: verify_release_review(
+            context.manifest_path, context.release_review_path, context.now or datetime.now(timezone.utc))),
+        _check_evidence("provider_smoke", lambda: verify_provider_smoke(
+            context.provider_smoke_path, (context.expected_backend, context.expected_model, context.expected_base_url),
+            context.now or datetime.now(timezone.utc))),
     )
     return ReadinessReport(checks)
+
+
+def _check_evidence(name: str, verify) -> ReadinessCheck:
+    try:
+        verify()
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError):
+        return ReadinessCheck(name, "fail", "Required evidence is missing, invalid or does not match the release")
+    return ReadinessCheck(name, "pass", "Evidence verified for the selected release")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--source-count", type=int, default=1)
+    parser.add_argument("--source-count", type=int, required=True)
+    parser.add_argument("--release-review", type=Path)
+    parser.add_argument("--provider-smoke", type=Path)
+    parser.add_argument("--backend", choices=("copilot", "cerebras", "omniroute"))
+    parser.add_argument("--model")
+    parser.add_argument("--base-url", help="Expected OpenAI-compatible endpoint for the smoke")
     parser.add_argument("--max-age-days", type=float, default=DEFAULT_MAX_CORPUS_AGE_DAYS)
     args = parser.parse_args()
     report = build_readiness_report(
@@ -154,6 +179,11 @@ def main() -> None:
             manifest_path=args.manifest,
             source_count=args.source_count,
             max_corpus_age_days=args.max_age_days,
+            release_review_path=args.release_review,
+            provider_smoke_path=args.provider_smoke,
+            expected_backend=args.backend,
+            expected_model=args.model,
+            expected_base_url=args.base_url,
         )
     )
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))

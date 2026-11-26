@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "status": "pending",
+  "manifest_sha256": "",
+  "reviewer": "",
+  "reviewed_at": null,
+  "checks": {
+    "coverage": {
+      "status": "pending",
+      "evidence_ref": ""
+    },
+    "version_windows": {
+      "status": "pending",
+      "evidence_ref": ""
+    },
+    "independent_evaluation": {
+      "status": "pending",
+      "evidence_ref": "",
+      "reviewed_cases": 0
+    }
+  }
+}
