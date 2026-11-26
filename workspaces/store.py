@@ -12,9 +12,9 @@ import textwrap
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any
-from functools import wraps
 
 from filelock import FileLock
 

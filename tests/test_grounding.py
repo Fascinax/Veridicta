@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-import retrievers.baseline_rag as baseline_rag
+from retrievers import baseline_rag
 from retrievers.grounding import enforce_grounding, verify_grounding
 
 
@@ -291,3 +291,200 @@ def test_grounding_checks_legal_acronyms_and_dotted_forms() -> None:
     )
     assert short_bypass.unsupported_count == 1
     assert short_bypass.claims[0].reason == "low_evidence_overlap"
+
+
+def test_grounding_rejects_directional_actor_patient_and_recipient_swaps() -> None:
+    reversed_pairs = [
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur restitue le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au locataire par le bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur doit restituer le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur est tenu de restituer le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Il appartient au bailleur de restituer le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur restitue le montant. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au locataire. [Source 1]",
+        ),
+        (
+            "L'employeur verse une indemnité au salarié.",
+            "Le salarié verse une indemnité à l'employeur. [Source 1]",
+        ),
+        (
+            "L'employeur licencie le salarié.",
+            "Le salarié licencie l'employeur. [Source 1]",
+        ),
+        (
+            "Le salarié est licencié par l'employeur.",
+            "L'employeur est licencié par le salarié. [Source 1]",
+        ),
+        (
+            "La société Alpha verse 1000 euros à la société Beta.",
+            "La société Beta verse 1000 euros à la société Alpha. [Source 1]",
+        ),
+        (
+            "Le locataire reçoit la quittance du bailleur.",
+            "Le bailleur reçoit la quittance du locataire. [Source 1]",
+        ),
+        (
+            "Les frais sont à la charge du bailleur au profit du locataire.",
+            "Les frais sont à la charge du locataire au profit du bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire forme un recours contre le bailleur.",
+            "Le bailleur forme un recours contre le locataire. [Source 1]",
+        ),
+        (
+            "Le bailleur est redevable de l'indemnité envers le locataire.",
+            "Le locataire est redevable de l'indemnité envers le bailleur. [Source 1]",
+        ),
+        (
+            "La restitution du montant par le locataire au bailleur est obligatoire.",
+            "La restitution du montant par le bailleur au locataire est obligatoire. [Source 1]",
+        ),
+        (
+            "Lorsque le locataire quitte le logement, le bailleur restitue le dépôt de garantie au locataire.",
+            "Le locataire restitue le dépôt de garantie au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur, et le bailleur remet une quittance au locataire.",
+            "Le bailleur restitue le montant au locataire. [Source 1]",
+        ),
+        (
+            "L'avocat du bailleur notifie la mise en demeure à l'avocat du locataire.",
+            "L'avocat du locataire notifie la mise en demeure à l'avocat du bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue immédiatement le montant au bailleur.",
+            "Le bailleur restitue immédiatement le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire ne restitue pas le montant au bailleur.",
+            "Le bailleur ne restitue pas le montant au locataire. [Source 1]",
+        ),
+        (
+            "L'employeur verse une indemnité forfaitaire de licenciement au salarié.",
+            "L'employeur perçoit une indemnité forfaitaire de licenciement du salarié. [Source 1]",
+        ),
+        (
+            "La restitution du montant par le locataire au bailleur est prévue par la loi.",
+            "La restitution du montant par le bailleur au locataire est prévue par la loi. [Source 1]",
+        ),
+    ]
+
+    for source_text, reversed_claim in reversed_pairs:
+        report = verify_grounding(reversed_claim, [{"text": source_text}])
+        assert report.unsupported_count == 1, f"{source_text} -> {reversed_claim}"
+        assert report.claims[0].reason == "conflicting_role_direction", f"{source_text} -> {reversed_claim}"
+
+    guarded, report = enforce_grounding(
+        "Le bailleur restitue le montant au locataire. [Source 1]",
+        [{"text": "Le locataire restitue le montant au bailleur."}],
+    )
+    assert report.unsupported_count == 1
+    assert report.claims[0].reason == "conflicting_role_direction"
+    assert "Le bailleur restitue" not in guarded
+    assert "ne permettent pas" in guarded
+
+
+def test_grounding_accepts_legitimate_paraphrases_preserving_role_direction() -> None:
+    legitimate_pairs = [
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au bailleur par le locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué par le locataire au bailleur. [Source 1]",
+        ),
+        (
+            "Le montant est restitué par le locataire au bailleur.",
+            "Le locataire restitue le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire doit restituer le montant au bailleur.",
+            "Le locataire restitue le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire est tenu de restituer le montant au bailleur.",
+            "Le locataire doit restituer le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Il appartient au locataire de restituer le montant au bailleur.",
+            "Le locataire doit restituer le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le locataire restitue le montant. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au bailleur. [Source 1]",
+        ),
+        (
+            "L'employeur licencie le salarié.",
+            "Le salarié est licencié par l'employeur. [Source 1]",
+        ),
+        (
+            "Dans un délai de 30 jours, le locataire restitue le montant au bailleur.",
+            "Le locataire restitue le montant au bailleur dans un délai de 30 jours. [Source 1]",
+        ),
+        (
+            "Le bail est conclu entre le bailleur et le locataire.",
+            "Le bail est conclu entre le locataire et le bailleur. [Source 1]",
+        ),
+        (
+            "Le bailleur et le locataire signent le contrat.",
+            "Le locataire et le bailleur signent le contrat. [Source 1]",
+        ),
+        (
+            "Le salarié notifie la rupture à l'employeur par lettre recommandée.",
+            "Par lettre recommandée, le salarié notifie la rupture à l'employeur. [Source 1]",
+        ),
+        (
+            "Lorsque le locataire quitte le logement, le bailleur restitue le dépôt de garantie au locataire.",
+            "Le bailleur restitue le dépôt de garantie au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur, et le bailleur remet une quittance au locataire.",
+            "Le bailleur remet une quittance au locataire. [Source 1]",
+        ),
+        (
+            "Le tribunal ordonne au locataire de restituer le montant au bailleur.",
+            "Le locataire doit restituer le montant au bailleur. [Source 1]",
+        ),
+        (
+            "L'employeur augmente le salaire.",
+            "Le salaire augmente. [Source 1]",
+        ),
+        (
+            "La restitution du montant par le locataire au bailleur est obligatoire.",
+            "La restitution du montant au bailleur par le locataire est obligatoire. [Source 1]",
+        ),
+        (
+            "L'employeur verse une indemnité forfaitaire de licenciement au salarié.",
+            "Le salarié perçoit une indemnité forfaitaire de licenciement de l'employeur. [Source 1]",
+        ),
+    ]
+
+    for source_text, paraphrase in legitimate_pairs:
+        report = verify_grounding(paraphrase, [{"text": source_text}])
+        assert report.supported_count == 1, f"{source_text} -> {paraphrase} ({report.claims[0].reason})"
+        assert report.unsupported_count == 0, f"{source_text} -> {paraphrase}"
