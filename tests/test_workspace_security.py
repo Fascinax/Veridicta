@@ -102,7 +102,7 @@ def test_restore_rejects_tampered_content_before_writing(tmp_path):
     source = WorkspaceStore(tmp_path / "source")
     source.create("Source")
     payload = json.loads(backup(source))
-    payload["files"][0]["content"] = "tampered"
+    payload["files"][0]["data"] = "tampered"
     destination = WorkspaceStore(tmp_path / "destination")
     with pytest.raises(ValueError, match="content"):
         restore(destination, json.dumps(payload).encode())
@@ -176,7 +176,7 @@ def _multi_file_backup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> bytes
     source.append_audit(first.workspace_id, **_event())
     source.append_audit(second.workspace_id, **_event())
     payload = backup(source)
-    assert json.loads(payload)["schema_version"] == 1
+    assert json.loads(payload)["schema_version"] == 2
     assert len(json.loads(payload)["files"]) >= 4
     return payload
 
