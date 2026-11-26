@@ -900,7 +900,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--questions", default="eval/test_questions.json")
     parser.add_argument("--contract", default="eval/evaluation_contract.json")
     parser.add_argument("--allow-custom-questions", action="store_true")
-    parser.add_argument("--index-dir", default=str(active_index_dir()))
+    parser.add_argument("--index-dir", default=None)
     parser.add_argument(
         "--retriever",
         default="lancedb",
@@ -970,7 +970,7 @@ def _validate_questions(args: argparse.Namespace, questions_path: Path) -> None:
 def _load_pipeline(args: argparse.Namespace, *, lancedb_dir: Path | None = None) -> RetrievalPipeline:
     from eval.evaluate import _load_optional_retrievers, _load_primary_index  # noqa: PLC0415
 
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
     retrieval_args = argparse.Namespace(retriever=args.retriever)
     optional_paths = {} if lancedb_dir is None else {"lancedb_dir": lancedb_dir}
     bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(retrieval_args, index_dir, **optional_paths)

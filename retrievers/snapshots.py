@@ -42,6 +42,8 @@ def create_manifest(root: Path, collected_at: str, provenance: str) -> dict:
 
 def verify_manifest(path: Path, max_age_days: float = 30, now: datetime | None = None) -> dict:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Snapshot manifest must be a JSON object")
     if payload.get("schema_version") != "2.0" or not payload.get("files") or not payload.get("provenance"):
         raise ValueError("Invalid snapshot manifest")
     collected = datetime.fromisoformat(payload["collected_at"].replace("Z", "+00:00"))

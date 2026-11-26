@@ -313,7 +313,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunks", default=str(CHUNKS_PATH), metavar="PATH",
     )
     parser.add_argument(
-        "--index-dir", default=str(active_index_dir()), metavar="DIR",
+        "--index-dir", default=None, metavar="DIR",
     )
     return parser
 
@@ -321,7 +321,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _build_parser().parse_args()
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
 
     if args.build:
         build_all(Path(args.chunks), index_dir, force=args.force)
