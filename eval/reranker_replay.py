@@ -10,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import platform
+import re
 import time
 import zipfile
 from zoneinfo import ZoneInfo
@@ -22,6 +23,7 @@ from eval.benchmark_rerankers import (
     load_questions, run_benchmark, write_jsonl,
 )
 from retrievers.snapshots import file_digest, verify_manifest
+from retrievers.config import EMBEDDING_CONFIG
 
 FLASHRANK_REVISION = "858a1ac046a05663a35367eac852d7f76feeefdd"
 
@@ -90,6 +92,17 @@ def collect(args: argparse.Namespace) -> None:
     snapshot_digest = file_digest(args.snapshot)
     policy_date = datetime.now(ZoneInfo("Europe/Monaco")).date()
     args.index_dir = args.snapshot.parent / "index"
+    embedding_config = json.loads((args.index_dir / "embedding_config.json").read_text(encoding="utf-8"))
+    if not re.fullmatch(r"[0-9a-f]{40}", EMBEDDING_CONFIG.revision or ""):
+        raise ValueError("Frozen retrieval requires a pinned query encoder revision")
+    expected_encoder = {
+        "embed_model": EMBEDDING_CONFIG.model_name,
+        "embed_revision": EMBEDDING_CONFIG.revision,
+        "embedding_dimension": EMBEDDING_CONFIG.dimension,
+        "embed_query_prefix": EMBEDDING_CONFIG.query_prefix,
+    }
+    if not isinstance(embedding_config, dict) or not expected_encoder.items() <= embedding_config.items():
+        raise ValueError("Snapshot embedding configuration differs from the query encoder")
     pipeline = _load_pipeline(args, lancedb_dir=args.index_dir / "lancedb")
     pipeline.applicability = replace(pipeline.applicability, current_date=policy_date)
     try:
@@ -114,7 +127,7 @@ def collect(args: argparse.Namespace) -> None:
                   "questions_sha256": file_digest(args.questions), "retriever": args.retriever,
                   "candidate_k": args.candidate_k, "query_expansion": False,
                   "applicability_policy_date": policy_date.isoformat(),
-                  "embedding_config": json.loads((args.index_dir / "embedding_config.json").read_text(encoding="utf-8"))}
+                  "embedding_config": embedding_config}
     result = save_pool(args.out, cases, provenance)
     print(json.dumps({"status": "frozen", "questions": len(cases), "pool_sha256": result["candidates_sha256"]}))
 

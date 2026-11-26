@@ -150,7 +150,8 @@ def test_cross_encoder_uses_pinned_weights_and_explicit_inference_settings(monke
         RERANKER_SPECS["qwen3"].revision, False, True, 4, "b")
 
 
-def test_collect_uses_sealed_lancedb_instead_of_active_store(tmp_path, monkeypatch):
+@pytest.mark.parametrize("different_model", [False, True])
+def test_collect_uses_sealed_lancedb_instead_of_active_store(tmp_path, monkeypatch, different_model):
     import sys
     from datetime import datetime, timezone
 
@@ -158,6 +159,7 @@ def test_collect_uses_sealed_lancedb_instead_of_active_store(tmp_path, monkeypat
 
     from eval import benchmark_rerankers, reranker_replay
     from retrievers import lancedb_rag
+    from retrievers.config import EMBEDDING_CONFIG
     from retrievers.snapshots import create_manifest
 
     snapshot = tmp_path / "sealed"
@@ -169,10 +171,13 @@ def test_collect_uses_sealed_lancedb_instead_of_active_store(tmp_path, monkeypat
         "source": "", "title": "",
     }
     for db_dir, text in ((index_dir / "lancedb", canonical["text"]), (active, "Active text")):
-        row = canonical | {"text": text, "metadata_json": "{}", "vector": [1.0, 0.0]}
+        row = canonical | {"text": text, "metadata_json": "{}", "vector": [1.0] + [0.0] * (EMBEDDING_CONFIG.dimension - 1)}
         lancedb.connect(str(db_dir)).create_table("chunks", [row])
     (index_dir / "chunks_map.jsonl").write_text(json.dumps(canonical) + "\n", encoding="utf-8")
-    (index_dir / "embedding_config.json").write_text("{}", encoding="utf-8")
+    metadata = {"embed_model": "different-model" if different_model else EMBEDDING_CONFIG.model_name,
+                "embed_revision": EMBEDDING_CONFIG.revision, "embedding_dimension": EMBEDDING_CONFIG.dimension,
+                "embed_query_prefix": EMBEDDING_CONFIG.query_prefix}
+    (index_dir / "embedding_config.json").write_text(json.dumps(metadata), encoding="utf-8")
     manifest = snapshot / "snapshot.manifest.json"
     manifest.write_text(
         json.dumps(create_manifest(snapshot, datetime.now(timezone.utc).isoformat(), "fixture")),
@@ -193,6 +198,11 @@ def test_collect_uses_sealed_lancedb_instead_of_active_store(tmp_path, monkeypat
         "reranker_replay", "collect", "--snapshot", str(manifest), "--retriever", "lancedb",
         "--questions", str(questions), "--out", str(out), "--candidate-k", "1", "--allow-custom-questions",
     ])
+    if different_model:
+        with pytest.raises(ValueError, match="query encoder"):
+            reranker_replay.main()
+        assert not out.exists()
+        return
     reranker_replay.main()
 
     assert load_pool(out, questions)[0][0].candidates == [canonical]
