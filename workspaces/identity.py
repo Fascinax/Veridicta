@@ -21,11 +21,22 @@ def workspace_owner(mode: str, session_id: str, claims: Mapping | None = None) -
         raise PermissionError("authenticated issuer and subject are required")
     if not issuer.strip() or not subject.strip():
         raise PermissionError("authenticated issuer and subject are required")
-    if "exp" in user:
-        try:
-            expiry = float(user["exp"])
-            if not math.isfinite(expiry) or expiry <= time.time():
-                raise PermissionError("identity expired")
-        except (ValueError, TypeError):
-            raise PermissionError("invalid identity expiry") from None
+    now = time.time()
+    expiry = _numeric_date(user.get("exp"))
+    if expiry <= now:
+        raise PermissionError("identity expired")
+    if "nbf" in user and _numeric_date(user["nbf"]) > now:
+        raise PermissionError("identity not yet valid")
     return "oidc:" + json.dumps([issuer, subject], separators=(",", ":"))
+
+
+def _numeric_date(value: object) -> float:
+    if type(value) not in (int, float):
+        raise PermissionError("invalid identity time")
+    try:
+        timestamp = float(value)
+    except OverflowError:
+        raise PermissionError("invalid identity time") from None
+    if not math.isfinite(timestamp):
+        raise PermissionError("invalid identity time")
+    return timestamp

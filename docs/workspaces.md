@@ -9,14 +9,17 @@ Les anciens dossiers communs restent sur disque et ne sont ni déplacés ni effa
 ## Modes durables
 
 - `authenticated` : connexion OIDC Streamlit, propriétaire défini par le couple
-  `iss` + `sub` issu de `st.user`. Refus si identité absente ou expiration fournie
-  invalide/dépassée. Une adresse e-mail saisie ou un paramètre URL n'ouvre rien.
+  `iss` + `sub` issu de `st.user`, avec autorisation explicite dans une politique
+  privée. Refus si politique absente/invalide, compte non approuvé ou expiration
+  absente/invalide/dépassée. Une adresse e-mail saisie ou un paramètre URL n'ouvre rien.
 - `local` : choix explicite pour un poste personnel de confiance ; les sessions
   partagent alors l'ancien stockage. Ne pas exposer ce mode comme service privé.
 
 ```powershell
 $env:VERIDICTA_WORKSPACE_MODE = "authenticated"
 $env:VERIDICTA_WORKSPACE_DIR = "data/cases"
+$env:VERIDICTA_ACCESS_POLICY_FILE = "C:/Private/Veridicta/access-policy.json"
+uv run --locked python -m tools.access_check
 uv run --locked streamlit run ui/app.py
 ```
 
@@ -27,10 +30,14 @@ Streamlit : `redirect_uri`, `cookie_secret`, `client_id`, `client_secret` et
 https://docs.streamlit.io/develop/concepts/connections/authentication
 
 Le code d'isolation est testé ; aucune connexion réelle à un IdP de déploiement
-n'est validée ici. Les comptes autorisés, TLS, restriction du tenant, droits du
+n'est validée ici. La politique de comptes autorisés est désormais imposée par
+l'application ; sa configuration réelle, TLS, restriction du tenant, droits du
 système de fichiers et politique de révocation restent à configurer et tester
 avant l'ouverture. Les cookies/sessions OIDC existants dans d'autres onglets ne
 sont pas révoqués globalement par ce code.
+
+Voir `docs/access-control.md` pour l'enrôlement, les contrôles d'expiration et la
+révocation à la prochaine interaction. Une liste vide refuse tous les comptes.
 
 ## Écriture, traces et suppression
 
