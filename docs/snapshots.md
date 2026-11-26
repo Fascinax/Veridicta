@@ -72,3 +72,11 @@ refuse toute modification des fichiers bruts/traités et conserve les métadonn�
 de collecte. Le statut `indexed` reste `release_ready=false`. Puis suivre [le contrôle de release](production-readiness.md), dont les preuves
 humaines et fournisseur sont requises. Les fichiers de preuve privée ne sont pas
 à joindre au corpus public.
+
+### Exécution du 7 novembre 2026
+
+Le candidat `audit-20261106-candidate` a été indexé dans FAISS, BM25 et LanceDB/FTS,
+puis scellé. Ses 35 887 vecteurs ont été vérifiés et la récupération CPU testée.
+Il reste non activé. Le rapport d'exécution et les limites sont conservés dans
+`eval/results/audit/dense-index-20261107.json` ; la procédure reproductible figure
+dans `docs/dense-indexing.md`.

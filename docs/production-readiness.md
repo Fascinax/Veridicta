@@ -45,13 +45,20 @@ d'un snapshot n'est pas une approbation juridique : ce contrôle reste à intég
 au processus de déploiement choisi. Il ne remplace pas des ACL ou un audit de
 l'hébergement.
 
-## État observé le 6 novembre 2026
+## État observé le 7 novembre 2026
 
-Le nouveau candidat a 35 887 chunks issus de la collecte corrigée, sans changement
-des index actifs. Sa préparation conserve la date réelle de collecte et vérifie
-les copies. Les six fiches vides restent signalées. Les index denses, la couverture
-complémentaire et la revue indépendante ne sont pas déclarés terminés : ce
-candidat échoue donc normalement au contrôle de release.
+Le candidat contient 35 887 vecteurs Solon de 1 024 dimensions, dans FAISS et
+LanceDB, ainsi que BM25 et FTS. Il a été scellé au statut `indexed`. L'intégrité
+et l'identité de tous les vecteurs ont été contrôlées ; trois requêtes de smoke
+sur chacun des deux moteurs fonctionnent depuis le runtime CPU de l'application.
+La date de collecte reste celle du 6 novembre et les six fiches sans corps
+restent signalées. Aucun index actif n'a été remplacé.
+
+Le candidat reste non promu : l'indexation ne remplace pas la revue de couverture
+ni l'évaluation juridique indépendante. Le rapport de release échoue tant que la
+revue requise manque. Les preuves de fournisseur et d'hébergement doivent être
+réactualisées pour le déploiement choisi. Voir le rapport versionné
+`eval/results/audit/dense-index-20261107.json` et `docs/dense-indexing.md`.
 
 Un index BM25 manquant dans un snapshot scellé n'est plus reconstruit implicitement
 au chargement. La construction doit précéder le scellement ; un accès en lecture

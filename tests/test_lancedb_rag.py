@@ -207,7 +207,7 @@ class TestLoadLancedbIndex:
 
 
 class TestBuildFromFaiss:
-    def test_roundtrip(self, tmp_path):
+    def test_roundtrip(self, tmp_path, monkeypatch):
         import faiss
         import jsonlines
 
@@ -231,7 +231,20 @@ class TestBuildFromFaiss:
             writer.write_all(chunks)
 
         db_dir = tmp_path / "lance_out"
+        monkeypatch.setattr(lancedb_mod, "LANCE_IMPORT_BATCH_SIZE", 3)
+        from lancedb.table import LanceTable
+
+        def fail_fts(*args, **kwargs):
+            raise InterruptedError("before FTS publication")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(LanceTable, "create_index", fail_fts)
+            with pytest.raises(InterruptedError):
+                lancedb_mod.build_lancedb_from_faiss(faiss_dir, db_dir)
+        assert not db_dir.exists()
         lancedb_mod.build_lancedb_from_faiss(faiss_dir, db_dir)
+        with pytest.raises(FileExistsError):
+            lancedb_mod.build_lancedb_from_faiss(faiss_dir, db_dir)
 
         table = lancedb_mod.load_lancedb_index(db_dir)
         assert table.count_rows() == n
@@ -239,3 +252,6 @@ class TestBuildFromFaiss:
         exported = lancedb_mod._table_to_chunks(table)
         assert len(exported) == n
         assert exported[0]["chunk_id"] == "c0"
+        restored = table.to_arrow().to_pylist()
+        assert [row["chunk_id"] for row in restored] == [f"c{i}" for i in range(n)]
+        assert np.array_equal(np.asarray([row["vector"] for row in restored], dtype="float32"), vectors)

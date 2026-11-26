@@ -1,0 +1,211 @@
+{
+  "scope": "dense_index_build_and_technical_smoke_not_legal_evaluation",
+  "indexer_commit": "68d5304",
+  "checker_commit": "9f64285",
+  "candidate": "audit-20261106-candidate",
+  "collection_time": "2026-11-06T20:33:06.116541+00:00",
+  "manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+  "uv_lock_sha256": "e301b71f1b4f39f9f70e34c3a16e12df2081089cc3dbdd512375f4f98e13944a",
+  "build": {
+    "schema_version": "1.0",
+    "status": "built",
+    "identity": {
+      "algorithm_version": "candidate-index-v1",
+      "chunks_sha256": "61ec53717c7b62a3ee65cea17bfb027b4d9aec5ac1b76158945542f7408005a9",
+      "embed_model": "OrdalieTech/Solon-embeddings-large-0.1",
+      "embed_revision": "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef",
+      "embedding_dimension": 1024,
+      "embed_query_prefix": "query: ",
+      "dtype": "float32",
+      "normalized": true,
+      "device": "cuda",
+      "hardware": "NVIDIA GeForce RTX 4070 Ti",
+      "runtime": {
+        "torch": "2.13.0+cu130",
+        "sentence-transformers": "6.2.0",
+        "transformers": "5.22.2",
+        "numpy": "2.5.4",
+        "faiss-cpu": "1.15.1",
+        "bm25s": "0.3.16",
+        "PyStemmer": "3.1.0"
+      },
+      "max_seq_length": 512
+    },
+    "configuration": {
+      "device": "cuda",
+      "batch_size": 16,
+      "checkpoint_rows": 256
+    },
+    "chunk_count": 35887,
+    "elapsed_s": 799.514,
+    "completed_at_utc": "2026-11-07T02:26:28.021067+00:00",
+    "release_ready": false
+  },
+  "integrity": {
+    "schema_version": "1.0",
+    "scope": "index_integrity_not_legal_quality",
+    "status": "pass",
+    "checked_at_utc": "2026-11-07T02:29:21.466289+00:00",
+    "manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "vectors_checked": 35887,
+    "dimension": 1024,
+    "faiss_lancedb_vectors_identical": true,
+    "max_norm_error": 1.1920928955078125e-07,
+    "fts_result_count": 5,
+    "bm25_result_count": 5,
+    "release_ready": false
+  },
+  "cpu_retrieval_smoke": {
+    "manifest_sha256": "d97a3aeb8f01262fb1506a0d8b1be153818946b17de56cbea9378ae32bf7728a",
+    "scope": "technical_retrieval_smoke_not_legal_accuracy",
+    "status": "pass",
+    "checked_at_utc": "2026-11-07T02:31:19.985850+00:00",
+    "cpu_gpu_sample_size": 4,
+    "cpu_gpu_min_cosine": 1.0,
+    "cpu_gpu_max_abs_difference": 3.557652235031128e-07,
+    "retrieval_checks": [
+      {
+        "probe": 1,
+        "retriever": "faiss",
+        "returned_count": 5,
+        "chunk_ids": [
+          "590607b0d822-0",
+          "40a9fdc02004-0",
+          "1d865be25b6d-3",
+          "ffd2a7c9b5c2-2",
+          "aada044be275-1"
+        ]
+      },
+      {
+        "probe": 1,
+        "retriever": "lancedb",
+        "returned_count": 5,
+        "chunk_ids": [
+          "11df4a9db068-1",
+          "9c3f5f100eda-1",
+          "4b80b2ade288-12",
+          "1a6160850e37-6",
+          "aa2b4b19bf9b-3"
+        ]
+      },
+      {
+        "probe": 2,
+        "retriever": "faiss",
+        "returned_count": 5,
+        "chunk_ids": [
+          "c461a6117e0d-5",
+          "40a9fdc02004-5",
+          "51e137c2a3a3-0",
+          "4e97d6814cc7-9",
+          "ef3a2977ddcf-38"
+        ]
+      },
+      {
+        "probe": 2,
+        "retriever": "lancedb",
+        "returned_count": 5,
+        "chunk_ids": [
+          "127232f6db2d-5",
+          "3296064423ec-7",
+          "9b42368a1dc8-3",
+          "70149bd0693e-2",
+          "3296064423ec-6"
+        ]
+      },
+      {
+        "probe": 3,
+        "retriever": "faiss",
+        "returned_count": 5,
+        "chunk_ids": [
+          "7de2bf612f14-8",
+          "b2de8c590609-14",
+          "0705ef2f023d-8",
+          "b70e7f0f40fe-18",
+          "200812676eae-14"
+        ]
+      },
+      {
+        "probe": 3,
+        "retriever": "lancedb",
+        "returned_count": 5,
+        "chunk_ids": [
+          "0f637bcce66e-1",
+          "f896db112121-19",
+          "4ca696a90f2e-5",
+          "37513e767e52-12",
+          "08e35a97edb6-4"
+        ]
+      }
+    ],
+    "generation_performed": false
+  },
+  "active_index_preservation": {
+    "active_faiss_bundle_unchanged": true,
+    "checks": {
+      "data/index/veridicta.faiss": true,
+      "data/index/chunks_map.jsonl": true,
+      "data/index/embedding_config.json": true
+    },
+    "collection_time_preserved": true,
+    "manifest_files": 26
+  },
+  "checkpoint_blocks_verified": 141,
+  "status": "indexed",
+  "release_ready": false,
+  "remaining": [
+    "coverage and legal review",
+    "independent evaluation",
+    "deployment-specific checks"
+  ],
+  "retrieval_smoke_queries": [
+    {
+      "probe": 1,
+      "query": "Quels textes encadrent les conges payes ?"
+    },
+    {
+      "probe": 2,
+      "query": "Quelles sont les regles de preavis de licenciement ?"
+    },
+    {
+      "probe": 3,
+      "query": "Quelles sont les conditions pour embaucher un salarie etranger ?"
+    }
+  ],
+  "readiness": {
+    "schema_version": "1.0",
+    "status": "fail",
+    "ready": false,
+    "checks": [
+      {
+        "name": "corpus_manifest",
+        "status": "pass",
+        "detail": "Corpus collection is current and all declared file digests match"
+      },
+      {
+        "name": "retrieved_sources",
+        "status": "pass",
+        "detail": "5 source(s) available"
+      },
+      {
+        "name": "provider_boundary",
+        "status": "pass",
+        "detail": "No provider failure recorded"
+      },
+      {
+        "name": "index_bundle",
+        "status": "pass",
+        "detail": "Evidence verified for the selected release"
+      },
+      {
+        "name": "release_review",
+        "status": "fail",
+        "detail": "Required evidence is missing, invalid or does not match the release"
+      },
+      {
+        "name": "provider_smoke",
+        "status": "pass",
+        "detail": "Evidence verified for the selected release"
+      }
+    ]
+  }
+}
