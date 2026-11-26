@@ -1,0 +1,127 @@
+{
+  "scope": "corpus-integrity-and-source-metadata-only",
+  "legal_accuracy_measurement": false,
+  "snapshots": {
+    "previous": {
+      "schema_version": "1.0",
+      "counts": {
+        "records": 3367,
+        "versioned_documents": 1745,
+        "version_window_missing_effective_dates": 1745,
+        "empty_text": 6,
+        "explicitly_repealed": 14,
+        "duplicate_id_occurrences": 233,
+        "missing_version_identity": 1581,
+        "conflicting_id_occurrences": 223
+      },
+      "unique_documents": 3134,
+      "conflicting_id_groups": 84,
+      "types": {
+        "legislation": 164,
+        "jurisprudence": 1567,
+        "regulation": 1557,
+        "traite_international": 24,
+        "projet_loi": 55
+      },
+      "files": {
+        "legislation.jsonl": {
+          "records": 164,
+          "versioned_documents": 164,
+          "version_window_missing_effective_dates": 164,
+          "empty_text": 6,
+          "explicitly_repealed": 4
+        },
+        "jurisprudence.jsonl": {
+          "records": 781,
+          "duplicate_id_occurrences": 1
+        },
+        "regulations.jsonl": {
+          "records": 1557,
+          "versioned_documents": 1557,
+          "missing_version_identity": 1557,
+          "version_window_missing_effective_dates": 1557,
+          "duplicate_id_occurrences": 225,
+          "conflicting_id_occurrences": 220,
+          "explicitly_repealed": 10
+        },
+        "jurisprudence_courts.jsonl": {
+          "records": 786,
+          "duplicate_id_occurrences": 4
+        },
+        "traites_internationaux.jsonl": {
+          "records": 24,
+          "versioned_documents": 24,
+          "missing_version_identity": 24,
+          "version_window_missing_effective_dates": 24,
+          "duplicate_id_occurrences": 3,
+          "conflicting_id_occurrences": 3
+        },
+        "projets_loi.jsonl": {
+          "records": 55
+        }
+      },
+      "blocking_build_issues": {
+        "conflicting_id_occurrences": 223
+      },
+      "eligible_for_build": false,
+      "legal_release_ready": false,
+      "semantics": "Source version windows are not proof of article-specific legal applicability or complete coverage.",
+      "input_manifest_sha256": "883bfba92247f5342187e6ce43609b1d2447613706f683720349c4f9ee71d9a5",
+      "collected_at": "2026-11-06T17:45:57.424624+00:00"
+    },
+    "recollected": {
+      "schema_version": "1.0",
+      "counts": {
+        "records": 3366,
+        "versioned_documents": 1744,
+        "version_window_explicit_effective_dates": 1744,
+        "empty_text": 6,
+        "explicitly_repealed": 14
+      },
+      "unique_documents": 3366,
+      "conflicting_id_groups": 0,
+      "types": {
+        "legislation": 164,
+        "jurisprudence": 1567,
+        "regulation": 1556,
+        "traite_international": 24,
+        "projet_loi": 55
+      },
+      "files": {
+        "legislation.jsonl": {
+          "records": 164,
+          "versioned_documents": 164,
+          "version_window_explicit_effective_dates": 164,
+          "empty_text": 6,
+          "explicitly_repealed": 4
+        },
+        "jurisprudence.jsonl": {
+          "records": 781
+        },
+        "regulations.jsonl": {
+          "records": 1556,
+          "versioned_documents": 1556,
+          "version_window_explicit_effective_dates": 1556,
+          "explicitly_repealed": 10
+        },
+        "jurisprudence_courts.jsonl": {
+          "records": 786
+        },
+        "traites_internationaux.jsonl": {
+          "records": 24,
+          "versioned_documents": 24,
+          "version_window_explicit_effective_dates": 24
+        },
+        "projets_loi.jsonl": {
+          "records": 55
+        }
+      },
+      "blocking_build_issues": {},
+      "eligible_for_build": true,
+      "legal_release_ready": false,
+      "semantics": "Source version windows are not proof of article-specific legal applicability or complete coverage.",
+      "input_manifest_sha256": "8374a7e414819c205bc3a3cd7a66a4e3f241bda2d464661f909b39d99cc87bc7",
+      "collected_at": "2026-11-06T20:33:06.116541+00:00"
+    }
+  }
+}
