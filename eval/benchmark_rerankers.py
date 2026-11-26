@@ -966,16 +966,14 @@ def _validate_questions(args: argparse.Namespace, questions_path: Path) -> None:
         raise SystemExit(f"ERROR: evaluation contract: {exc}") from exc
 
 
-def _load_pipeline(args: argparse.Namespace) -> RetrievalPipeline:
+def _load_pipeline(args: argparse.Namespace, *, lancedb_dir: Path | None = None) -> RetrievalPipeline:
     from eval.evaluate import _load_optional_retrievers, _load_primary_index  # noqa: PLC0415
 
     index_dir = Path(args.index_dir)
     retrieval_args = argparse.Namespace(retriever=args.retriever)
-    bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(
-        retrieval_args, index_dir
-    )
-    primary_args = argparse.Namespace(retriever=args.retriever)
-    index, chunks = _load_primary_index(primary_args, index_dir, lancedb_table)
+    optional_paths = {} if lancedb_dir is None else {"lancedb_dir": lancedb_dir}
+    bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(retrieval_args, index_dir, **optional_paths)
+    index, chunks = _load_primary_index(retrieval_args, index_dir, lancedb_table)
     print("Loading embedder ...")
     embedder = _load_embedder()
     return RetrievalPipeline(
