@@ -90,7 +90,7 @@ def collect(args: argparse.Namespace) -> None:
     snapshot_digest = file_digest(args.snapshot)
     policy_date = datetime.now(ZoneInfo("Europe/Monaco")).date()
     args.index_dir = args.snapshot.parent / "index"
-    pipeline = _load_pipeline(args)
+    pipeline = _load_pipeline(args, lancedb_dir=args.index_dir / "lancedb")
     pipeline.applicability = replace(pipeline.applicability, current_date=policy_date)
     try:
         cases = collect_raw_retrieval(load_questions(args.questions), pipeline,
@@ -211,7 +211,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     capture = commands.add_parser("collect")
     capture.add_argument("--snapshot", type=Path, required=True)
-    capture.add_argument("--retriever", choices=("faiss", "hybrid"), default="faiss")
+    capture.add_argument("--retriever", choices=("faiss", "hybrid", "lancedb"), default="faiss")
     capture.add_argument("--candidate-k", type=int, default=20)
     capture.add_argument("--contract", default="eval/evaluation_contract.json")
     capture.add_argument("--allow-custom-questions", action="store_true")
