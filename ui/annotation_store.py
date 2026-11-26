@@ -44,7 +44,8 @@ class AnnotationProgress:
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        with path.open(encoding="utf-8") as handle:
+            lines = list(handle)
     except FileNotFoundError as exc:
         raise AnnotationStoreError(f"Fichier introuvable : {path}") from exc
 

@@ -43,6 +43,7 @@ data/embeddings/*
 data/index/*
 data/cases/*
 data/snapshots/
+/data/models/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/embeddings/.gitkeep

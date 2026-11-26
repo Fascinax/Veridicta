@@ -80,6 +80,14 @@ def test_write_annotations_is_valid_jsonl(tmp_path: Path) -> None:
     assert not list(path.parent.glob("*.tmp"))
 
 
+def test_unicode_line_separators_inside_an_annotation_do_not_split_its_json_record(tmp_path):
+    path = tmp_path / "annotations.jsonl"
+    rows = _rows()
+    rows[0]["rationale"] = "Citation avant\u2028citation après\u2029fin."
+    write_annotations(path, rows)
+    assert load_annotations(path) == rows
+
+
 def test_update_annotation_rejects_unknown_question() -> None:
     with pytest.raises(AnnotationStoreError, match="n'existe pas"):
         update_annotation(_rows(), AnnotationInput("q-404", "correct", "", "olivier"))
