@@ -148,3 +148,51 @@ def test_cross_encoder_uses_pinned_weights_and_explicit_inference_settings(monke
     assert (recorded["revision"], recorded["trust_remote_code"], recorded["local_files_only"],
             recorded["prediction"]["batch_size"], result[0]["chunk_id"]) == (
         RERANKER_SPECS["qwen3"].revision, False, True, 4, "b")
+
+
+def test_collect_uses_sealed_lancedb_instead_of_active_store(tmp_path, monkeypatch):
+    import sys
+    from datetime import datetime, timezone
+
+    import lancedb
+
+    from eval import benchmark_rerankers, reranker_replay
+    from retrievers import lancedb_rag
+    from retrievers.snapshots import create_manifest
+
+    snapshot = tmp_path / "sealed"
+    index_dir = snapshot / "index"
+    index_dir.mkdir(parents=True)
+    active = tmp_path / "active"
+    canonical = {
+        "chunk_id": "shared", "doc_id": "doc", "text": "Sealed text",
+        "source": "", "title": "",
+    }
+    for db_dir, text in ((index_dir / "lancedb", canonical["text"]), (active, "Active text")):
+        row = canonical | {"text": text, "metadata_json": "{}", "vector": [1.0, 0.0]}
+        lancedb.connect(str(db_dir)).create_table("chunks", [row])
+    (index_dir / "chunks_map.jsonl").write_text(json.dumps(canonical) + "\n", encoding="utf-8")
+    (index_dir / "embedding_config.json").write_text("{}", encoding="utf-8")
+    manifest = snapshot / "snapshot.manifest.json"
+    manifest.write_text(
+        json.dumps(create_manifest(snapshot, datetime.now(timezone.utc).isoformat(), "fixture")),
+        encoding="utf-8",
+    )
+    question = _case().question
+    questions = tmp_path / "questions.json"
+    questions.write_text(json.dumps([asdict(question)]), encoding="utf-8")
+    out = tmp_path / "pool"
+
+    monkeypatch.setattr(lancedb_rag, "active_lancedb_dir", lambda: active)
+    monkeypatch.setattr(benchmark_rerankers, "_load_embedder", object)
+    monkeypatch.setattr(
+        reranker_replay, "collect_raw_retrieval",
+        lambda questions, pipeline, config: [RawRetrievalCase(questions[0], pipeline.chunks, 0.0)],
+    )
+    monkeypatch.setattr(sys, "argv", [
+        "reranker_replay", "collect", "--snapshot", str(manifest), "--retriever", "lancedb",
+        "--questions", str(questions), "--out", str(out), "--candidate-k", "1", "--allow-custom-questions",
+    ])
+    reranker_replay.main()
+
+    assert load_pool(out, questions)[0][0].candidates == [canonical]
