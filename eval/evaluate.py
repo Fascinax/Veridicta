@@ -1749,7 +1749,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--index-dir",
-        default=str(active_index_dir()),
+        default=None,
         help="Directory containing veridicta.faiss + chunks_map.jsonl",
     )
     parser.add_argument(
@@ -2275,7 +2275,7 @@ def main() -> None:
 
     _validate_evaluation_contract(args, questions_path)
 
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
     active_backend = args.backend or LLM_BACKEND
 
     print("Loading questions ...")
