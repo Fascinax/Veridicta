@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-import retrievers.baseline_rag as baseline_rag
+from retrievers import baseline_rag
 from retrievers.grounding import enforce_grounding, verify_grounding
 
 
@@ -90,3 +90,510 @@ def test_answer_applies_grounding_guard_before_returning(monkeypatch) -> None:
     assert "deux mois de préavis" in response
     assert "Source 9" not in response
     assert trace["grounding"]["unsupported_claim_rate"] == 0.5
+
+
+def test_enforce_grounding_is_idempotent_on_partial_and_empty_outputs() -> None:
+    partial_once, first_report = enforce_grounding(
+        "Le salarié dispose de deux mois de préavis. [Source 1]\n"
+        "La loi prévoit une prime inexistante. [Source 1]",
+        _chunks(),
+    )
+    partial_twice, second_report = enforce_grounding(partial_once, _chunks())
+
+    assert first_report.unsupported_count == 1
+    assert partial_twice == partial_once
+    assert second_report.unsupported_count == 0
+    assert second_report.abstained_count == 1
+
+    empty_once, empty_first = enforce_grounding("", _chunks())
+    empty_twice, empty_second = enforce_grounding(empty_once, _chunks())
+
+    assert empty_first.unsupported_count == 0
+    assert empty_twice == empty_once
+    assert empty_second.unsupported_count == 0
+
+
+def test_grounding_preserves_legal_article_abbreviations_and_headings() -> None:
+    chunks = [
+        {
+            "text": (
+                "Art. 15. Le salarié dispose de 30 jours de préavis selon l'ord. n° 1.234, "
+                "al. 2 et l'Art. L. 122-9 du C. trav."
+            )
+        }
+    ]
+    claim = (
+        "Art. 15. Le salarié dispose de 30 jours de préavis selon l'ord. n° 1.234, "
+        "al. 2 et l'Art. L. 122-9 du C. trav. [Source 1]"
+    )
+    guarded, report = enforce_grounding(claim, chunks)
+
+    assert report.supported_count == 1
+    assert report.unsupported_count == 0
+    assert guarded == claim
+
+    inline_ref = (
+        "Selon l'Art. 15. de l'ord. n° 1.234, le salarié dispose de 30 jours de préavis. [Source 1]"
+    )
+    inline_report = verify_grounding(inline_ref, chunks)
+    assert inline_report.unsupported_count == 1
+    assert inline_report.claims[0].evidence.source_number == 1
+
+
+def test_grounding_handles_adjacent_citations_without_stealing_or_dropping() -> None:
+    chunks = [
+        {"text": "Le salarié dispose de 30 jours de préavis."},
+        {"text": "Le congé annuel est payé par l'employeur."},
+    ]
+
+    comma_answer = (
+        "Le salarié dispose de 30 jours de préavis. [Source 1], [Source 2] "
+        "Le congé annuel est payé par l'employeur. [Source 2]"
+    )
+    comma_report = verify_grounding(comma_answer, chunks)
+    assert comma_report.supported_count == 2
+    assert comma_report.unsupported_count == 0
+    assert comma_report.claims[0].source_numbers == (1, 2)
+    assert comma_report.claims[1].source_numbers == (2,)
+
+    et_answer = (
+        "Le salarié dispose de 30 jours de préavis. [Source 1] et [Source 2]. "
+        "Le congé annuel est payé par l'employeur. [Source 2]"
+    )
+    et_report = verify_grounding(et_answer, chunks)
+    assert et_report.supported_count == 2
+    assert et_report.unsupported_count == 0
+    assert et_report.claims[0].source_numbers == (1, 2)
+
+    next_sentence_citation = (
+        "Le salarié dispose de 30 jours de préavis [Source 1]. "
+        "[Source 2] Le congé annuel est payé par l'employeur."
+    )
+    next_report = verify_grounding(next_sentence_citation, chunks)
+    assert next_report.supported_count == 2
+    assert next_report.unsupported_count == 0
+    assert next_report.claims[0].source_numbers == (1,)
+    assert next_report.claims[1].source_numbers == (2,)
+
+    newline_uncited = (
+        "Affirmation sans citation.\n"
+        "[Source 1] Le salarié dispose de 30 jours de préavis."
+    )
+    newline_report = verify_grounding(newline_uncited, chunks)
+    assert newline_report.claims[0].status == "unsupported"
+    assert newline_report.claims[0].reason == "missing_source_citation"
+    assert newline_report.claims[1].status == "supported"
+    assert newline_report.claims[1].source_numbers == (1,)
+
+
+def test_grounding_detects_french_legal_negations_and_compound_polarity() -> None:
+    positive_source = [{"text": "Le salarié dispose de 30 jours de préavis."}]
+    for contradictory in (
+        "Le salarié ne dispose plus de 30 jours de préavis. [Source 1]",
+        "Le salarié ne dispose point de 30 jours de préavis. [Source 1]",
+        "Le salarié ne peut disposer de 30 jours de préavis. [Source 1]",
+        "Le salarié ne dispose ni de 30 jours ni de préavis. [Source 1]",
+        "Le préavis de 30 jours est non applicable au salarié. [Source 1]",
+        "Nul ne peut accorder au salarié 30 jours de préavis. [Source 1]",
+    ):
+        report = verify_grounding(contradictory, positive_source)
+        assert report.unsupported_count == 1, contradictory
+        assert report.claims[0].reason == "conflicting_polarity", contradictory
+
+    compound_source = [
+        {"text": "En cas de rupture sans motif légitime, le salarié dispose de 30 jours de préavis."}
+    ]
+    supported_compound = verify_grounding(
+        "En cas de rupture sans motif légitime, le salarié dispose de 30 jours de préavis. [Source 1]",
+        compound_source,
+    )
+    assert supported_compound.supported_count == 1
+    assert supported_compound.unsupported_count == 0
+
+    inverted_compound = verify_grounding(
+        "En cas de rupture sans motif légitime, le salarié ne dispose pas de 30 jours de préavis. [Source 1]",
+        compound_source,
+    )
+    assert inverted_compound.unsupported_count == 1
+    assert inverted_compound.claims[0].reason == "conflicting_polarity"
+
+    comparative_source = [{"text": "Le salarié a plus de 30 jours de congés payés."}]
+    comparative_report = verify_grounding(
+        "Le salarié a plus de 30 jours de congés payés. [Source 1]",
+        comparative_source,
+    )
+    assert comparative_report.supported_count == 1
+    assert comparative_report.unsupported_count == 0
+
+    noun_personne_source = [
+        {"text": "La personne handicapée n'a pas droit à cette indemnité forfaitaire."}
+    ]
+    noun_personne_report = verify_grounding(
+        "Le salarié handicapé n'a pas droit à cette indemnité forfaitaire. [Source 1]",
+        noun_personne_source,
+    )
+    assert noun_personne_report.unsupported_count == 1
+    assert noun_personne_report.claims[0].evidence.source_number == 1
+
+
+def test_grounding_checks_legal_acronyms_and_dotted_forms() -> None:
+    cdi_source = [{"text": "Le salarié en CDI dispose de 30 jours de préavis."}]
+    swapped_cdd = verify_grounding(
+        "Le salarié en CDD dispose de 30 jours de préavis. [Source 1]",
+        cdi_source,
+    )
+    assert swapped_cdd.unsupported_count == 1
+    assert swapped_cdd.claims[0].reason == "unsupported_acronym"
+
+    sam_source = [{"text": "La S.A.M. dépose ses statuts au Journal de Monaco."}]
+    sam_claim = verify_grounding(
+        "La SAM dépose ses statuts au Journal de Monaco. [Source 1]",
+        sam_source,
+    )
+    assert sam_claim.unsupported_count == 1
+    assert sam_claim.claims[0].evidence.source_number == 1
+
+    sarl_claim = verify_grounding(
+        "La SARL dépose ses statuts au Journal de Monaco. [Source 1]",
+        sam_source,
+    )
+    assert sarl_claim.unsupported_count == 1
+    assert sarl_claim.claims[0].reason == "unsupported_acronym"
+
+    ccss_source = [{"text": "Les cotisations sociales sont versées à la CCSS."}]
+    car_claim = verify_grounding(
+        "Les cotisations sociales sont versées à la CAR. [Source 1]",
+        ccss_source,
+    )
+    assert car_claim.unsupported_count == 1
+    assert car_claim.claims[0].reason == "unsupported_acronym"
+
+    expanded_source = [
+        {"text": "Le salarié en contrat à durée indéterminée dispose de 30 jours de préavis."}
+    ]
+    cdi_from_expanded = verify_grounding(
+        "Le salarié en CDI dispose de 30 jours de préavis. [Source 1]",
+        expanded_source,
+    )
+    assert cdi_from_expanded.unsupported_count == 1
+    assert cdi_from_expanded.claims[0].evidence.source_number == 1
+
+    cdd_from_expanded = verify_grounding(
+        "Le salarié en CDD dispose de 30 jours de préavis. [Source 1]",
+        expanded_source,
+    )
+    assert cdd_from_expanded.unsupported_count == 1
+    assert cdd_from_expanded.claims[0].reason == "unsupported_acronym"
+
+    short_bypass = verify_grounding(
+        "La loi dit oui. [Source 1]",
+        cdi_source,
+    )
+    assert short_bypass.unsupported_count == 1
+    assert short_bypass.claims[0].reason == "low_evidence_overlap"
+
+
+def test_grounding_rejects_directional_actor_patient_and_recipient_swaps() -> None:
+    reversed_pairs = [
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur restitue le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au locataire par le bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur doit restituer le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur est tenu de restituer le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Il appartient au bailleur de restituer le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le bailleur restitue le montant. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au locataire. [Source 1]",
+        ),
+        (
+            "L'employeur verse une indemnité au salarié.",
+            "Le salarié verse une indemnité à l'employeur. [Source 1]",
+        ),
+        (
+            "L'employeur licencie le salarié.",
+            "Le salarié licencie l'employeur. [Source 1]",
+        ),
+        (
+            "Le salarié est licencié par l'employeur.",
+            "L'employeur est licencié par le salarié. [Source 1]",
+        ),
+        (
+            "La société Alpha verse 1000 euros à la société Beta.",
+            "La société Beta verse 1000 euros à la société Alpha. [Source 1]",
+        ),
+        (
+            "Le locataire reçoit la quittance du bailleur.",
+            "Le bailleur reçoit la quittance du locataire. [Source 1]",
+        ),
+        (
+            "Les frais sont à la charge du bailleur au profit du locataire.",
+            "Les frais sont à la charge du locataire au profit du bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire forme un recours contre le bailleur.",
+            "Le bailleur forme un recours contre le locataire. [Source 1]",
+        ),
+        (
+            "Le bailleur est redevable de l'indemnité envers le locataire.",
+            "Le locataire est redevable de l'indemnité envers le bailleur. [Source 1]",
+        ),
+        (
+            "La restitution du montant par le locataire au bailleur est obligatoire.",
+            "La restitution du montant par le bailleur au locataire est obligatoire. [Source 1]",
+        ),
+        (
+            "Lorsque le locataire quitte le logement, le bailleur restitue le dépôt de garantie au locataire.",
+            "Le locataire restitue le dépôt de garantie au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur, et le bailleur remet une quittance au locataire.",
+            "Le bailleur restitue le montant au locataire. [Source 1]",
+        ),
+        (
+            "L'avocat du bailleur notifie la mise en demeure à l'avocat du locataire.",
+            "L'avocat du locataire notifie la mise en demeure à l'avocat du bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue immédiatement le montant au bailleur.",
+            "Le bailleur restitue immédiatement le montant au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire ne restitue pas le montant au bailleur.",
+            "Le bailleur ne restitue pas le montant au locataire. [Source 1]",
+        ),
+        (
+            "L'employeur verse une indemnité forfaitaire de licenciement au salarié.",
+            "L'employeur perçoit une indemnité forfaitaire de licenciement du salarié. [Source 1]",
+        ),
+        (
+            "La restitution du montant par le locataire au bailleur est prévue par la loi.",
+            "La restitution du montant par le bailleur au locataire est prévue par la loi. [Source 1]",
+        ),
+    ]
+
+    for source_text, reversed_claim in reversed_pairs:
+        report = verify_grounding(reversed_claim, [{"text": source_text}])
+        assert report.unsupported_count == 1, f"{source_text} -> {reversed_claim}"
+        guarded, _ = enforce_grounding(reversed_claim, [{"text": source_text}])
+        assert reversed_claim not in guarded
+
+    guarded, report = enforce_grounding(
+        "Le bailleur restitue le montant au locataire. [Source 1]",
+        [{"text": "Le locataire restitue le montant au bailleur."}],
+    )
+    assert report.unsupported_count == 1
+    assert report.claims[0].reason == "unverified_paraphrase"
+    assert "Le bailleur restitue" not in guarded
+    assert "ne permettent pas" in guarded
+
+
+def test_grounding_returns_cited_source_for_related_paraphrases() -> None:
+    legitimate_pairs = [
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au bailleur par le locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué par le locataire au bailleur. [Source 1]",
+        ),
+        (
+            "Le montant est restitué par le locataire au bailleur.",
+            "Le locataire restitue le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire doit restituer le montant au bailleur.",
+            "Le locataire restitue le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire est tenu de restituer le montant au bailleur.",
+            "Le locataire doit restituer le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Il appartient au locataire de restituer le montant au bailleur.",
+            "Le locataire doit restituer le montant au bailleur. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le locataire restitue le montant. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur.",
+            "Le montant est restitué au bailleur. [Source 1]",
+        ),
+        (
+            "L'employeur licencie le salarié.",
+            "Le salarié est licencié par l'employeur. [Source 1]",
+        ),
+        (
+            "Dans un délai de 30 jours, le locataire restitue le montant au bailleur.",
+            "Le locataire restitue le montant au bailleur dans un délai de 30 jours. [Source 1]",
+        ),
+        (
+            "Le bail est conclu entre le bailleur et le locataire.",
+            "Le bail est conclu entre le locataire et le bailleur. [Source 1]",
+        ),
+        (
+            "Le bailleur et le locataire signent le contrat.",
+            "Le locataire et le bailleur signent le contrat. [Source 1]",
+        ),
+        (
+            "Le salarié notifie la rupture à l'employeur par lettre recommandée.",
+            "Par lettre recommandée, le salarié notifie la rupture à l'employeur. [Source 1]",
+        ),
+        (
+            "Lorsque le locataire quitte le logement, le bailleur restitue le dépôt de garantie au locataire.",
+            "Le bailleur restitue le dépôt de garantie au locataire. [Source 1]",
+        ),
+        (
+            "Le locataire restitue le montant au bailleur, et le bailleur remet une quittance au locataire.",
+            "Le bailleur remet une quittance au locataire. [Source 1]",
+        ),
+        (
+            "Le tribunal ordonne au locataire de restituer le montant au bailleur.",
+            "Le locataire doit restituer le montant au bailleur. [Source 1]",
+        ),
+        (
+            "L'employeur augmente le salaire.",
+            "Le salaire augmente. [Source 1]",
+        ),
+        (
+            "La restitution du montant par le locataire au bailleur est obligatoire.",
+            "La restitution du montant au bailleur par le locataire est obligatoire. [Source 1]",
+        ),
+        (
+            "L'employeur verse une indemnité forfaitaire de licenciement au salarié.",
+            "Le salarié perçoit une indemnité forfaitaire de licenciement de l'employeur. [Source 1]",
+        ),
+    ]
+
+    for source_text, paraphrase in legitimate_pairs:
+        guarded, report = enforce_grounding(paraphrase, [{"text": source_text}])
+        assert report.unsupported_count == 1
+        assert f"{source_text} [Source 1]" in guarded, (source_text, paraphrase)
+
+
+def test_request_for_payment_preserves_creditor_and_debtor():
+    for verb in ("réclame", "demande"):
+        source = f"Le bailleur {verb} une indemnité au locataire."
+        swapped = f"Le locataire {verb} une indemnité au bailleur."
+        assert verify_grounding(source + " [Source 1]", [{"text": source}]).supported_count == 1
+        report = verify_grounding(swapped + " [Source 1]", [{"text": source}])
+        assert report.unsupported_count == 1
+
+def test_substituted_debtor_uses_only_the_selected_passage():
+    source = "Le bailleur réclame une indemnité au locataire."
+    chunks = [{"text": "Le garant participe à la réunion."}, {"text": source + " Le tribunal siège demain."}]
+    claim = "Le bailleur réclame une indemnité au garant. [Source 1] et [Source 2]"
+    guarded, report = enforce_grounding(claim, chunks)
+    assert report.unsupported_count == 1
+    assert guarded.splitlines()[0] == chunks[1]["text"] + " [Source 2]"
+    assert "garant" not in guarded
+    assert enforce_grounding(guarded, chunks)[0] == guarded
+
+
+def test_extractive_guard_preserves_conditions_accents_and_relative_clauses():
+    for source, claim in [
+        ("Le préavis incombe à l'employeur.", "Le préavis incombe au salarié."),
+        ("Le recours contre l'employeur appartient au salarié.", "Le recours contre le salarié appartient à l'employeur."),
+        ("Le salarié qui a travaillé 12 mois reçoit une prime de l'employeur.", "Le salarié reçoit une prime de l'employeur."),
+        ("Le bailleur verse une prime\nsi le contrat est renouvelé.", "Le bailleur verse une prime."),
+    ]:
+        guarded, report = enforce_grounding(claim + " [Source 1]", [{"text": source}])
+        assert report.supported_count == 0
+        assert guarded.startswith(source + " [Source 1]\n")
+
+
+def test_abstention_prefix_cannot_carry_an_uncited_obligation():
+    claim = "Les sources ne permettent pas de confirmer le délai et le salarié perd son droit."
+    guarded, report = enforce_grounding(claim, [])
+    assert report.unsupported_count == 1
+    assert "perd son droit" not in guarded
+
+
+def test_contested_obligation_preserves_attribution_and_ruling_in_stream(monkeypatch):
+    obligation = "Le locataire doit verser une indemnité au bailleur."
+    passage = f"Le bailleur soutient ce qui suit.\n{obligation} Le tribunal rejette cette demande."
+    chunks = [{"text": passage}]
+    for proposal, reason in [(obligation, "excerpt_requires_context"),
+                             (obligation.replace("bailleur", "propriétaire"), "unverified_paraphrase")]:
+        answer = proposal + " [Source 1]"
+        monkeypatch.setattr(baseline_rag, "_answer_copilot_stream", lambda *args: iter([answer]))
+        tokens, trace = baseline_rag.answer_stream("Que décide le tribunal ?", chunks, backend="copilot")
+        rendered = "".join(tokens)
+        assert rendered.startswith(passage + " [Source 1]\n")
+        assert trace["grounding"]["claims"][0]["reason"] == reason
+        assert trace["grounding"]["supported_count"] == 0
+        assert enforce_grounding(rendered, chunks)[0] == rendered
+        assert verify_grounding(rendered, chunks).supported_count == 1
+
+
+def test_context_with_embedded_citation_cannot_be_partially_published():
+    chunks = [{"text": "Le juge examine [Source 9]. Le locataire verse une indemnité."}]
+    rendered, report = enforce_grounding("Le locataire verse une indemnité. [Source 1]", chunks)
+    assert report.unsupported_count == 1
+    assert "indemnité" not in rendered
+    assert "[Source" not in rendered
+
+
+def test_split_ruling_is_retained_in_both_generation_modes(monkeypatch):
+    claim = "Le locataire doit verser une indemnité au bailleur."
+    decision = "Le tribunal rejette cette demande."
+    chunks = [
+        {"doc_id": "jugement", "chunk_id": "a", "text": claim},
+        {"doc_id": "jugement", "chunk_id": "b", "text": decision},
+        {"doc_id": "autre", "text": "Le conseil se réunit."},
+    ]
+    for proposal in (claim, claim.replace("bailleur", "propriétaire")):
+        answer = proposal + " [Source 1]"
+        monkeypatch.setattr(baseline_rag, "_answer_copilot", lambda *args: answer)
+        monkeypatch.setattr(baseline_rag, "_answer_copilot_stream", lambda *args: iter([answer]))
+        direct, trace = baseline_rag.answer("Que décide le tribunal ?", chunks, backend="copilot", return_trace=True)
+        stream, stream_trace = baseline_rag.answer_stream("Que décide le tribunal ?", chunks, backend="copilot")
+        assert "".join(stream) == direct
+        assert direct.splitlines()[:2] == [claim + " [Source 1]", decision + " [Source 2]"]
+        assert "[Source 3]" not in direct
+        assert trace["grounding"]["supported_count"] == stream_trace["grounding"]["supported_count"] == 0
+        assert enforce_grounding(direct, chunks)[0] == direct
+
+
+def test_document_context_is_scoped_by_version_and_fails_closed_when_unquotable():
+    claim = "Le tribunal rejette cette demande."
+    chunks = [
+        {"doc_id": "arrêt", "version_id": "1", "text": claim},
+        {"doc_id": "arrêt", "metadata": {"version_id": "2"}, "text": "Voir [Source 9]."},
+    ]
+    answer = claim + " [Source 1]"
+    assert enforce_grounding(answer, chunks)[0] == answer
+    chunks[1]["metadata"]["version_id"] = "1"
+    rendered, report = enforce_grounding(answer, chunks)
+    assert claim not in rendered
+    assert report.claims[0].reason == "document_context_unavailable"
+
+
+def test_document_order_is_independent_of_retrieval_rank():
+    chunks = [
+        {"doc_id": "case", "chunk_index": 4, "text": "Le tribunal rejette cette demande."},
+        {"doc_id": "case", "chunk_index": 3, "text": "Le bailleur demande une indemnité."},
+    ]
+    rendered, report = enforce_grounding(chunks[1]["text"] + " [Source 2]", chunks)
+    assert rendered.splitlines()[:2] == [chunks[1]["text"] + " [Source 2]", chunks[0]["text"] + " [Source 1]"]
+    assert report.claims[0].context_sources == (2, 1)

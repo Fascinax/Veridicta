@@ -462,12 +462,15 @@ def _answer_omniroute_stream(system: str, user: str, model: str) -> Iterator[str
     yield from OmniRouteClient(model).chat_stream(system=system, user=user)
 
 
+DEFAULT_PROMPT_VERSION = 3
+
+
 def answer(
     query: str,
     context_chunks: list[dict],
     model: str | None = None,
     backend: str | None = None,
-    prompt_version: int = 1,
+    prompt_version: int = DEFAULT_PROMPT_VERSION,
     return_trace: bool = False,
     *,
     conversation_history: list[dict] | None = None,
@@ -492,7 +495,7 @@ def answer(
         conversation_history=conversation_history,
         token_counter=lambda text: count_llm_tokens(text, resolved_model),
     )
-    if not context_chunks:
+    if not prompt_trace.used_chunks:
         response_text, grounding_report = enforce_grounding(NO_SOURCES_RESPONSE, [])
         if not return_trace:
             return response_text
@@ -523,7 +526,7 @@ def answer(
     else:  # pragma: no cover - guarded by resolve_llm_backend
         raise ValueError(f"Unsupported backend: {active_backend!r}")
     response_text, grounding_report = enforce_grounding(
-        response_text,
+        response_text or "",
         prompt_trace.used_chunks,
     )
 
@@ -549,13 +552,13 @@ def answer_stream(
     context_chunks: list[dict],
     model: str | None = None,
     backend: str | None = None,
-    prompt_version: int = 3,
+    prompt_version: int = DEFAULT_PROMPT_VERSION,
     *,
     conversation_history: list[dict] | None = None,
 ) -> tuple[Iterator[str], dict]:
     """Build prompt context eagerly, then return a (token_generator, trace_dict) tuple.
 
-    The token generator streams text from the LLM without blocking.
+    Provider output is buffered and checked before any text is exposed.
     The trace_dict is available immediately (before iterating the generator).
 
     Args:
@@ -578,8 +581,9 @@ def answer_stream(
         conversation_history=conversation_history,
         token_counter=lambda text: count_llm_tokens(text, resolved_model),
     )
-    if not context_chunks:
-        return iter((NO_SOURCES_RESPONSE,)), {
+    if not prompt_trace.used_chunks:
+        response_text, grounding_report = enforce_grounding(NO_SOURCES_RESPONSE, [])
+        return iter((response_text,)), {
             "prompt_trace": prompt_trace,
             "used_chunks": prompt_trace.used_chunks,
             "omitted_chunks": prompt_trace.omitted_chunks,
@@ -589,7 +593,7 @@ def answer_stream(
             "backend": active_backend,
             "model": resolved_model,
             "prompt_version": prompt_version,
-            "grounding": None,
+            "grounding": grounding_report.to_dict(),
             "failure_stage": "retrieval",
             "failure_reason": "no_sources",
         }
@@ -618,7 +622,18 @@ def answer_stream(
         "prompt_version": prompt_version,
         "grounding": None,
     }
-    return token_gen, trace
+    def verified_output() -> Iterator[str]:
+        try:
+            response = "".join(token_gen)
+        except Exception as exc:
+            trace["failure_stage"] = "generation"
+            trace["failure_reason"] = type(exc).__name__
+            raise
+        guarded, report = enforce_grounding(response, prompt_trace.used_chunks)
+        trace["grounding"] = report.to_dict()
+        yield guarded
+
+    return verified_output(), trace
 
 
 # --- CLI ---

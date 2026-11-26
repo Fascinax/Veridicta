@@ -13,6 +13,7 @@ import sys
 import time
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pandas as pd
 import streamlit as st
@@ -48,18 +49,23 @@ except Exception as _artifact_err:
     st.warning(f"Artifact check failed: {_artifact_err}")
 
 from retrievers.baseline_rag import (
+    DEFAULT_PROMPT_VERSION,
     DEFAULT_TOP_K,
     INDEX_DIR,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
-    OMNIROUTE_DEFAULT_MODEL,
     answer,
     answer_stream,
     load_index,
     _load_embedder,
 )
-from retrievers.config import count_llm_tokens, get_context_budget_tokens, resolve_llm_backend
+from retrievers.config import (
+    OMNIROUTE_DEFAULT_MODEL,
+    count_llm_tokens,
+    get_context_budget_tokens,
+    resolve_llm_backend,
+)
 from retrievers.grounding import enforce_grounding
 from retrievers.orchestrator import OrchestrationEscalation, OrchestrationState, run_orchestration
 from retrievers.pipeline import RetrievalPipeline
@@ -69,7 +75,6 @@ from retrievers.traceability import (
     build_prompt_trace,
     citation_source_numbers,
     get_audit_log_path,
-    normalize_citations,
     new_trace_id,
 )
 from workspaces.store import WorkspaceStore
@@ -294,6 +299,9 @@ def _render_workspace_controls(store: WorkspaceStore) -> str | None:
     workspaces = store.list()
     workspace_options = {workspace.workspace_id: workspace.name for workspace in workspaces}
     workspace_options["__new__"] = "＋ Nouveau dossier"
+    pending_id = st.session_state.pop("pending_workspace_id", None)
+    if pending_id in workspace_options:
+        st.session_state["workspace_selector"] = pending_id
     with st.sidebar:
         st.markdown("#### 📁 Dossiers")
         selected_id = st.selectbox(
@@ -309,7 +317,7 @@ def _render_workspace_controls(store: WorkspaceStore) -> str | None:
                     st.warning("Donne un nom au dossier.")
                 else:
                     created = store.create(name)
-                    st.session_state["workspace_selector"] = created.workspace_id
+                    st.session_state["pending_workspace_id"] = created.workspace_id
                     st.rerun()
             return None
 
@@ -511,7 +519,7 @@ def _render_sources(
     trace_id: str | None = None,
 ) -> None:
     for i, c in enumerate(chunks, 1):
-        score_pct = int(float(c.get("score", 0.0)) * 100)
+        score_label = f"Rang {c.get('retrieval_rank', i)}"
         title = html.escape(c.get("titre", "Source inconnue")[:80])
         doc_type = c.get("type", "")
         date = html.escape(c.get("date", ""))
@@ -546,7 +554,7 @@ def _render_sources(
             f"""<div class="source-card">
               <div class="source-title">
                 {title_prefix} {title}
-                <span class="score-badge">{score_pct}%</span>
+                <span class="score-badge">{score_label}</span>
               </div>
               <div class="source-meta">{type_label} · {date}</div>
               <div class="source-meta">{traceability_meta}</div>
@@ -555,6 +563,10 @@ def _render_sources(
             </div>""",
             unsafe_allow_html=True,
         )
+        source_url = str(c.get("source") or "")
+        parsed_url = urlsplit(source_url)
+        if parsed_url.scheme in {"http", "https"} and parsed_url.hostname:
+            st.link_button("Consulter la source officielle", source_url)
         if workspace_store is not None and workspace_id is not None:
             source_id = str(c.get("chunk_id") or c.get("source") or f"source-{i}")
             if st.button(
@@ -575,19 +587,28 @@ def _render_sources(
 
 def _render_trace(trace: dict) -> None:
     audit_log_path = trace.get("audit_log_path") or str(get_audit_log_path())
-    st.markdown(
-        "\n".join(
-            [
-                f"**Trace ID**: {html.escape(trace.get('trace_id', 'n/a'))}",
-                f"**Retriever**: {html.escape(trace.get('retriever', 'n/a'))}",
-                f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
-                f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
-                f"**Contexte**: {trace.get('context_tokens', 0)} / {trace.get('max_context_tokens', 0)} tokens (~{trace.get('context_chars', 0)} caractères)",
-                f"**Sources citées**: {', '.join(f'[Source {number}]' for number in trace.get('cited_source_numbers', [])) or 'aucune'}",
-                f"**Audit log**: {html.escape(audit_log_path)}",
-            ]
+    lines = [
+        f"**Trace ID**: {html.escape(trace.get('trace_id', 'n/a'))}",
+        f"**Retriever**: {html.escape(trace.get('retriever', 'n/a'))}",
+        f"**LLM**: {html.escape(trace.get('backend', 'n/a'))} / {html.escape(trace.get('model', 'n/a'))}",
+        f"**Prompt window**: {trace.get('used_count', 0)} injectée(s) / {trace.get('retrieved_count', 0)} récupérée(s)",
+        f"**Contexte**: {trace.get('context_tokens', 0)} / {trace.get('max_context_tokens', 0)} tokens (~{trace.get('context_chars', 0)} caractères)",
+        f"**Sources citées**: {', '.join(f'[Source {number}]' for number in trace.get('cited_source_numbers', [])) or 'aucune'}",
+        f"**Audit log**: {html.escape(audit_log_path)}",
+    ]
+    grounding = trace.get("grounding")
+    if isinstance(grounding, dict):
+        lines.append(
+            f"**Grounding**: {grounding.get('supported_count', 0)} soutenue(s) / "
+            f"{grounding.get('unsupported_count', 0)} écartée(s) / "
+            f"{grounding.get('abstained_count', 0)} abstention(s)"
         )
-    )
+    if trace.get("failure_stage"):
+        reason = trace.get("failure_reason") or "unknown"
+        lines.append(
+            f"**Statut d'incident**: {html.escape(str(trace['failure_stage']))} ({html.escape(str(reason))})"
+        )
+    st.markdown("\n".join(lines))
     retrieval_trace = trace.get("retrieval_trace")
     if retrieval_trace:
         st.caption("Trace metadata-only : le texte des chunks et les secrets ne sont pas exposés dans ce détail.")
@@ -649,7 +670,8 @@ def _fallback_generation_trace(prompt: str, backend: str, model: str) -> dict:
         "max_context_tokens": max_context_tokens,
         "backend": resolved_backend,
         "model": model,
-        "prompt_version": 1,
+        "prompt_version": DEFAULT_PROMPT_VERSION,
+        "grounding": None,
     }
 
 
@@ -747,12 +769,11 @@ def _generate_response(
             return_trace=True,
             conversation_history=conversation_history,
         )
-    except EnvironmentError as exc:
-        response_text = f"⚠️ {public_error_message(exc)}"
-        generation_trace = _fallback_generation_trace(prompt, backend, model)
     except Exception as exc:
         response_text = f"⚠️ {public_error_message(exc)}"
         generation_trace = _fallback_generation_trace(prompt, backend, model)
+        generation_trace["failure_stage"] = "generation"
+        generation_trace["failure_reason"] = type(exc).__name__
     return trace_id, response_text, generation_trace
 
 
@@ -813,22 +834,58 @@ def _generate_orchestrated_response(
         "verify": verify,
     }
     run_orchestration(state, state_nodes)
+    fallback_trace = _fallback_generation_trace(prompt, backend, model)
     generation_trace = state.metadata.get("generation_trace", {})
     if not isinstance(generation_trace, dict):
         generation_trace = {}
-    generation_trace = dict(generation_trace)
+    generation_trace = {**fallback_trace, **generation_trace}
     generation_trace["orchestration"] = state.to_trace()
     if state.decision == "escalate":
         generation_trace = {
-            **_fallback_generation_trace(prompt, backend, model),
             **generation_trace,
             "failure_stage": state.failure_stage,
             "failure_reason": state.failure_reason,
+            "grounding": None,
         }
         response_text = "⚠️ La réponse doit être vérifiée par un opérateur humain."
     else:
         response_text = state.answer_text
     return response_text, generation_trace
+
+
+def _grounding_summary(grounding: object) -> dict[str, object] | None:
+    if not isinstance(grounding, dict):
+        return None
+    return {
+        "source_count": grounding.get("source_count", 0),
+        "claim_count": grounding.get("claim_count", 0),
+        "supported_count": grounding.get("supported_count", 0),
+        "unsupported_count": grounding.get("unsupported_count", 0),
+        "abstained_count": grounding.get("abstained_count", 0),
+        "unsupported_claim_rate": grounding.get("unsupported_claim_rate", 0.0),
+    }
+
+
+def _build_audit_failure_classification(
+    generation_trace: dict,
+    *,
+    generation_error: bool,
+) -> dict[str, object]:
+    grounding = _grounding_summary(generation_trace.get("grounding"))
+    stage = generation_trace.get("failure_stage")
+    reason = generation_trace.get("failure_reason")
+    if stage is None and grounding is not None and grounding["unsupported_count"]:
+        stage = "grounding"
+        reason = "unsupported_claims_filtered"
+    return {
+        "stage": stage or "none",
+        "reason": reason or "",
+        "generation_error": generation_error,
+        "supported_claim_count": grounding["supported_count"] if grounding else 0,
+        "unsupported_claim_count": grounding["unsupported_count"] if grounding else 0,
+        "abstained_claim_count": grounding["abstained_count"] if grounding else 0,
+        "unsupported_claim_rate": grounding["unsupported_claim_rate"] if grounding else None,
+    }
 
 
 def _build_trace_payload(
@@ -859,6 +916,9 @@ def _build_trace_payload(
         "context_tokens": generation_trace.get("context_tokens", 0),
         "max_context_tokens": generation_trace.get("max_context_tokens", 0),
         "cited_source_numbers": citation_source_numbers(response_text),
+        "grounding": _grounding_summary(generation_trace.get("grounding")),
+        "failure_stage": generation_trace.get("failure_stage"),
+        "failure_reason": generation_trace.get("failure_reason"),
         "retrieval_trace": serialized_retrieval_trace,
         "orchestration": generation_trace.get("orchestration"),
         "audit_log_path": str(audit_log_path) if audit_log_path is not None else str(get_audit_log_path()),
@@ -1035,6 +1095,7 @@ def _handle_prompt(
         response_placeholder = st.empty()
         trace_id = new_trace_id()
         response_text = ""
+        generation_error = False
         generation_trace = _fallback_generation_trace(prompt, backend, model)
         try:
             if _orchestrator_enabled():
@@ -1064,13 +1125,22 @@ def _handle_prompt(
                         unsafe_allow_html=True,
                     )
         except Exception as exc:
-            err_suffix = f"\n\n⚠️ {public_error_message(exc)}"
-            response_text = (response_text + err_suffix) if response_text else f"⚠️ {public_error_message(exc)}"
-        response_text, grounding_report = enforce_grounding(
-            response_text,
-            generation_trace.get("used_chunks", []),
-        )
-        generation_trace["grounding"] = grounding_report.to_dict()
+            generation_error = True
+            response_text = f"⚠️ {public_error_message(exc)}"
+            generation_trace["failure_stage"] = "generation"
+            generation_trace["failure_reason"] = type(exc).__name__
+            generation_trace["grounding"] = None
+
+        if (
+            not generation_error
+            and generation_trace.get("failure_stage") is None
+            and generation_trace.get("grounding") is None
+        ):
+            response_text, grounding_report = enforce_grounding(
+                response_text,
+                generation_trace.get("used_chunks", []),
+            )
+            generation_trace["grounding"] = grounding_report.to_dict()
 
         elapsed = time.perf_counter() - t0
         used_chunks = generation_trace.get("used_chunks", [])
@@ -1085,9 +1155,13 @@ def _handle_prompt(
             retriever=retriever_label,
             backend=generation_trace.get("backend", backend),
             model=generation_trace.get("model", model),
-            prompt_version=generation_trace.get("prompt_version", 1),
+            prompt_version=generation_trace.get("prompt_version", DEFAULT_PROMPT_VERSION),
             latency_s=elapsed,
             retrieval_trace=retrieval_trace,
+            failure_classification=_build_audit_failure_classification(
+                generation_trace,
+                generation_error=generation_error,
+            ),
         )
         trace_payload = _build_trace_payload(
             trace_id,
@@ -1169,21 +1243,20 @@ def _render_autoeval_tab() -> None:
         best_idx = df["score"].idxmax()
         best = df.loc[best_idx]
         kw_val = best.get("kw", 0)
-        f1_val = best.get("f1", 0)
+        f1_val = best.get("wordf1", float("nan"))
         score_val = best.get("score", 0)
         kw_ok = kw_val >= _KW_THRESHOLD if pd.notna(kw_val) else False
-        f1_ok = f1_val >= _F1_THRESHOLD if pd.notna(f1_val) else False
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Meilleur score", f"{score_val:.4f}", delta=f"exp {best.get('exp_id', '?')}")
         col2.metric("KW Recall", f"{kw_val:.4f}", delta="✅" if kw_ok else "❌ < 0.67")
-        col3.metric("Word F1", f"{f1_val:.4f}" if pd.notna(f1_val) else "n/a", delta="✅" if f1_ok else "❌ < 0.30")
+        col3.metric("Word F1 · diagnostic", f"{f1_val:.4f}" if pd.notna(f1_val) else "n/a")
         col4.metric("Expériences", str(len(df)))
 
     st.divider()
 
     # ── Metrics evolution charts ──────────────────────────────────────────
-    metric_cols = [c for c in ["kw", "f1", "score"] if c in df.columns]
+    metric_cols = [c for c in ["kw", "wordf1", "bertscore", "judge", "score"] if c in df.columns]
     if metric_cols and len(df) > 1:
         st.markdown("#### Évolution des métriques")
 
@@ -1194,8 +1267,8 @@ def _render_autoeval_tab() -> None:
 
         # Threshold reference info
         st.caption(
-            f"Seuils cibles : KW ≥ {_KW_THRESHOLD} · F1 ≥ {_F1_THRESHOLD} · "
-            f"Score composite = 0.5×KW + 0.5×F1"
+            "Score : moyenne des métriques sémantiques disponibles (BERTScore et juge). "
+            "Word F1 et rappel de mots-clés restent des diagnostics."
         )
 
     # ── Parameter evolution ───────────────────────────────────────────────
@@ -1212,8 +1285,8 @@ def _render_autoeval_tab() -> None:
     st.markdown("#### Tableau complet des expériences")
     display_cols = [c for c in [
         "exp_id", "retriever", "k", "vector_w", "fts_w",
-        "reranker", "query_exp", "kw", "f1", "citfaith",
-        "lat", "score", "note",
+        "reranker", "query_exp", "kw", "wordf1", "bertscore", "judge", "citfaith",
+        "latmean", "latp95", "cost", "score", "note",
     ] if c in df.columns]
     st.dataframe(
         df[display_cols] if display_cols else df,
