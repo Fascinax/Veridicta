@@ -1,5 +1,5 @@
 {
-  "fixture_sha256": "45373bc47168a7ce4298947b280d1ff26d807b424a25f7c3312aee5dc38f15e7",
+  "fixture_sha256": "9eb029d4052cc828d1b32a5475504e083c7a9b6a37f76f31a2e92ca19ddce9a8",
   "current": {
     "scope": "synthetic_guard_regression_only",
     "cases": 16,
