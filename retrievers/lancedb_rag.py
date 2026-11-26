@@ -419,7 +419,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunks", default="data/processed/chunks.jsonl", metavar="PATH",
     )
     parser.add_argument(
-        "--db-dir", default=str(active_lancedb_dir()), metavar="DIR",
+        "--db-dir", default=None, metavar="DIR",
     )
     parser.add_argument(
         "--index-dir", default="data/index", metavar="DIR",
@@ -435,24 +435,25 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _build_parser().parse_args()
+    db_dir = Path(args.db_dir) if args.db_dir is not None else active_lancedb_dir()
 
     if args.build:
         build_lancedb_index(
             chunks_path=Path(args.chunks),
-            db_dir=Path(args.db_dir),
+            db_dir=db_dir,
         )
         return
 
     if args.build_from_faiss:
         build_lancedb_from_faiss(
             index_dir=Path(args.index_dir),
-            db_dir=Path(args.db_dir),
+            db_dir=db_dir,
         )
         return
 
     from retrievers.baseline_rag import _load_embedder, answer
 
-    table = load_lancedb_index(Path(args.db_dir))
+    table = load_lancedb_index(db_dir)
     embedder = _load_embedder()
 
     if args.mode == "hybrid":
