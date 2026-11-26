@@ -52,6 +52,7 @@ from retrievers.traceability import (
     normalize_citations,
 )
 from retrievers.grounding import enforce_grounding
+from retrievers.snapshots import active_data_root
 
 load_dotenv()
 
@@ -70,9 +71,10 @@ NO_SOURCES_RESPONSE = (
     "Les sources fournies ne permettent pas de répondre de manière fiable à cette question."
 )
 
-# LLM backend configuration
+def active_index_dir() -> Path:
+    return active_data_root() / "index"
 
-INDEX_DIR = Path("data/index")
+
 FAISS_FILENAME = "veridicta.faiss"
 CHUNKS_MAP_FILENAME = "chunks_map.jsonl"
 INDEX_METADATA_FILENAME = "embedding_config.json"
@@ -190,7 +192,7 @@ def _query_embed_cache_set(cache_key: tuple[int, str], vector: np.ndarray) -> No
 
 def _load_embedder() -> SentenceTransformer:
     logger.info("Loading embedder: %s", EMBED_MODEL)
-    return SentenceTransformer(EMBED_MODEL)
+    return SentenceTransformer(EMBED_MODEL, revision=EMBEDDING_CONFIG.revision)
 
 
 def _format_query_for_embedding(query: str) -> str:
@@ -234,6 +236,7 @@ def _metadata_path(index_dir: Path) -> Path:
 def _build_embedding_metadata(dim: int, chunk_count: int) -> dict[str, int | str]:
     return {
         "embed_model": EMBED_MODEL,
+        "embed_revision": EMBEDDING_CONFIG.revision,
         "embed_query_prefix": EMBED_QUERY_PREFIX,
         "embedding_dimension": dim,
         "chunk_count": chunk_count,
@@ -270,7 +273,13 @@ def _ensure_index_compatibility(index: faiss.Index, index_dir: Path) -> None:
 
     metadata_model = str(metadata.get("embed_model", ""))
     metadata_dimension = int(metadata.get("embedding_dimension", index.d))
-    if metadata_model != EMBED_MODEL or metadata_dimension != index.d:
+    if (
+        metadata_model != EMBED_MODEL
+        or metadata_dimension != index.d
+        or metadata_dimension != EMBED_DIMENSION
+        or metadata.get("embed_query_prefix", EMBED_QUERY_PREFIX) != EMBED_QUERY_PREFIX
+        or metadata.get("embed_revision") not in (None, EMBEDDING_CONFIG.revision)
+    ):
         raise RuntimeError(
             "Embedding config mismatch detected. "
             f"Index was built with model={metadata_model!r}, dim={metadata_dimension}; "
@@ -282,8 +291,10 @@ def _ensure_index_compatibility(index: faiss.Index, index_dir: Path) -> None:
 # --- Index build ---
 
 
-def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) -> None:
+def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path | None = None) -> None:
     """Embed all chunks and write FAISS index + chunk map to index_dir."""
+    if index_dir is None:
+        index_dir = active_index_dir()
     index_dir.mkdir(parents=True, exist_ok=True)
     faiss_path = index_dir / FAISS_FILENAME
     map_path = index_dir / CHUNKS_MAP_FILENAME
@@ -327,8 +338,10 @@ def build_index(chunks_path: Path = CHUNKS_PATH, index_dir: Path = INDEX_DIR) ->
 # --- Index load ---
 
 
-def load_index(index_dir: Path = INDEX_DIR) -> tuple[faiss.Index, list[dict]]:
+def load_index(index_dir: Path | None = None) -> tuple[faiss.Index, list[dict]]:
     """Load FAISS index and chunk map. Raises FileNotFoundError if not yet built."""
+    if index_dir is None:
+        index_dir = active_index_dir()
     faiss_path = index_dir / FAISS_FILENAME
     map_path = index_dir / CHUNKS_MAP_FILENAME
 
@@ -340,6 +353,9 @@ def load_index(index_dir: Path = INDEX_DIR) -> tuple[faiss.Index, list[dict]]:
     chunks: list[dict] = []
     with jsonlines.open(map_path) as reader:
         chunks = list(reader)
+
+    if index.ntotal != len(chunks):
+        raise RuntimeError("FAISS vector count does not match the ordered chunk map")
 
     logger.info("Index loaded: %d vectors, %d chunks", index.ntotal, len(chunks))
     return index, chunks
@@ -661,7 +677,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to chunks.jsonl used during --build",
     )
     parser.add_argument(
-        "--index-dir", default=str(INDEX_DIR), metavar="DIR",
+        "--index-dir", default=None, metavar="DIR",
         help="Directory for FAISS index files (default: data/index)",
     )
     return parser
@@ -669,7 +685,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _build_parser().parse_args()
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
 
     if args.build:
         build_index(Path(args.chunks), index_dir)

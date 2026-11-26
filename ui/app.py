@@ -44,14 +44,15 @@ sys.path.insert(0, str(_ROOT))
 # ── Download index artifacts from HuggingFace Hub if missing (Streamlit Cloud) ─
 try:
     from retrievers.artifacts import ensure_artifacts  # noqa: E402
-    ensure_artifacts(root=_ROOT)
+    if not os.getenv("VERIDICTA_SNAPSHOT_MANIFEST"):
+        ensure_artifacts(root=_ROOT)
 except Exception as _artifact_err:
     st.warning(f"Artifact check failed: {_artifact_err}")
 
 from retrievers.baseline_rag import (
     DEFAULT_PROMPT_VERSION,
     DEFAULT_TOP_K,
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
@@ -206,7 +207,7 @@ st.markdown(
 
 @st.cache_resource(show_spinner="Chargement de l'index vectoriel…")
 def _get_index():
-    return load_index(INDEX_DIR)
+    return load_index(active_index_dir())
 
 
 @st.cache_resource(show_spinner="Chargement du modèle d'embedding…")
@@ -220,7 +221,7 @@ def _get_bm25():
     if not _HYBRID_AVAILABLE:
         return None
     try:
-        return load_bm25_index(INDEX_DIR)
+        return load_bm25_index(active_index_dir())
     except FileNotFoundError:
         return None
 

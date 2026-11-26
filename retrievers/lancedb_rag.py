@@ -31,10 +31,15 @@ from pathlib import Path
 import numpy as np
 
 from retrievers.config import RRF_CONFIG
+from retrievers.snapshots import active_data_root
 
 logger = logging.getLogger(__name__)
 
-LANCEDB_DIR = Path("data/index/lancedb")
+
+def active_lancedb_dir() -> Path:
+    return active_data_root() / "index" / "lancedb"
+
+
 LANCEDB_TABLE_NAME = "chunks"
 
 RRF_K = RRF_CONFIG.rrf_k
@@ -51,9 +56,11 @@ DEFAULT_TOP_K = 5
 
 def build_lancedb_index(
     chunks_path: Path = Path("data/processed/chunks.jsonl"),
-    db_dir: Path = LANCEDB_DIR,
+    db_dir: Path | None = None,
 ) -> None:
     """Embed chunks with Solon and create a LanceDB table with vector + FTS indexes."""
+    if db_dir is None:
+        db_dir = active_lancedb_dir()
     import jsonlines
     import lancedb
     from retrievers.baseline_rag import _load_embedder, _embed_passages
@@ -102,9 +109,11 @@ def build_lancedb_index(
 
 def build_lancedb_from_faiss(
     index_dir: Path = Path("data/index"),
-    db_dir: Path = LANCEDB_DIR,
+    db_dir: Path | None = None,
 ) -> None:
     """Build LanceDB table from an existing FAISS index + chunks_map.jsonl (no re-embedding)."""
+    if db_dir is None:
+        db_dir = active_lancedb_dir()
     import faiss
     import jsonlines
     import lancedb
@@ -169,9 +178,11 @@ def build_lancedb_from_faiss(
 
 
 def load_lancedb_index(
-    db_dir: Path = LANCEDB_DIR,
+    db_dir: Path | None = None,
 ) -> "lancedb.table.Table":
     """Open an existing LanceDB table. Raises FileNotFoundError if not built."""
+    if db_dir is None:
+        db_dir = active_lancedb_dir()
     import lancedb
 
     db_path = db_dir
@@ -366,7 +377,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunks", default="data/processed/chunks.jsonl", metavar="PATH",
     )
     parser.add_argument(
-        "--db-dir", default=str(LANCEDB_DIR), metavar="DIR",
+        "--db-dir", default=None, metavar="DIR",
     )
     parser.add_argument(
         "--index-dir", default="data/index", metavar="DIR",
@@ -382,24 +393,25 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _build_parser().parse_args()
+    db_dir = Path(args.db_dir) if args.db_dir is not None else active_lancedb_dir()
 
     if args.build:
         build_lancedb_index(
             chunks_path=Path(args.chunks),
-            db_dir=Path(args.db_dir),
+            db_dir=db_dir,
         )
         return
 
     if args.build_from_faiss:
         build_lancedb_from_faiss(
             index_dir=Path(args.index_dir),
-            db_dir=Path(args.db_dir),
+            db_dir=db_dir,
         )
         return
 
     from retrievers.baseline_rag import _load_embedder, answer
 
-    table = load_lancedb_index(Path(args.db_dir))
+    table = load_lancedb_index(db_dir)
     embedder = _load_embedder()
 
     if args.mode == "hybrid":

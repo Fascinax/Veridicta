@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 from pathlib import Path
-import re
+from retrievers.snapshots import verify_manifest
 
 
 DEFAULT_MAX_CORPUS_AGE_DAYS = 30.0
-_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _TIMEOUT_NAMES = frozenset(
     {"APITimeoutError", "ConnectTimeout", "ReadTimeout", "TimeoutError"}
 )
@@ -92,16 +91,6 @@ def check_source_count(source_count: int) -> ReadinessCheck:
     )
 
 
-def _parse_generated_at(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return None
-    return parsed.astimezone(timezone.utc)
 
 
 def check_corpus_manifest(
@@ -109,47 +98,17 @@ def check_corpus_manifest(
     max_age_days: float = DEFAULT_MAX_CORPUS_AGE_DAYS,
     now: datetime | None = None,
 ) -> ReadinessCheck:
-    """Validate corpus provenance, integrity fields and freshness."""
-    if max_age_days <= 0:
-        return ReadinessCheck("corpus_manifest", "fail", "max_age_days must be positive")
-    if not manifest_path.exists():
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus manifest is missing")
+    """Check actual file digests and collection freshness before release."""
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus manifest is unreadable")
-    if not isinstance(payload, dict):
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus manifest is not an object")
-
-    for field in ("input_sha256", "output_sha256"):
-        if not _DIGEST_PATTERN.fullmatch(str(payload.get(field, ""))):
-            return ReadinessCheck(
-                "corpus_manifest",
-                "fail",
-                f"Corpus manifest has an invalid {field}",
-            )
-    if not isinstance(payload.get("source_filename"), str) or not payload["source_filename"].strip():
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus source provenance is missing")
-    if not isinstance(payload.get("objects_written"), int) or payload["objects_written"] <= 0:
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus manifest contains no records")
-
-    generated_at = _parse_generated_at(payload.get("generated_at_utc"))
-    if generated_at is None:
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus refresh timestamp is missing or invalid")
-    reference_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    age_days = (reference_time - generated_at).total_seconds() / 86_400
-    if age_days < -0.01:
-        return ReadinessCheck("corpus_manifest", "fail", "Corpus refresh timestamp is in the future")
-    if age_days > max_age_days:
+        verify_manifest(manifest_path, max_age_days, now)
+    except (OSError, ValueError, KeyError, TypeError):
         return ReadinessCheck(
-            "corpus_manifest",
-            "fail",
-            f"Corpus is stale ({age_days:.1f} days; maximum {max_age_days:g})",
+            "corpus_manifest", "fail",
+            "Corpus manifest is missing, stale or invalid; a verified v2 snapshot is required",
         )
     return ReadinessCheck(
-        "corpus_manifest",
-        "pass",
-        f"Corpus is current ({age_days:.1f} days old; source provenance and digests present)",
+        "corpus_manifest", "pass",
+        "Corpus collection is current and all declared file digests match",
     )
 
 

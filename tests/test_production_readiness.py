@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 
 import retrievers.baseline_rag as baseline_rag
+from retrievers.snapshots import create_manifest
 from retrievers.readiness import (
     ReadinessContext,
     build_readiness_report,
@@ -17,16 +18,10 @@ NOW = datetime(2026, 9, 8, tzinfo=timezone.utc)
 
 
 def _write_manifest(path, generated_at: datetime) -> None:
+    (path.parent / "raw").mkdir(exist_ok=True)
+    (path.parent / "raw/snapshot.jsonl").write_text('{"id":"1"}\n', encoding="utf-8")
     path.write_text(
-        json.dumps(
-            {
-                "input_sha256": "a" * 64,
-                "output_sha256": "b" * 64,
-                "source_filename": "snapshot.jsonl",
-                "objects_written": 2,
-                "generated_at_utc": generated_at.isoformat(),
-            }
-        ),
+        json.dumps(create_manifest(path.parent, generated_at.isoformat(), "synthetic fixture")),
         encoding="utf-8",
     )
 

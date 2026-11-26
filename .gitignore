@@ -42,6 +42,7 @@ data/processed/*
 data/embeddings/*
 data/index/*
 data/cases/*
+data/snapshots/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/embeddings/.gitkeep
@@ -149,6 +150,7 @@ celerybeat.pid
 .venv
 .venv-audit/
 /dependency-audit.json
+/guard-regressions.json
 
 # Streamlit secrets (never commit)
 .streamlit/secrets.toml

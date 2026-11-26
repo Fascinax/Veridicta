@@ -198,6 +198,13 @@ class ChunkRecord:
 
 def _normalise_metadata(doc: dict) -> dict:
     raw_metadata = dict(doc.get("metadata") or {})
+    for name in ("effective_from", "effective_to", "valid_from", "valid_to", "version_key", "version_id", "legal_status"):
+        if doc.get(name) is not None:
+            raw_metadata[name] = doc[name]
+    if doc.get("type") == "projet_loi":
+        raw_metadata["legal_status"] = "draft"
+    elif raw_metadata.get("abrogee") is True:
+        raw_metadata["legal_status"] = "repealed"
     normalised_metadata = {
         "document_number": raw_metadata.get("numero", ""),
         "document_nature": raw_metadata.get("nature", ""),

@@ -51,6 +51,7 @@ class EmbeddingConfig:
     dimension: int
     batch_size: int
     query_cache_size: int
+    revision: str | None = None
 
     @classmethod
     def from_env(cls) -> EmbeddingConfig:
@@ -63,6 +64,11 @@ class EmbeddingConfig:
             dimension=_read_int_env("VERIDICTA_EMBED_DIMENSION", 1024),
             batch_size=_read_int_env("VERIDICTA_EMBED_BATCH_SIZE", 32),
             query_cache_size=_read_int_env("VERIDICTA_QUERY_EMBED_CACHE_SIZE", 512),
+            revision=os.getenv("VERIDICTA_EMBED_REVISION") or (
+                "9f6465f6ea2f6d10c6294bc15d84edf87d47cdef"
+                if os.getenv("VERIDICTA_EMBED_MODEL", "OrdalieTech/Solon-embeddings-large-0.1") == "OrdalieTech/Solon-embeddings-large-0.1"
+                else None
+            ),
         )
 
 

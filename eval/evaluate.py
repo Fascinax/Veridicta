@@ -41,7 +41,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from retrievers.baseline_rag import (
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
@@ -1749,7 +1749,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--index-dir",
-        default=str(INDEX_DIR),
+        default=None,
         help="Directory containing veridicta.faiss + chunks_map.jsonl",
     )
     parser.add_argument(
@@ -2275,7 +2275,7 @@ def main() -> None:
 
     _validate_evaluation_contract(args, questions_path)
 
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
     active_backend = args.backend or LLM_BACKEND
 
     print("Loading questions ...")

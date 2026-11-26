@@ -50,7 +50,7 @@ from eval.evaluate import (  # noqa: E402
 from retrievers.baseline_rag import (  # noqa: E402
     CEREBRAS_DEFAULT_MODEL,
     COPILOT_DEFAULT_MODEL,
-    INDEX_DIR,
+    active_index_dir,
     LLM_BACKEND,
     _load_embedder,
     answer,
@@ -858,7 +858,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--questions", default="eval/test_questions.json")
     parser.add_argument("--contract", default="eval/evaluation_contract.json")
     parser.add_argument("--allow-custom-questions", action="store_true")
-    parser.add_argument("--index-dir", default=str(INDEX_DIR))
+    parser.add_argument("--index-dir", default=None)
     parser.add_argument(
         "--retriever",
         default="lancedb",
@@ -928,7 +928,7 @@ def _validate_questions(args: argparse.Namespace, questions_path: Path) -> None:
 def _load_pipeline(args: argparse.Namespace) -> RetrievalPipeline:
     from eval.evaluate import _load_optional_retrievers, _load_primary_index  # noqa: PLC0415
 
-    index_dir = Path(args.index_dir)
+    index_dir = Path(args.index_dir) if args.index_dir is not None else active_index_dir()
     retrieval_args = argparse.Namespace(retriever=args.retriever)
     bm25, neo4j_mgr, lancedb_table = _load_optional_retrievers(
         retrieval_args, index_dir
