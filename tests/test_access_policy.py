@@ -157,7 +157,7 @@ def test_malformed_policy_is_rejected(tmp_path, document):
     b'{"schema_version":1,"principals":[],"principals":[]}',
     b'{"schema_version":1,"principals":[{"iss":"a","sub":"b","sub":"c"}]}',
     b"not json", b"\xff", b"[" * 1100, b" " * (MAX_POLICY_BYTES + 1),
-])
+], ids=["duplicate-principals", "duplicate-subject", "invalid-json", "invalid-utf8", "nested", "oversized"])
 def test_unreadable_or_ambiguous_policy_is_rejected(tmp_path, payload):
     path = tmp_path / "policy.json"
     path.write_bytes(payload)
