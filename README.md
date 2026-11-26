@@ -295,13 +295,12 @@ The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,
 `generation`, and `none`. They identify the first observable loss against the
 reference keywords; they do not replace the human verdict or a legal review.
 
-Generated answers use complete sentences from the cited passages. When a proposed
-paraphrase has enough overlap with a cited sentence, the answer quotes that
-sentence with its source number. This preserves the parties, amounts and
-conditions as written, including when the model swaps a debtor and a creditor.
-The grounding report counts the original paraphrase as unsupported. When the
-guard cannot select a passage, it displays an abstention. A matching quotation
-alone does not establish that the rule applies to the question.
+Generated answers quote the complete passage supplied to the model, with its
+source number. A matching sentence can appear between a party’s claim and a
+court’s rejection. Keeping that context preserves who made the claim and how
+the court ruled. The grounding report distinguishes a complete quotation from
+an isolated sentence or a paraphrase. If no suitable passage can be shown, the
+answer abstains. Context is limited to the retrieved passage.
 
 Benchmark the current FlashRank model against the local multilingual BGE
 reranker:
