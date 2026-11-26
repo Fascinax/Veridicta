@@ -299,11 +299,13 @@ The diagnostic stages are `retrieval`, `ranking`, `context_assembly`,
 `generation`, and `none`. They identify the first observable loss against the
 reference keywords; they do not replace the human verdict or a legal review.
 
-Generated answers also carry a claim-level grounding report. Citations outside
-the injected context are removed, claims with insufficient evidence are
-replaced by an abstention, and new evaluation rows expose the optional
-`unsupported_claim_rate` metric. This deterministic guard is a safety layer,
-not a semantic legal-proof system.
+Generated answers use complete sentences from the cited passages. When a proposed
+paraphrase has enough overlap with a cited sentence, the answer quotes that
+sentence with its source number. This preserves the parties, amounts and
+conditions as written, including when the model swaps a debtor and a creditor.
+The grounding report counts the original paraphrase as unsupported. When the
+guard cannot select a passage, it displays an abstention. A matching quotation
+alone does not establish that the rule applies to the question.
 
 Benchmark the current FlashRank model against the local multilingual BGE
 reranker:
